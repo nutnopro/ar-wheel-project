@@ -34,6 +34,12 @@ class ARActivity : ComponentActivity() {
     private var arSession: Session? = null
     private var isARSessionStarted = false
 
+	enum class ARMode {
+		MARKERLESS,
+		MARKER_BASED
+	}
+	private var currentMode: ARMode = ARMode.MARKERLESS
+
 	private const val TAG = "ARActivity"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,13 +83,64 @@ class ARActivity : ComponentActivity() {
         }
         rootLayout.addView(backButton, buttonParams)
 
+		val modeToggle = LinearLayout(this).apply {
+			orientation = LinearLayout.HORIZONTAL
+			val params = FrameLayout.LayoutParams(
+				FrameLayout.LayoutParams.WRAP_CONTENT,
+				FrameLayout.LayoutParams.WRAP_CONTENT
+			).apply {
+				gravity = Gravity.TOP or Gravity.START
+				topMargin = 60
+				marginStart = 30
+			}
+			layoutParams = params
+		}
+
+		fun createModeButton(text: String, isActive: Boolean): TextView {
+			return TextView(this).apply {
+				this.text = text
+				setTextColor(Color.WHITE)
+				setPadding(40, 20, 40, 20)
+				textSize = 14f
+				typeface = Typeface.DEFAULT_BOLD
+				background = GradientDrawable().apply {
+					cornerRadius = 30f
+					setColor(if (isActive) Color.parseColor("#FF4F4F") else Color.parseColor("#FF7B7B"))
+				}
+				elevation = if (isActive) 8f else 2f
+			}
+		}
+
+		val btnMarkerless = createModeButton("Markerless", true)
+		val btnMarkerBased = createModeButton("Marker-based", false)
+
+		btnMarkerless.setOnClickListener {
+			if (currentMode != ARMode.MARKERLESS) {
+				currentMode = ARMode.MARKERLESS
+				updateButtonState(btnMarkerless, btnMarkerBased)
+				restartAR()
+			}
+		}
+
+		btnMarkerBased.setOnClickListener {
+			if (currentMode != ARMode.MARKER_BASED) {
+				currentMode = ARMode.MARKER_BASED
+				updateButtonState(btnMarkerless, btnMarkerBased)
+				restartAR()
+			}
+		}
+
+		modeToggle.addView(btnMarkerless)
+		modeToggle.addView(btnMarkerBased)
+		rootLayout.addView(modeToggle)
+
         setContentView(rootLayout)
         Log.d(TAG, "Views set")
     }
 
 	private fun setupAR() {
-		aRsession = Session(this)
-		val config = Config(session).apply {
+		arSession = Session(this)
+		val config = Config(arSession).apply {
 			updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
 			planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
 			lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -109,19 +166,44 @@ class ARActivity : ComponentActivity() {
 		}
 	}
 
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     private fun startAR() {
-		session = aRsession?
 		arSceneView.onFrame = { frame ->
 			Log.d(TAG, "Frame: timestamp=${frame.timestamp}")
-			tensor = frameConverter(frame)
-			output = onnxHandler.runOnnxInference(tensor)
-			pos3d = positionHandler.getPos3d(output)
-			boxOverlay(output)
-			markerBased.renderModel(output)
-			markerless.renderModel(pos3d)
+			
+			when (currentMode) {
+				ARMode.MARKERLESS -> {
+					tensor = frameConverter(frame)
+					detection = onnxHandler.runOnnxInference(tensor)
+					pos3d = positionHandler.getPos3d(detection)
+					markerless.render(pos3d)
+					boxOverlay(detection)
+				}
+				ARMode.MARKER_BASED -> {
+					markerBased.render(frame)
+				}
+			}
 		}
     }
+
+	private fun restartAR() {
+		try {
+			arSceneView.session.pause()
+			startAR()
+			arSceneView.session.resume()
+		} catch (e: Exception) {
+			Log.e(TAG, "Failed to restart AR session", e)
+		}
+	}
+
+	private fun updateButtonState(active: TextView, inactive: TextView) {
+		active.background = GradientDrawable().apply {
+			cornerRadius = 30f; setColor(Color.parseColor("#FF4F4F"))
+		}
+		inactive.background = GradientDrawable().apply {
+			cornerRadius = 30f; setColor(Color.parseColor("#FF7B7B"))
+		}
+	}
 
     override fun onResume() {
         super.onResume()
