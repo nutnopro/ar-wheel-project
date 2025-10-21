@@ -14,20 +14,19 @@ import android.util.Log
 import com.google.ar.core.Config
 import com.google.ar.core.AugmentedImage
 import com.google.ar.core.TrackingState
-
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore
-import com.arapp.utils.OnnxRuntimeHandler
-import com.arapp.utils.FrameConverter
-import com.arapp.utils.PositionHandler
+import com.arwheelapp.utils.FrameConverter
+import com.arwheelapp.utils.PositionHandler
+import com.arwheelapp.utils.OnnxRuntimeHandler
 
 class ARActivity : ComponentActivity() {
 
     private lateinit var arSceneView: ARSceneView
-    private lateinit var onnxHandler: OnnxRuntimeHandler
-    private lateinit var boxOverlay: OnnxOverlayView
     private lateinit var frameConverter: FrameConverter
     private lateinit var positionHandler: PositionHandler
+    private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
+    private lateinit var onnxOverlay: OnnxOverlayView
     private lateinit var markerBased: ARMarkerBased
     private lateinit var markerless: ARMarkerless
 
@@ -133,6 +132,7 @@ class ARActivity : ComponentActivity() {
 		modeToggle.addView(btnMarkerless)
 		modeToggle.addView(btnMarkerBased)
 		rootLayout.addView(modeToggle)
+        Log.d(TAG, "Mode toggle added to layout")
 
         setContentView(rootLayout)
         Log.d(TAG, "Views set")
@@ -169,18 +169,33 @@ class ARActivity : ComponentActivity() {
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     private fun startAR() {
 		arSceneView.onFrame = { frame ->
-			Log.d(TAG, "Frame: timestamp=${frame.timestamp}")
+			Log.d(TAG, "Frame: timestamp=${frame.timestamp}, cameraTrackingState=${frame.camera.trackingState}")
 			
 			when (currentMode) {
 				ARMode.MARKERLESS -> {
-					tensor = frameConverter(frame)
-					detection = onnxHandler.runOnnxInference(tensor)
-					pos3d = positionHandler.getPos3d(detection)
+					tensor = frameConverter.convertFrameToTensor(frame)
+					detection = onnxRuntimeHandler.runOnnxInference(tensor)
+					pos3d = positionHandler.get3DPos(frame, detection)
+					onnxOverlay.onDraw()
 					markerless.render(pos3d)
-					boxOverlay(detection)
 				}
 				ARMode.MARKER_BASED -> {
-					markerBased.render(frame)
+					if (frame.camera.trackingState != TrackingState.TRACKING) return@onFrame
+
+					val updatedImages: Collection<AugmentedImage> = frame.getUpdatedTrackables(AugmentedImage::class.java)
+					Log.d("ARSceneViewActivity", "Updated markers count=${updatedImages.size}")
+
+					for (img in updatedImages) {
+						Log.d("ARSceneViewActivity", "Marker: ${img.name}, state=${img.trackingState}")
+						if (img.trackingState == TrackingState.TRACKING) {
+							if (!markerBased.isModelLoaded) {
+								markerBased.loadModel(arSceneView)
+							}
+							markerBased.updateNodePosition(img)
+						} else {
+							markerBased.updateNodePosition(img)
+						}
+					}
 				}
 			}
 		}

@@ -71,7 +71,7 @@ class OnnxRuntimeHandler(private val context: Context) {
                 val h = boxes[3][i]
                 val conf = boxes[4][i]
 
-                if (conf > 0.1f) { // threshold
+                if (conf > 0.4f) { // threshold
                     detections.add(Detection(x, y, w, h, conf))
                     Log.d(TAG, "Detection added: x=$x, y=$y, w=$w, h=$h, conf=$conf")
                 } else {
@@ -88,7 +88,7 @@ class OnnxRuntimeHandler(private val context: Context) {
         }
     }
 
-    // ปิด resource เมื่อ Activity/Service ถูกทำลาย
+    // close resource when Activity/Service is destroyed
     fun close() {
         try {
             session.close()

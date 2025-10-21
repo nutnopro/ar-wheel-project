@@ -1,6 +1,5 @@
 package com.arwheelapp.utils
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.Image
@@ -10,25 +9,13 @@ import java.io.FileOutputStream
 import com.google.ar.core.Frame
 import java.nio.FloatBuffer
 import android.util.Log
-import android.view.View
-import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.math.*
-import io.github.sceneview.utils.screenToWorld
 import io.github.sceneview.collision.Quaternion
 import io.github.sceneview.collision.Vector3
-import io.github.sceneview.math.Position
 import io.github.sceneview.math.toFloat3
-import io.github.sceneview.node.Node
-import io.github.sceneview.node.PlaneNode
-import io.github.sceneview.node.CubeNode
 import dev.romainguy.kotlin.math.Float3
-import kotlin.math.sqrt
-import com.google.ar.core.AugmentedImage
-import com.google.ar.core.TrackingState
-import io.github.sceneview.node.ModelNode
 
-
-class PositionHandler(context: Context) {
+class PositionHandler {
 	private const val TAG = "PositionHandler"
 
 	data class Pose3D(
@@ -46,7 +33,7 @@ class PositionHandler(context: Context) {
     )
 
     // Get 3D positions with hitTest
-    fun get3DPos(frame: Frame, detections: List<Detection>, confidenceThreshold: Float = 0.3f): List<Pose3D> {
+    fun get3DPos(frame: Frame, detections: List<Detection>, confidenceThreshold: Float = 0.4f): List<Pose3D> {
         val poses = mutableListOf<Pose3D>()
         Log.d(TAG, "Start computing 3D poses from ${detections.size} detections")
 

@@ -1,6 +1,5 @@
 package com.arwheelapp.utils
 
-import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.Image
@@ -11,11 +10,11 @@ import com.google.ar.core.Frame
 import java.nio.FloatBuffer
 import android.util.Log
 
-class FrameConverter(context: Context) {
+class FrameConverter {
 	private const val TAG = "FrameConverter"
 
     // ARCore Frame -> FloatArray Tensor
-    fun convertYUVToTensor(frame: Frame): FloatArray {
+    fun convertFrameToTensor(frame: Frame): FloatArray {
         var image: Image? = null
         return try {
             image = frame.acquireCameraImage()
