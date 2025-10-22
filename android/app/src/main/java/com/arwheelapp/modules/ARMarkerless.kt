@@ -1,4 +1,4 @@
-package com.arapp.modules
+package com.arwheelapp.modules
 
 import com.google.ar.core.Frame
 import android.graphics.Color
@@ -11,9 +11,19 @@ import dev.romainguy.kotlin.math.Float3
 import kotlin.math.sqrt
 import android.util.Log
 import io.github.sceneview.node.ModelNode
+import com.arwheelapp.utils.FrameConverter
+import com.arwheelapp.utils.PositionHandler
+import com.arwheelapp.utils.OnnxRuntimeHandler
 
 class ARMarkerless {
+    private lateinit var frameConverter: FrameConverter
+    private lateinit var positionHandler: PositionHandler
+    private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
+    private lateinit var onnxOverlay: OnnxOverlayView
+
 	private const val TAG = "ARMarkerless"
+
+    private val modelNodes = mutableListOf<Node>()
 
     data class Pose3D(
         val position: Float3,
@@ -21,10 +31,15 @@ class ARMarkerless {
         val scale: Float3 = Float3(1f, 1f, 1f)
     )
 
-    private val modelNodes = mutableListOf<Node>()
+    fun render(arSceneView: ARSceneView, frame: Frame) {
+        tensor = frameConverter.convertFrameToTensor(frame)
+        detection = onnxRuntimeHandler.runOnnxInference(tensor)
+        pos3d = positionHandler.get3DPosition(frame, detection)
+        onnxOverlay.onDraw()
+        renderModels(arSceneView, pos3d)
+    }
 
-    // Update / reuse model boxes
-    fun render(sceneView: ARSceneView, pose3DList: List<Pose3D>, minDistance: Float = 0.25f) {
+    private fun renderModels(sceneView: ARSceneView, pose3DList: List<Pose3D>, minDistance: Float = 0.25f) {
         Log.d(TAG, "Start rendering ${pose3DList.size} 3D poses")
 
         // ซ่อน node เก่า

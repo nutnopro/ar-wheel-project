@@ -1,4 +1,4 @@
-package com.arapp.modules
+package com.arwheelapp.modules
 
 import android.content.Context
 import android.util.Log
@@ -7,34 +7,40 @@ import io.github.sceneview.node.ModelNode
 import dev.romainguy.kotlin.math.Float3
 import com.google.ar.core.*
 import java.io.File
+import com.google.ar.core.TrackingState
+import com.google.ar.core.AugmentedImage
 
 class ARMarkerBased(private val context: Context) {
 	private const val TAG = "ARMarkerBased"
 
     companion object {
-        const val MARKER_DB = "markers/ar_marker_database.imgdb"
+        const val MARKER_DB = "markers/ar_marker.imgdb"
         const val MODEL_PATH = "models/wheel1.obj"
     }
 
     // assign session from ARSceneView
-    private lateinit var session: Session
-    private var wheelNode: ModelNode? = null
+    private lateinit var wheelNode: ModelNode? = null
     var isModelLoaded = false
-		private set
-	
-	fun render() {
-		setupDatabase()
 
-		if (!isModelLoaded) {
-			Log.d(TAG, "Model not loaded yet, cannot render")
-			loadModel()
-		} else {
-			Log.d(TAG, "Model already loaded, ready to render")
-			updateModelPosition()
-		}
+	fun render(session: Session, arSceneView: ARSceneView, frame: Frame) {
+        if (frame.camera.trackingState != TrackingState.TRACKING) return
+        setupDatabase(session)
+
+        val updatedImages: Collection<AugmentedImage> = frame.getUpdatedTrackables(AugmentedImage::class.java)
+        Log.d(TAG, "Updated markers count=${updatedImages.size}")
+        
+        for (img in updatedImages) {
+            Log.d(TAG, "Marker: ${img.name}, state=${img.trackingState}")
+            if (img.trackingState == TrackingState.TRACKING) {
+                if (!isModelLoaded) {
+                    loadModel(arSceneView)
+                }
+                updateModelPosition(img)
+            }
+        }
 	}
 
-    private fun setupDatabase() {
+    private fun setupDatabase(session: Session) {
         try {
             Log.d(TAG, "Setting up marker database...")
             val dbFile = File(context.filesDir, MARKER_DB)

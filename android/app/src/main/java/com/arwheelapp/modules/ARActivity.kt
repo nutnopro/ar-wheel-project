@@ -6,31 +6,22 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.util.Log
-// import com.google.ar.core.Frame
-// import com.google.ar.core.Session
+import com.google.ar.core.Session
 import com.google.ar.core.Config
 import com.google.ar.core.AugmentedImage
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.arcore
-import com.arwheelapp.utils.FrameConverter
-import com.arwheelapp.utils.PositionHandler
-import com.arwheelapp.utils.OnnxRuntimeHandler
 
 class ARActivity : ComponentActivity() {
 
     private lateinit var arSceneView: ARSceneView
-    private lateinit var frameConverter: FrameConverter
-    private lateinit var positionHandler: PositionHandler
-    private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
-    private lateinit var onnxOverlay: OnnxOverlayView
     private lateinit var markerBased: ARMarkerBased
     private lateinit var markerless: ARMarkerless
 
-    private var arSession: Session? = null
+    private var session: Session? = null
     private var isARSessionStarted = false
 
 	enum class ARMode {
@@ -52,12 +43,19 @@ class ARActivity : ComponentActivity() {
 
     private fun initViews() {
         val rootLayout = FrameLayout(this)
+		arSceneView = ARSceneView(this)
 
-        arSceneView.apply {
-			arCore.cameraPermissionLauncher = registerForActivityResult(
-				androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-			)
-        }
+        // arSceneView.apply {
+		// 	arCore.cameraPermissionLauncher = registerForActivityResult(
+		// 		androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+		// 	)
+        // }
+
+		arSceneView.arCore.cameraPermissionLauncher = registerForActivityResult(
+			ActivityResultContracts.RequestPermission()
+		) { granted ->
+			if (!granted) Toast.makeText(this,"Camera permission required",Toast.LENGTH_SHORT).show()
+		}
 
         rootLayout.addView(
             arSceneView,
@@ -67,6 +65,12 @@ class ARActivity : ComponentActivity() {
             )
         )
         Log.d(TAG, "ARSceneView added to layout")
+
+		onnxOverlay = OnnxOverlayView(this)
+		rootLayout.addView(
+			onnxOverlay,
+			FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
+		)
 
         val backButton = Button(this).apply {
             text = "Back to Home"
@@ -139,8 +143,8 @@ class ARActivity : ComponentActivity() {
     }
 
 	private fun setupAR() {
-		arSession = Session(this)
-		val config = Config(arSession).apply {
+		session = Session(this)
+		val config = Config(session).apply {
 			updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
 			planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
 			lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -153,49 +157,29 @@ class ARActivity : ComponentActivity() {
 		}
 
 		try {
-			session.configure(config)
+			session?.configure(config)
 			Log.d(TAG, "AR Session configured successfully")
 		} catch (e: Exception) {
 			Log.e(TAG, "Failed to configure AR session: ", e)
 			throw e
 		}
 
-		arSceneView.session(arSession)
+		arSceneView.session(session)
 		arSceneView.apply {
 			lightEstimator.isEnabled = true
 		}
 	}
 
-	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     private fun startAR() {
 		arSceneView.onFrame = { frame ->
 			Log.d(TAG, "Frame: timestamp=${frame.timestamp}, cameraTrackingState=${frame.camera.trackingState}")
-			
+
 			when (currentMode) {
 				ARMode.MARKERLESS -> {
-					tensor = frameConverter.convertFrameToTensor(frame)
-					detection = onnxRuntimeHandler.runOnnxInference(tensor)
-					pos3d = positionHandler.get3DPos(frame, detection)
-					onnxOverlay.onDraw()
-					markerless.render(pos3d)
+					markerless.render(arSceneView, frame)
 				}
 				ARMode.MARKER_BASED -> {
-					if (frame.camera.trackingState != TrackingState.TRACKING) return@onFrame
-
-					val updatedImages: Collection<AugmentedImage> = frame.getUpdatedTrackables(AugmentedImage::class.java)
-					Log.d("ARSceneViewActivity", "Updated markers count=${updatedImages.size}")
-
-					for (img in updatedImages) {
-						Log.d("ARSceneViewActivity", "Marker: ${img.name}, state=${img.trackingState}")
-						if (img.trackingState == TrackingState.TRACKING) {
-							if (!markerBased.isModelLoaded) {
-								markerBased.loadModel(arSceneView)
-							}
-							markerBased.updateNodePosition(img)
-						} else {
-							markerBased.updateNodePosition(img)
-						}
-					}
+					markerBased.render(session, arSceneView, frame)
 				}
 			}
 		}
@@ -228,7 +212,7 @@ class ARActivity : ComponentActivity() {
 		}
 
 		try {
-			arSceneView.session.resume()
+			arSceneView?.session?.resume()
 		} catch (e: Exception) {
 			Log.e(TAG, "Failed to resume ArSceneView: ", e)
 		}
@@ -237,17 +221,17 @@ class ARActivity : ComponentActivity() {
     override fun onPause() {
 		super.onPause()
 		try {
-			arSceneView.session.pause()
+			arSceneView?.session?.pause()
 		} catch (e: Exception) {
 			Log.e(TAG, "Failed to pause ArSceneView: ", e)
 		}
     }
 
     override fun onDestroy() {
-		arSession?.close()
-		arSession = null
+		session?.close()
+		session = null
 		try {
-			arSceneView.session.destroy()
+			arSceneView?.destroy()
 		} catch (e: Exception) {
 			Log.e(TAG, "Failed to destroy ArSceneView: ", e)
 		}
