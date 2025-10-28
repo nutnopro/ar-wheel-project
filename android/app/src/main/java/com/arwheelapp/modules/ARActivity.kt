@@ -18,15 +18,14 @@ import io.github.sceneview.ar.arcore
 class ARActivity : ComponentActivity() {
 
     private lateinit var arSceneView: ARSceneView
-    private lateinit var markerBased: ARMarkerBased
-    private lateinit var markerless: ARMarkerless
+    private lateinit var arRendering: ARRendering
 
     private var session: Session? = null
     private var isARSessionStarted = false
 
 	enum class ARMode {
-		MARKERLESS,
-		MARKER_BASED
+		MARKER_BASED,
+		MARKERLESS
 	}
 	private var currentMode: ARMode = ARMode.MARKERLESS
 
@@ -173,15 +172,7 @@ class ARActivity : ComponentActivity() {
     private fun startAR() {
 		arSceneView.onFrame = { frame ->
 			Log.d(TAG, "Frame: timestamp=${frame.timestamp}, cameraTrackingState=${frame.camera.trackingState}")
-
-			when (currentMode) {
-				ARMode.MARKERLESS -> {
-					markerless.render(arSceneView, frame)
-				}
-				ARMode.MARKER_BASED -> {
-					markerBased.render(session, arSceneView, frame)
-				}
-			}
+			arRendering.render(session, arSceneView, frame, currentMode)
 		}
     }
 

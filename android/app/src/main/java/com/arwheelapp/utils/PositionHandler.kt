@@ -33,7 +33,7 @@ class PositionHandler {
     )
 
     // Get 3D positions with hitTest
-    fun get3DPosition(frame: Frame, detections: List<Detection>, confidenceThreshold: Float = 0.4f): List<Pose3D> {
+    fun getWorldPosition(frame: Frame, detections: List<Detection>, confidenceThreshold: Float = 0.4f): List<Pose3D> {
         val poses = mutableListOf<Pose3D>()
         Log.d(TAG, "Start computing 3D poses from ${detections.size} detections")
 
