@@ -86,7 +86,7 @@ class PositionHandler {
         return poses
     }
 
-    private fun com.google.ar.core.Pose.toVector3(): Vector3 {
+    fun com.google.ar.core.Pose.toVector3(): Vector3 {
         return Vector3(tx(), ty(), tz())
     }
 }
