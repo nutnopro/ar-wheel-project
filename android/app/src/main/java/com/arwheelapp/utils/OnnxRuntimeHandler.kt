@@ -10,13 +10,14 @@ import java.io.FileOutputStream
 import com.google.ar.core.Frame
 import java.nio.FloatBuffer
 import android.util.Log
+import kotlinx.coroutines.*
 
 class OnnxRuntimeHandler(private val context: Context) {
-	private const val TAG = "OnnxRuntimeHandler"
-
     companion object {
-        const val MODEL = "ai/yolov11n.onnx"
-        const val INPUT_SIZE = 320
+        private const val TAG = "OnnxRuntimeHandler"
+        private const val MODEL_PATH = "ai/yolov11n.onnx"
+        private const val INPUT_SIZE = 320
+        private const val CONF_THRESHOLD = 0.5f
     }
 
     data class Detection(
@@ -29,66 +30,67 @@ class OnnxRuntimeHandler(private val context: Context) {
 
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession by lazy { createSession() }
+    private val inferenceScope = CoroutineScope(Dispatchers.Default)
 
-    // Load .onnx from assets
+    // *Load model .onnx from assets
     private fun createSession(): OrtSession {
-        val modelFile = File(context.filesDir, MODEL)
+        val modelFile = File(context.filesDir, "yolov11n.onnx")
         if (!modelFile.exists()) {
-            context.assets.open(MODEL).use { input ->
+            context.assets.open(MODEL_PATH).use { input ->
                 FileOutputStream(modelFile).use { output ->
                     input.copyTo(output)
                 }
             }
         }
-        return env.createSession(modelFile.absolutePath, OrtSession.SessionOptions())
+
+        val options = OrtSession.SessionOptions().apply {
+            setIntraOpNumThreads(2)
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        }
+
+        Log.d(TAG, "YOLOv11n model loaded: ${modelFile.absolutePath}")
+        return env.createSession(modelFile.absolutePath, options)
     }
 
-    // Run inference with ONNX Runtime
-    fun runOnnxInference(tensor: FloatArray): List<Detection> {
-        Log.d(TAG, "Preparing input tensor for ONNX, shape = [1, 3, $INPUT_SIZE, $INPUT_SIZE]")
-        
-        val shape = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
-        val floatBuffer = java.nio.FloatBuffer.wrap(tensor)
-        val inputTensor = OnnxTensor.createTensor(env, floatBuffer, shape)
-        Log.d(TAG, "Input tensor created successfully")
-
-        val result = session.run(mapOf("images" to inputTensor))
-
-        val output = result[0].value
-        Log.d(TAG, "Raw output type: ${output!!::class}, output = $output")
-
-        if (output is Array<*>) {
-            // output = [[[...]]]  shape (1,5,2100)
-            val arr = output as Array<Array<FloatArray>>
-            val detections = mutableListOf<Detection>()
-            val boxes = arr[0]   // shape (5,2100)
-            Log.d(TAG, "Processing output array, boxes shape: [${boxes.size}, ${boxes[0].size}]")
-
-            for (i in 0 until boxes[0].size) {
-                val x = boxes[0][i]
-                val y = boxes[1][i]
-                val w = boxes[2][i]
-                val h = boxes[3][i]
-                val conf = boxes[4][i]
-
-                if (conf > 0.4f) { // threshold
-                    detections.add(Detection(x, y, w, h, conf))
-                    Log.d(TAG, "Detection added: x=$x, y=$y, w=$w, h=$h, conf=$conf")
-                } else {
-                    Log.d(TAG, "Detection skipped (conf too low): x=$x, y=$y, w=$w, h=$h, conf=$conf")
+    // *Run inference with ONNX Runtime with Coroutine
+    fun runOnnxInferenceAsync(tensor: FloatArray, callback: (List<Detection>) -> Unit) {
+        inferenceScope.launch {
+            val shape = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
+            val inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(tensor), shape)
+            val detections = try {
+                session.run(mapOf("images" to inputTensor)).use { result ->
+                    val output = result[0].value
+                    if (output is Array<*>) parseOutput(output) else emptyList()
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Inference failed", e)
+                emptyList()
+            } finally {
+                inputTensor.close()
             }
-
-            Log.d(TAG, "Total valid detections: ${detections.size}")
-            return detections
-
-        } else {
-            Log.e(TAG, "Unexpected output type: ${output!!::class}")
-            throw IllegalArgumentException("Unexpected output type: ${output!!::class}")
+            withContext(Dispatchers.Main) { callback(detections) }
         }
     }
 
-    // close resource when Activity/Service is destroyed
+    // *Parse output array to Detection list
+    private fun parseOutput(output: Array<*>): List<Detection> {
+        val detections = mutableListOf<Detection>()
+        if (output.isEmpty() || output[0] !is Array<*>) return detections
+
+        val arr = output as Array<Array<FloatArray>>
+        val boxes = arr[0]
+        for (i in boxes[0].indices) {
+            val conf = boxes[4][i]
+            if (conf > CONF_THRESHOLD) {
+                detections.add(Detection(boxes[0][i], boxes[1][i], boxes[2][i], boxes[3][i], conf))
+            }
+        }
+
+        Log.d(TAG, "Detections: ${detections.size}")
+        return detections
+    }
+
+    // *close session and env
     fun close() {
         try {
             session.close()

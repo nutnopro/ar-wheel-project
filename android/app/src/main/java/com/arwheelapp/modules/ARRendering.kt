@@ -35,10 +35,10 @@ class ARRendering(private val context: Context) {
     // private lateinit var onnxOverlay: OnnxOverlayView
 
     companion object {
-		val MARKER_DATABASES = mapOf(
+		private val MARKER_DATABASES = mapOf(
 			"marker" to "markers/front_marker.imgdb",
 		)
-		val MODEL_PATHS = mapOf(
+		private val MODEL_PATHS = mapOf(
 			"wheel1" to "models/wheel1.glb"
 		)
     }
@@ -47,187 +47,94 @@ class ARRendering(private val context: Context) {
         val position: Float3,
         val rotation: Float3,
     )
-
+	
 	private var wheelNodes: MutableList<ModelNode> = mutableListOf()
+
+	private var markerBasedNode: AugmentedImageNode? = null
+	private var markerlessNode: HitResultNode? = null
+
+	private var lastInferenceTime = 0L
+	private var frameIntervalNs = 33_000_000L
+	private var lastYoloDuration = 0L
 
 	fun render(session: Session, arSceneView: ARSceneView, frame: Frame, currentMode: ARActivity.ARMode) {
 		when (currentMode) {
-			// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			// ! แก้การเคลื่อนที่ของไปตาม parent node --- ใช้ AugmentedImageNode หาตำแหน่งแล้วส่งให้ wheelNode แต่ละตัว
 			ARActivity.ARMode.MARKER_BASED -> {
-				wheelNodes?.forEach { wheelNode ->
-					wheelNode.isVisible = false
-				}
+				wheelNodes.forEach { it.isVisible = false }
 
-				markerBasedNode = AugmentedImageNode()
 				if (frame.camera.trackingState != TrackingState.TRACKING) return
 				setupMarkerDatabase(session)
 
 				val updatedImages: Collection<AugmentedImage> = frame.getUpdatedTrackables(AugmentedImage::class.java)
 				Log.d(TAG_MARKER_BASED, "Updated markers count=${updatedImages.size}")
 				for (img in updatedImages) {
-					markerBasedNode.apply {
-						augmentedImage = img
-						createAnchor(img.getcenterPose())
-					}
+					markerBasedNode = markerBasedNode ?: AugmentedImageNode()
+					markerBasedNode!!.augmentedImage = img
+					markerBasedNode!!.createAnchor()
 					Log.d(TAG_MARKER_BASED, "Marker: ${img.name}, state=${img.trackingState}")
 					if (img.trackingState == TrackingState.TRACKING) {
-						when (wheelNodes.size) {
-							0 -> {
-								val wheelNode = createNewWheelNode(MODEL_PATHS["wheel1"]!!, markerBasedNode).apply {
-									isVisible = true
-								}
-								wheelNodes.addChildNode(wheelNode)
-							}
-							1 -> {
-								val dist = distanceModelToMarker(wheelNodes[0].position, Float3(markerBasedNode.worldPosition))
-								if (dist < 0.5f) {
-									wheelNodes[0].position = Float3(markerBasedNode.worldPosition).apply {
-										isVisible = true
-									}
-								} else {
-									val wheelNode = createNewWheelNode(MODEL_PATHS["wheel1"]!!, markerBasedNode).apply {
-										isVisible = true
-									}
-									wheelNodes.addChildNode(wheelNode)
-								}
-							}
-							2 -> {
-								val dists = mutableListOf<Pair<Float, Int>>()
-								wheelNodes.forEachIndexed { index, wheelNode ->
-									val dist = distanceModelToMarker(wheelNode.position, Float3(markerBasedNode.worldPosition))
-									dists.add(dist to index)
-								}
-								val nearest = dists.minByOrNull { it.first }
-								if (nearest != null && nearest.first < 0.5f) {
-									wheelNodes[nearest.second].position = Float3(markerBasedNode.worldPosition).apply {
-										isVisible = true
-									}
-								} else {
-									val wheelNode = createNewWheelNode(MODEL_PATHS["wheel1"]!!, markerBasedNode).apply {
-										isVisible = true
-									}
-									wheelNodes.addChildNode(wheelNode)
-								}
-							}
-							3 -> {
-								val dists = mutableListOf<Pair<Float, Int>>()
-								wheelNodes.forEachIndexed { index, wheelNode ->
-									val dist = distanceModelToMarker(wheelNode.position, Float3(markerBasedNode.worldPosition))
-									dists.add(dist to index)
-								}
-								val nearest = dists.minByOrNull { it.first }
-								val furthest = dists.maxByOrNull { it.first }
-								if (nearest != null && nearest.first < 0.5f) {
-									wheelNodes[nearest.second].position = Float3(markerBasedNode.worldPosition).apply {
-										isVisible = true
-									}
-								} else if (furthest != null) {
-									wheelNodes[furthest.second].position = Float3(markerBasedNode.worldPosition).apply {
-										isVisible = true
-									}
-								}
-								wheelNode.isVisible = true
-							}
-						}
+						updateOrAddWheelNode(MODEL_PATHS["wheel1"]!!, markerBasedNode)
 					}
 				}
-				arSceneView.addChildNodes(wheelNodes)
+				wheelNodes.takeIf { it.parent == null }?.let { arSceneView.addChildNodes(it) }
 			}
 
-			// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			// ! แก้การเคลื่อนที่ของไปตาม parent node --- ใช้ AugmentedImageNode หาตำแหน่งแล้วส่งให้ wheelNode แต่ละตัว 
 			ARActivity.ARMode.MARKERLESS -> {
-				wheelNodes?.forEach { wheelNode ->
-					wheelNode.isVisible = false
-				}
+				val currentTime = frame.timestamp
+				if (currentTime - lastInferenceTime < frameIntervalNs) return
+				lastInferenceTime = currentTime
 
+				wheelNodes.forEach { it.isVisible = false }
+
+				val start = System.nanoTime()
 				tensor = frameConverter.convertFrameToTensor(frame)
-				bbox = onnxRuntimeHandler.runOnnxInference(tensor)
+				onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
+					val duration = System.nanoTime() - start
+					lastYoloDuration = duration
 
-				val centerX = bbox.x + bbox.w / 2f
-                val centerY = bbox.y + bbox.h / 2f
-                // val upX = centerX
-                val upY = centerY - bbox.h * 0.1f
-                val leftX = centerX - bbox.w * 0.1f
-                // val leftY = centerY
+					frameIntervalNs = when {
+						duration < 25_000_000L -> 22_000_000L
+						duration > 50_000_000L -> 50_000_000L
+						else -> 33_000_000L
+					}
 
-				markerlessNode = HitResultNode().apply {
-					xPx = centerX
-					ypx = centerY
+					detections.forEach { bbox ->
+						val centerX = bbox.x + bbox.w / 2f
+						val centerY = bbox.y + bbox.h / 2f
+						// val upX = centerX
+						val upY = centerY - bbox.h * 0.1f
+						val leftX = centerX - bbox.w * 0.1f
+						// val leftY = centerY
+
+						markerlessNode = markerlessNode ?: HitResultNode()
+						markerlessNode!!.xPx = centerX
+						markerlessNode!!.ypx = centerY
+
+						val upPosHits = frame.hitTest(centerX, upY)
+						val leftPosHits = frame.hitTest(leftX, centerY)
+						if (upPosHits.isEmpty() || leftPosHits.isEmpty()) return@forEach
+						if (upPosHits.isNotEmpty() && leftPosHits.isNotEmpty()) {
+							val upPos: Float3 = upPosHits.first().hitPose.translation
+							val leftPos: Float3 = leftPosHits.first().hitPose.translation
+						}
+
+
+						val centerPos: Vector3 = markerlessNode.worldPosition.toVector3()
+						val upPos: Vector3 = upPosHits.toVector3()
+						val leftPos: Vector3 = leftPosHits.toVector3()
+
+						markerlessNode.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+
+						updateOrAddWheelNode(MODEL_PATHS["wheel1"]!!, markerlessNode)
+					}
+					Log.d("AdaptiveFPS", "YOLO took ${duration / 1_000_000}ms → interval=${frameIntervalNs / 1_000_000}ms")
 				}
-				val upPosHits: Float3 = frame.hitTest(centerX, upY)
-				val leftPosHits: Float3 = frame.hitTest(leftX, centerY)
-
-				val centerPos: Vector3 = markerlessNode.worldPosition.toVector3()
-				val upPos: Vector3 = upPosHits.toVector3()
-				val leftPos: Vector3 = leftPosHits.toVector3()
-
-				markerlessNode.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
-
-				when (wheelNodes.size) {
-					0 -> {
-						val wheelNode = createNewWheelNode(MODEL_PATHS["wheel1"]!!, markerlessNode).apply {
-							isVisible = true
-						}
-						wheelNodes.addChildNode(wheelNode)
-					}
-					1 -> {
-						val dist = distanceModelToMarker(wheelNodes[0].position, Float3(markerBasedNode.worldPosition))
-						if (dist < 0.5f) {
-							wheelNodes[0].position = Float3(markerBasedNode.worldPosition).apply {
-								isVisible = true
-							}
-						} else {
-							val wheelNode = createNewWheelNode(MODEL_PATHS["wheel1"]!!, markerlessNode).apply {
-								isVisible = true
-							}
-							wheelNodes.addChildNode(wheelNode)
-						}
-					}
-					2 -> {
-						val dists = mutableListOf<Pair<Float, Int>>()
-						wheelNodes.forEachIndexed { index, wheelNode ->
-							val dist = distanceModelToMarker(wheelNode.position, Float3(markerBasedNode.worldPosition))
-							dists.add(dist to index)
-						}
-						val nearest = dists.minByOrNull { it.first }
-						if (nearest != null && nearest.first < 0.5f) {
-							wheelNodes[nearest.second].position = Float3(markerBasedNode.worldPosition).apply {
-								isVisible = true
-							}
-						} else {
-							val wheelNode = createNewWheelNode(MODEL_PATHS["wheel1"]!!, markerBasedNode).apply {
-								isVisible = true
-							}
-							wheelNodes.addChildNode(wheelNode)
-						}
-					}
-					3 -> {
-						val dists = mutableListOf<Pair<Float, Int>>()
-						wheelNodes.forEachIndexed { index, wheelNode ->
-							val dist = distanceModelToMarker(wheelNode.position, Float3(markerBasedNode.worldPosition))
-							dists.add(dist to index)
-						}
-						val nearest = dists.minByOrNull { it.first }
-						val furthest = dists.maxByOrNull { it.first }
-						if (nearest != null && nearest.first < 0.5f) {
-							wheelNodes[nearest.second].position = Float3(markerBasedNode.worldPosition).apply {
-								isVisible = true
-							}
-						} else if (furthest != null) {
-							wheelNodes[furthest.second].position = Float3(markerBasedNode.worldPosition).apply {
-								isVisible = true
-							}
-						}
-					}
-				}
-				arSceneView.addChildNodes(wheelNodes)
+				wheelNodes.takeIf { it.parent == null }?.let { arSceneView.addChildNodes(it) }
 			}
 		}
 	}
 
-	//? Setup marker database
+	// *Setup marker database
 	private fun setupMarkerDatabase(session: Session) {
 		try {
 			Log.d(TAG_MARKER_BASED, "Setting up marker database...")
@@ -253,22 +160,60 @@ class ARRendering(private val context: Context) {
 		}
 	}
 
-	//? Create new WheelNode
+	// *Create new WheelNode
 	private fun createNewWheelNode(modelPath: String, node: Node): ModelNode {
 		return modelRendering.createModelNode(modelPath).apply {
 			position = Float3(node.worldPosition)
 		}
 	}
 
-	//? Distance between two positions in 3D space
-	private fun distanceBetween(pos1: Float3, pos2: Float3): Float {
+	// *Distance between two positions in 3D space
+	private fun distanceBetweenNode(pos1: Float3, pos2: Float3): Float {
 		val dx = pos1.x - pos2.x
 		val dy = pos1.y - pos2.y
 		val dz = pos1.z - pos2.z
 		return sqrt(dx*dx + dy*dy + dz*dz)
 	}
 
-	//? Get rotation with 3 vector points
+	// *Update or add wheel node based on proximity
+	private fun updateOrAddWheelNode(modelPath: String, baseNode: Node) {
+		val newPos = Float3(baseNode.worldPosition)
+
+		val nearest = wheelNodes
+			.mapIndexed { i, node -> distanceBetweenNode(node.position, newPos) to i }
+			.minByOrNull { it.first }
+
+		when {
+			wheelNodes.isEmpty() -> {
+				wheelNodes.addChildNode(createNewWheelNode(modelPath, baseNode).apply { isVisible = true })
+			}
+
+			nearest != null && nearest.first < 0.5f -> {
+				wheelNodes[nearest.second].apply {
+					position = newPos
+					isVisible = true
+				}
+			}
+
+			wheelNodes.size < 3 -> {
+				wheelNodes.addChildNode(createNewWheelNode(modelPath, baseNode).apply { isVisible = true })
+			}
+
+			else -> {
+				val furthest = wheelNodes
+					.mapIndexed { i, node -> distanceBetweenNode(node.position, newPos) to i }
+					.maxByOrNull { it.first }
+				furthest?.let {
+					wheelNodes[it.second].apply {
+						position = newPos
+						isVisible = true
+					}
+				}
+			}
+		}
+	}
+
+	// *Get rotation with 3 vector points
 	private fun getRotationFromThreeVector(center: Vector3, up: Vector3, left: Vector3): Quaternion {
 		val upVec = normalized(subtract(up, center))
 		val leftVec = normalized(subtract(left, center))
@@ -295,7 +240,7 @@ class ARRendering(private val context: Context) {
 		)
 	}
 
-	//? Clear wheelNodes
+	// *Clear wheelNodes
 	fun clearWheelNodes() {
         wheelNodes?.clearChildNodes()
         wheelNodes?.destroy()
