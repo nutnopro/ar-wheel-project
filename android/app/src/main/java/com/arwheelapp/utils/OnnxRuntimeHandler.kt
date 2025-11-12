@@ -4,13 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.media.Image
-import ai.onnxruntime.*
+import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
-import com.google.ar.core.Frame
 import java.nio.FloatBuffer
-import android.util.Log
+import com.google.ar.core.Frame
 import kotlinx.coroutines.*
+import ai.onnxruntime.*
 
 class OnnxRuntimeHandler(private val context: Context) {
     companion object {

@@ -1,27 +1,24 @@
 package com.arwheelapp.modules
 
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.Toast
-import androidx.activity.ComponentActivity
 import android.content.pm.PackageManager
-import android.util.Log
+import androidx.activity.ComponentActivity
 import com.google.ar.core.Session
 import com.google.ar.core.Config
-import com.google.ar.core.AugmentedImage
 import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.arcore
 
 class ARActivity : ComponentActivity() {
+	private const val TAG = "ARActivity"
 
     private lateinit var arSceneView: ARSceneView
     private lateinit var arRendering: ARRendering
-
-    private var session: Session? = null
-    private var isARSessionStarted = false
+	private lateinit var onnxOverlay: OnnxOverlayView
 
 	enum class ARMode {
 		MARKER_BASED,
@@ -29,7 +26,8 @@ class ARActivity : ComponentActivity() {
 	}
 	private var currentMode: ARMode = ARMode.MARKERLESS
 
-	private const val TAG = "ARActivity"
+    private var session: Session? = null
+    private var isARSessionStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,12 +41,6 @@ class ARActivity : ComponentActivity() {
     private fun initViews() {
         val rootLayout = FrameLayout(this)
 		arSceneView = ARSceneView(this)
-
-        // arSceneView.apply {
-		// 	arCore.cameraPermissionLauncher = registerForActivityResult(
-		// 		androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-		// 	)
-        // }
 
 		arSceneView.arCore.cameraPermissionLauncher = registerForActivityResult(
 			ActivityResultContracts.RequestPermission()
@@ -178,9 +170,13 @@ class ARActivity : ComponentActivity() {
 
 	private fun restartAR() {
 		try {
-			arSceneView.session.pause()
+			if (arSceneView.session != null) {
+				arSceneView.onFrame = null
+				arSceneView.session.pause()
+			}
 			startAR()
-			arSceneView.session.resume()
+			arSceneView.session?.resume()
+			Log.d(TAG, "AR session restarted for mode: $currentMode")
 		} catch (e: Exception) {
 			Log.e(TAG, "Failed to restart AR session", e)
 		}
@@ -193,6 +189,13 @@ class ARActivity : ComponentActivity() {
 		inactive.background = GradientDrawable().apply {
 			cornerRadius = 30f; setColor(Color.parseColor("#FF7B7B"))
 		}
+	}
+
+	override fun onSessionCreated(session: Session) {
+		super.onSessionCreated(session)
+		arRendering = ARRendering(this)
+		arRendering.setupMarkerDatabase(session)
+
 	}
 
     override fun onResume() {

@@ -2,11 +2,11 @@ package com.arwheelapp.modules
 
 import android.content.Context
 import android.view.View
-import android.graphics.Canvas
+import android.util.Log
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Canvas
 import io.github.sceneview.ar.ARSceneView
-import android.util.Log
 
 class OnnxOverlayView(context: Context) : View(context) {
 	private const val TAG = "OnnxOverlayView"
