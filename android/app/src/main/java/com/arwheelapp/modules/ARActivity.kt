@@ -14,11 +14,11 @@ import com.google.ar.core.TrackingState
 import io.github.sceneview.ar.ARSceneView
 
 class ARActivity : ComponentActivity() {
-	private const val TAG = "ARActivity"
-
-    private lateinit var arSceneView: ARSceneView
+	private lateinit var arSceneView: ARSceneView
     private lateinit var arRendering: ARRendering
 	private lateinit var onnxOverlay: OnnxOverlayView
+
+	private const val TAG = "ARActivity"
 
 	enum class ARMode {
 		MARKER_BASED,

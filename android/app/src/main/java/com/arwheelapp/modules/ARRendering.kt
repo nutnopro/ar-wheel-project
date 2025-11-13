@@ -8,7 +8,6 @@ import java.io.File
 import kotlin.math.*
 import dev.romainguy.kotlin.math.Float3
 import com.arwheelapp.utils.FrameConverter
-import com.arwheelapp.utils.PositionHandler
 import com.arwheelapp.utils.OnnxRuntimeHandler
 import com.google.ar.core.*
 import com.google.ar.core.Session
@@ -25,14 +24,13 @@ import io.github.sceneview.ar.node.HitResultNode
 import io.github.sceneview.collision.CollisionSystem.hitTest
 
 class ARRendering(private val context: Context) {
+	private lateinit var modelRendering: ModelRendering
+    private lateinit var frameConverter: FrameConverter
+    private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
+    private lateinit var onnxOverlay: OnnxOverlayView
+
 	private const val TAG_MARKER_BASED = "ARRendering-MarkerBased"
 	private const val TAG_MARKERLESS = "ARRendering-Markerless"
-
-    private lateinit var modelRendering: ModelRendering
-    private lateinit var frameConverter: FrameConverter
-    private lateinit var positionHandler: PositionHandler
-    private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
-    // private lateinit var onnxOverlay: OnnxOverlayView
 
     companion object {
 		private val MARKER_DATABASES = mapOf(
