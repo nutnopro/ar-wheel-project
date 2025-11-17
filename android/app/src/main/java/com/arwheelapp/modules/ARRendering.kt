@@ -24,7 +24,7 @@ import io.github.sceneview.ar.node.HitResultNode
 import io.github.sceneview.collision.CollisionSystem.hitTest
 
 class ARRendering(private val context: Context) {
-	private lateinit var modelRendering: ModelRendering
+	private lateinit var modelLoader: ModelLoader
     private lateinit var frameConverter: FrameConverter
     private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
     private lateinit var onnxOverlay: OnnxOverlayView
@@ -96,22 +96,21 @@ class ARRendering(private val context: Context) {
 				val start = System.nanoTime()
 				val tensor = frameConverter.convertFrameToTensor(frame)
 				onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
-					val duration = System.nanoTime() - start
-					lastYoloDuration = duration
+					val inferenceDuration = System.nanoTime() - start
 
-					frameIntervalNs = when {
-						duration < 25_000_000L -> 22_000_000L
-						duration > 50_000_000L -> 50_000_000L
-						else -> 33_000_000L
+					val fullFrameStart = System.nanoTime()
+
+					// onnxOverlay.updateDetections(detections)
+					if (onnxOverlay.visibility == View.VISIBLE) {
+						onnxOverlay.updateDetections(detections)
 					}
 
+					updatedNodes.clear()
+
 					detections.forEach { bbox ->
-						val centerX = bbox.x + bbox.w / 2f
-						val centerY = bbox.y + bbox.h / 2f
-						// val upX = centerX
-						val upY = centerY - bbox.h * 0.1f
-						val leftX = centerX - bbox.w * 0.1f
-						// val leftY = centerY
+
+						val centerX = bbox.x * arSceneView.width
+						val centerY = bbox.y * arSceneView.height
 
 						markerlessNode = markerlessNode ?: HitResultNode().apply{
 							xPx = centerX
@@ -121,8 +120,8 @@ class ARRendering(private val context: Context) {
 						markerlessNode!!.yPx = centerY
 						if (markerlessNode!!.parent == null) arSceneView.addChildNode(markerlessNode!!)
 
-						val upPosHits = frame.hitTest(centerX, upY)
-						val leftPosHits = frame.hitTest(leftX, centerY)
+						val upPosHits = frame.hitTest(centerX, centerY*0.9f)
+						val leftPosHits = frame.hitTest(centerX*0.9f, centerY)
 						if (upPosHits.isNullOrEmpty() || leftPosHits.isNullOrEmpty()) return@forEach
 
 						val centerPos: Vector3 = markerlessNode!!.worldPosition.toVector3()
@@ -130,9 +129,18 @@ class ARRendering(private val context: Context) {
 						val leftPos: Vector3 = leftPosHits.first().hitPose.translation.toVector3()
 
 						markerlessNode!!.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
-						updateOrAddWheelNode(MODEL_PATHS["wheel1"]!!, markerlessNode).let { updatedNodes.add(it) }
+						updateOrAddWheelNode(MODEL_PATHS["wheel1"]!!, markerlessNode)?.let { updatedNodes.add(it) }
 					}
-					Log.d("AR_FPS", "YOLO took ${duration / 1_000_000}ms → interval=${frameIntervalNs / 1_000_000}ms")
+					
+					val fullFrameDuration = System.nanoTime() - fullFrameStart
+
+					frameIntervalNs = when {
+						fullFrameDuration < 25_000_000L -> 22_000_000L
+						fullFrameDuration > 50_000_000L -> 50_000_000L
+						else -> 33_000_000L
+					}
+
+					Log.d("AR_FPS", "YOLO took ${inferenceDuration / 1_000_000}ms → interval=${fullFrameDuration / 1_000_000}ms")
 					wheelNodes.childNodes.forEach { it.isVisible = it in updatedNodes }
 				}
 			}
@@ -172,7 +180,7 @@ class ARRendering(private val context: Context) {
 
 	// *Create new WheelNode
 	private fun createNewWheelNode(modelPath: String, node: Node): ModelNode {
-		return modelRendering.createModelNode(modelPath).apply {
+		return modelLoader.createModelNode(modelPath).apply {
 			position = Float3(node.worldPosition)
 		}
 	}

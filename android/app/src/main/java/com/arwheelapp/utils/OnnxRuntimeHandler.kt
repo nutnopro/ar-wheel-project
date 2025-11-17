@@ -17,7 +17,7 @@ class OnnxRuntimeHandler(private val context: Context) {
         private const val TAG = "OnnxRuntimeHandler"
         private const val MODEL_PATH = "ai/yolov11n.onnx"
         private const val INPUT_SIZE = 320
-        private const val CONF_THRESHOLD = 0.5f
+        private const val CONFIDENCE_THRESHOLD = 0.5f
     }
 
     data class Detection(
@@ -81,7 +81,7 @@ class OnnxRuntimeHandler(private val context: Context) {
         val boxes = arr[0]
         for (i in boxes[0].indices) {
             val conf = boxes[4][i]
-            if (conf > CONF_THRESHOLD) {
+            if (conf > CONFIDENCE_THRESHOLD) {
                 detections.add(Detection(boxes[0][i], boxes[1][i], boxes[2][i], boxes[3][i], conf))
             }
         }

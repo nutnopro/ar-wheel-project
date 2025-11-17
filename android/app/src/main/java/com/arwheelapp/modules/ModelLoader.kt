@@ -6,8 +6,8 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.loaders.ModelLoader
 
-class ModelRendering {
-	private const val TAG = "ModelRendering"
+class ModelLoader {
+	private const val TAG = "ModelLoader"
 
 	fun createModelNode(modelPath: String): ModelNode {
 		return ModelNode(
@@ -18,3 +18,4 @@ class ModelRendering {
 		Log.d(TAG, "Created ModelNode from $modelPath")
 	}
 }
+	

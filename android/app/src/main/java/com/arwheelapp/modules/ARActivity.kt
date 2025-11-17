@@ -63,6 +63,26 @@ class ARActivity : ComponentActivity() {
 			FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT)
 		)
 
+		val overlayToggle = Button(this).apply {
+			text = "Toggle Overlay"
+			setOnClickListener {
+				onnxOverlay.visibility = if (onnxOverlay.visibility == View.VISIBLE) {
+					View.GONE
+				} else {
+					View.VISIBLE
+				}
+			}
+		}
+		val overlayParams = FrameLayout.LayoutParams(
+			FrameLayout.LayoutParams.WRAP_CONTENT,
+			FrameLayout.LayoutParams.WRAP_CONTENT
+		).apply {
+			gravity = Gravity.TOP or Gravity.END
+			topMargin = 60
+			marginEnd = 30
+		}
+		rootLayout.addView(overlayToggle, overlayParams)
+
         val backButton = Button(this).apply {
             text = "Back to Home"
             setOnClickListener { finish() }
