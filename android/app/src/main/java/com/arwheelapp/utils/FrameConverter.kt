@@ -1,36 +1,28 @@
 package com.arwheelapp.utils
 
-import android.util.Log
 import android.media.Image
-import java.io.File
-import java.io.FileOutputStream
-import java.nio.FloatBuffer
-import java.nio.ByteBuffer
-import kotlin.math.min
+import android.util.Log
 import com.google.ar.core.Frame
+import kotlin.math.min
 
 class FrameConverter {
-    companion object {
-        private const val TAG = "FrameConverter"
-        private const val INPUT_SIZE = 320  // *YOLO input size
-    }
+    private val TAG = "FrameConverter: "
+    private val INPUT_SIZE = 320  // *YOLO input size
 
     // *ARCore Frame -> FloatArray Tensor
     fun convertFrameToTensor(frame: Frame): FloatArray {
         return try {
-            // *Get camera image from frame - image is YUV_420_888
             val image = frame.acquireCameraImage()
+            // Log.d(TAG, "convertFrameToTensor: Acquired image size: ${image.width}x${image.height}")
 
-            // *Convert and letterbox resize to tensor
             val tensor = imageToLetterboxedTensor(image)
 
             image.close()
-            
-            // *Return
+            // Log.d(TAG, "convertFrameToTensor: Conversion success. Tensor size: ${tensor.size}")
+
             tensor
         } catch (e: Exception) {
-            Log.e(TAG, "Error processing image: ", e)
-            // *Return default tensor if error
+            Log.e(TAG, "convertFrameToTensor: Error processing image", e)
             FloatArray(3 * INPUT_SIZE * INPUT_SIZE) { 0f }
         }
     }
@@ -46,48 +38,55 @@ class FrameConverter {
         val uvRowStride = image.planes[1].rowStride
         val uvPixelStride = image.planes[1].pixelStride
 
+        val rotatedWidth = height 
+        val rotatedHeight = width
+
         val tensor = FloatArray(3 * INPUT_SIZE * INPUT_SIZE)
-        val scale = min(INPUT_SIZE.toFloat() / width, INPUT_SIZE.toFloat() / height)
-        val newW = (width * scale).toInt()
-        val newH = (height * scale).toInt()
+        val scale = min(INPUT_SIZE.toFloat() / rotatedWidth, INPUT_SIZE.toFloat() / rotatedHeight)
+        val newW = (rotatedWidth * scale).toInt()
+        val newH = (rotatedHeight * scale).toInt()
         val padX = (INPUT_SIZE - newW) / 2
         val padY = (INPUT_SIZE - newH) / 2
 
         val yBytes = ByteArray(yBuffer.remaining())
         yBuffer.get(yBytes)
-
         val uBytes = ByteArray(uBuffer.remaining())
-        vBuffer.get(ByteArray(vBuffer.remaining())) // *skip old vBuffer
         uBuffer.get(uBytes)
+        val vBytes = ByteArray(vBuffer.remaining())
+        vBuffer.get(vBytes)
 
-        // *Loop only the pixels in the center of the image (scale + pad)
+        // Loop only the pixels in the center of the image (scale + pad)
         for (j in 0 until newH) {
-            val srcY = (j / scale).toInt().coerceIn(0, height - 1)
-            val pY = yRowStride * srcY
-
             for (i in 0 until newW) {
-                val srcX = (i / scale).toInt().coerceIn(0, width - 1)
-                val yp = pY + srcX
+                val logicX = (i / scale).toInt()
+                val logicY = (j / scale).toInt()
 
-                val yVal = (yBytes[yp].toInt() and 0xff) - 16
-                val uVal = (uBytes[(srcY / 2) * uvRowStride + (srcX / 2) * uvPixelStride].toInt() and 0xff) - 128
-                val vVal = (uBytes[(srcY / 2) * uvRowStride + (srcX / 2) * uvPixelStride].toInt() and 0xff) - 128
+                // Rotate coordinates
+                val srcX = logicY.coerceIn(0, width - 1)
+                val srcY = (width - 1 - logicX).coerceIn(0, height - 1)
 
-                var r = (1.164f * yVal + 1.596f * vVal)
-                var g = (1.164f * yVal - 0.813f * vVal - 0.391f * uVal)
-                var b = (1.164f * yVal + 2.018f * uVal)
+                // YUV indices calculation
+                val pY = yRowStride * srcY
+                val yIdx = pY + srcX
+                val uvIdx = (srcY / 2) * uvRowStride + (srcX / 2) * uvPixelStride
 
-                r = r.coerceIn(0f, 255f)
-                g = g.coerceIn(0f, 255f)
-                b = b.coerceIn(0f, 255f)
+                val yVal = (yBytes[yIdx].toInt() and 0xff)
+                val uVal = (uBytes[uvIdx].toInt() and 0xff) - 128
+                val vVal = (vBytes[uvIdx].toInt() and 0xff) - 128
 
+                // YUV to RGB conversion
+                var r = (yVal + 1.402f * vVal)
+                var g = (yVal - 0.344136f * uVal - 0.714136f * vVal)
+                var b = (yVal + 1.772f * uVal)
+
+                // Normalize 0..1
                 val outX = padX + i
                 val outY = padY + j
-
                 val idx = outY * INPUT_SIZE + outX
-                tensor[idx] = r / 255f
-                tensor[idx + INPUT_SIZE * INPUT_SIZE] = g / 255f
-                tensor[idx + 2 * INPUT_SIZE * INPUT_SIZE] = b / 255f
+
+                tensor[idx] = r.coerceIn(0f, 255f) / 255f
+                tensor[idx + INPUT_SIZE * INPUT_SIZE] = g.coerceIn(0f, 255f) / 255f
+                tensor[idx + 2 * INPUT_SIZE * INPUT_SIZE] = b.coerceIn(0f, 255f) / 255f
             }
         }
 
