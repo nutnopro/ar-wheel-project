@@ -3,258 +3,269 @@ package com.arwheelapp.modules
 import android.content.Context
 import android.util.Log
 import android.view.View
-import android.graphics.Color
-import java.io.File
-import kotlin.math.*
-import dev.romainguy.kotlin.math.Float3
 import com.arwheelapp.utils.FrameConverter
 import com.arwheelapp.utils.OnnxRuntimeHandler
 import com.google.ar.core.*
-import com.google.ar.core.Session
-import com.google.ar.core.Frame
-import com.google.ar.core.TrackingState
-import com.google.ar.core.AugmentedImage
+import dev.romainguy.kotlin.math.Float3
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.math.*
-import io.github.sceneview.node.Node
-import io.github.sceneview.node.ModelNode
-import io.github.sceneview.ar.node.TrackableNode
 import io.github.sceneview.ar.node.AugmentedImageNode
 import io.github.sceneview.ar.node.HitResultNode
-import io.github.sceneview.collision.CollisionSystem.hitTest
+import io.github.sceneview.ar.node.PoseNode
+import io.github.sceneview.collision.Vector3
+import io.github.sceneview.node.ModelNode
+import kotlin.math.*
 
-class ARRendering(private val context: Context) {
-	private lateinit var modelLoader: ModelLoader
-    private lateinit var frameConverter: FrameConverter
-    private lateinit var onnxRuntimeHandler: OnnxRuntimeHandler
-    private lateinit var onnxOverlay: OnnxOverlayView
+class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView) {
+    private val modelManager = ModelManager()
+    private val frameConverter = FrameConverter()
+    private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
-	private const val TAG_MARKER_BASED = "ARRendering-MarkerBased"
-	private const val TAG_MARKERLESS = "ARRendering-Markerless"
+    private val TAG = "ARRendering: "
 
-    companion object {
-		private val MARKER_DATABASES = mapOf(
-			"marker" to "markers/front_marker.imgdb",
-		)
-		private val MODEL_PATHS = mapOf(
-			"wheel1" to "models/wheel1.glb"
-		)
+	private val MARKER_DB_NAME = "markers/marker.jpg"
+	private val MODEL_PATH = "models/wheel.glb"
+
+    private var previousMode: ARActivity.ARMode? = null
+
+    private val markerNodes = mutableMapOf<AugmentedImage, AugmentedImageNode>()
+    private val markerlessNodePool = mutableListOf<HitResultNode>()
+    private val wheelModelPool = mutableListOf<ModelNode>()
+
+    private var lastInferenceTime = 0L
+    private var frameIntervalNs = 33_000_000L
+
+    fun render(session: Session, arSceneView: ARSceneView, frame: Frame, currentMode: ARActivity.ARMode) {
+        // Log.d(TAG, "render: Frame update, Mode=$currentMode")
+        if (previousMode != currentMode) {
+            // Log.d(TAG, "render: Mode changed from $previousMode to $currentMode. Hiding all models.")
+            hideAllModels()
+            previousMode = currentMode
+        }
+
+        when (currentMode) {
+            ARActivity.ARMode.MARKER_BASED -> processMarkerBased(arSceneView, frame)
+            ARActivity.ARMode.MARKERLESS -> processMarkerless(arSceneView, frame)
+        }
     }
 
-	data class Pose3D(
-        val position: Float3,
-        val rotation: Float3,
-    )
+    private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
+        // Log.d(TAG, "processMarkerBased: Processing marker-based AR frame")
+        val updatedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
 
-	private var isMarkerDbSetup = false
-	private var previousMode: ARActivity.ARMode? = null
+        // 1. วนลูปจัดการ Marker แต่ละใบ
+        for (img in updatedImages) {
+            // val name = img.name
+            val state = img.trackingState
+            // Log.d(TAG, "Marker: $name, State: $state")
 
-	private var markerBasedNode: AugmentedImageNode? = null
-	private var markerlessNode: HitResultNode? = null
+            if (state == TrackingState.STOPPED) {
+                // Log.d(TAG, "processMarkerBased: Marker $name STOPPED. Removing node.")
+                markerNodes[img]?.let { 
+                    arSceneView.removeChildNode(it)
+                    markerNodes.remove(img)
+                }
+                continue
+            }
 
-	private var wheelNodes: Node = Node()
-	private val updatedNodes = mutableSetOf<Node>()
+            if (!markerNodes.containsKey(img)) {
+                // Log.d(TAG, "processMarkerBased: New marker detected ($name). Creating AugmentedImageNode.")
+                val node = AugmentedImageNode(arSceneView.engine, img)
+                arSceneView.addChildNode(node)
+                markerNodes[img] = node
+            }
+        }
 
-	private var lastInferenceTime = 0L
-	private var frameIntervalNs = 33_000_000L
-	private var lastYoloDuration = 0L
+        // !ยังติดปัญหาเรื่องการซ่อน model ที่ตรวจไม่เจอ marker
+        val activeMarkerNodes = markerNodes.values.filter { node ->
+            val img = node.augmentedImage ?: return@filter false
+            val isTracking = img.trackingState == TrackingState.TRACKING
+            isTracking
+        }
 
-	fun render(session: Session, arSceneView: ARSceneView, frame: Frame, currentMode: ARActivity.ARMode) {
-		wheelNodes.takeIf { it.parent == null }?.let { arSceneView.addChildNode(it) }
-		
-		if (previousMode != currentMode) {
-			wheelNodes.childNodes.forEach { it.isVisible = false }
-			previousMode = currentMode
-			updatedNodes.clear()
-		}
+        updateModelPool(arSceneView, activeMarkerNodes)
+    }
 
-		when (currentMode) {
-			ARActivity.ARMode.MARKER_BASED -> {
-				if (frame.camera.trackingState != TrackingState.TRACKING) return
-				
-				val updatedImages: Collection<AugmentedImage> = frame.getUpdatedTrackables(AugmentedImage::class.java)
-				Log.d(TAG_MARKER_BASED, "Updated markers count=${updatedImages.size}")
-				for (img in updatedImages) {
-					Log.d(TAG_MARKER_BASED, "Marker: ${img.name}, state=${img.trackingState}")
-					markerBasedNode = markerBasedNode ?: AugmentedImageNode()
-					markerBasedNode!!.augmentedImage = img
-					markerBasedNode!!.createAnchor()
-					if (markerBasedNode!!.parent == null) arSceneView.addChildNode(markerBasedNode!!)
+    private fun processMarkerless(arSceneView: ARSceneView, frame: Frame) {
+        // Log.d(TAG, "processMarkerless: Processing markerless AR frame")
+        val currentTime = frame.timestamp
+        if (currentTime - lastInferenceTime < frameIntervalNs) return
+        lastInferenceTime = currentTime
 
-					if (img.trackingState == TrackingState.TRACKING) {
-						updateOrAddWheelNode(MODEL_PATHS["wheel1"]!!, markerBasedNode).let { updatedNodes.add(it) }
-					}
-				}
-				wheelNodes.childNodes.forEach { it.isVisible = it in updatedNodes }
-			}
+        // Log.d(TAG, "processMarkerless: Starting inference cycle")
+        val start = System.nanoTime()
+        val tensor = frameConverter.convertFrameToTensor(frame)
 
-			ARActivity.ARMode.MARKERLESS -> {
-				val currentTime = frame.timestamp
-				if (currentTime - lastInferenceTime < frameIntervalNs) return
-				lastInferenceTime = currentTime
+        onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
+            // Log.d(TAG, "processMarkerless: Inference callback received with ${detections.size} detections")
+            val inferenceDuration = (System.nanoTime() - start) / 1_000_000
+            val fullFrameStart = System.nanoTime()
 
-				val start = System.nanoTime()
-				val tensor = frameConverter.convertFrameToTensor(frame)
-				onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
-					val inferenceDuration = System.nanoTime() - start
+            if (onnxOverlayView.visibility == View.VISIBLE) {
+                onnxOverlayView.updateDetections(detections)
+            }
 
-					val fullFrameStart = System.nanoTime()
+            // *prepare Nodes for YOLO (Reset Pool)
+            markerlessNodePool.forEach { it.isVisible = false }
+            val activeHitNodes = mutableListOf<PoseNode>()
 
-					// onnxOverlay.updateDetections(detections)
-					if (onnxOverlay.visibility == View.VISIBLE) {
-						onnxOverlay.updateDetections(detections)
-					}
+            detections.forEachIndexed { index, bbox ->
+                val centerX = bbox.x * arSceneView.width
+                val centerY = bbox.y * arSceneView.height
+                // Log.d(TAG, "Detection #$index: x=$centerX, y=$centerY, conf=${bbox.confidence}")
 
-					updatedNodes.clear()
+                // *extract Node from Pool (create new if exhausted)
+                if (index >= markerlessNodePool.size) {
+                    // Log.d(TAG, "processMarkerless: Pool exhausted. Creating new HitResultNode.")
+                    val newNode = HitResultNode(arSceneView.engine, xPx = centerX, yPx = centerY)
+                    arSceneView.addChildNode(newNode)
+                    markerlessNodePool.add(newNode)
+                }
+                
+                val node = markerlessNodePool[index]
+                
+                // *calculate HitTest to place on real surface
+                val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
+                if (hitResult != null) {
+                    // Log.d(TAG, "processMarkerless: HitTest success for detection #$index")
+                    node.hitResult = hitResult
+                    node.isVisible = true
 
-					detections.forEach { bbox ->
+                    // *calculate Rotation (optional)
+                    val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
+                    val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
 
-						val centerX = bbox.x * arSceneView.width
-						val centerY = bbox.y * arSceneView.height
+                    if (upPosHits != null && leftPosHits != null) {
+                        val centerPos = node.worldPosition.toVector3()
+                        val upPos = upPosHits.hitPose.toVector3()
+                        val leftPos = leftPosHits.hitPose.toVector3()
+                        node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+                        // Log.d(TAG, "processMarkerless: Rotation calculated for #$index")
+                    }
 
-						markerlessNode = markerlessNode ?: HitResultNode().apply{
-							xPx = centerX
-							yPx = centerY
-						}
-						markerlessNode!!.xPx = centerX
-						markerlessNode!!.yPx = centerY
-						if (markerlessNode!!.parent == null) arSceneView.addChildNode(markerlessNode!!)
+                    activeHitNodes.add(node)
+                }
+            }
 
-						val upPosHits = frame.hitTest(centerX, centerY*0.9f)
-						val leftPosHits = frame.hitTest(centerX*0.9f, centerY)
-						if (upPosHits.isNullOrEmpty() || leftPosHits.isNullOrEmpty()) return@forEach
+            // *use Object Pool to manage 3D Models
+            updateModelPool(arSceneView, activeHitNodes)
 
-						val centerPos: Vector3 = markerlessNode!!.worldPosition.toVector3()
-						val upPos: Vector3 = upPosHits.first().hitPose.translation.toVector3()
-						val leftPos: Vector3 = leftPosHits.first().hitPose.translation.toVector3()
+            // *calculate frame interval dynamically
+            val fullFrameDuration = System.nanoTime() - fullFrameStart
+            frameIntervalNs = when {
+                fullFrameDuration < 25_000_000L -> 22_000_000L
+                fullFrameDuration > 50_000_000L -> 50_000_000L
+                else -> 33_000_000L
+            }
+            // Log.d(TAG, "processMarkerless: Cycle complete. Next interval: ${frameIntervalNs/1_000_000}ms")
+        }
+    }
 
-						markerlessNode!!.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
-						updateOrAddWheelNode(MODEL_PATHS["wheel1"]!!, markerlessNode)?.let { updatedNodes.add(it) }
-					}
-					
-					val fullFrameDuration = System.nanoTime() - fullFrameStart
+    private fun updateModelPool(arSceneView: ARSceneView, targets: List<PoseNode>) {
+        targets.forEachIndexed { index, targetNode ->
+            // *create new model if pool exhausted
+            if (index >= wheelModelPool.size) {
+                // Log.d(TAG, "updateModelPool: Model pool exhausted. Creating new ModelNode.")
+                val newModel = modelManager.createModelNode(arSceneView, MODEL_PATH)
+                wheelModelPool.add(newModel)
+            }
 
-					frameIntervalNs = when {
-						fullFrameDuration < 25_000_000L -> 22_000_000L
-						fullFrameDuration > 50_000_000L -> 50_000_000L
-						else -> 33_000_000L
-					}
+            // *extract model from pool
+            val modelNode = wheelModelPool[index]
 
-					Log.d("AR_FPS", "YOLO took ${inferenceDuration / 1_000_000}ms → interval=${fullFrameDuration / 1_000_000}ms")
-					wheelNodes.childNodes.forEach { it.isVisible = it in updatedNodes }
-				}
-			}
-		}
-	}
+            if (modelNode.parent != targetNode) {
+                // Log.d(TAG, "updateModelPool: Re-parenting model #$index to new target.")
+                modelNode.parent = targetNode
+                modelNode.position = Float3(0f, 0f, 0f)
+                modelNode.rotation = Float3(0f, 0f, 0f)
+                modelNode.scale = Float3(1f, 1f, 1f)
+            }
 
-	// *Setup marker database
-	fun setupMarkerDatabase(session: Session) {
-		if (isMarkerDbSetup) return
+            modelNode.isVisible = true
+        }
 
-		try {
-			Log.d(TAG_MARKER_BASED, "Setting up marker database...")
-			val dbFile = File(context.filesDir, MARKER_DATABASES["marker"]!!)
-			if (!dbFile.exists()) {
-				dbFile.parentFile?.mkdirs()
-				context.assets.open(MARKER_DATABASES["marker"]!!).use { input ->
-					dbFile.outputStream().use { output ->
-						input.copyTo(output)
-					}
-				}
-				Log.d(TAG_MARKER_BASED, "Marker database copied to filesDir")
-			}
+        // *hide unused models
+        if (targets.size < wheelModelPool.size) {
+            // Log.d(TAG, "updateModelPool: Hiding ${wheelModelPool.size - targets.size} unused models.")
+            for (i in targets.size until wheelModelPool.size) {
+                val unusedModel = wheelModelPool[i]
+                unusedModel.isVisible = false
+                unusedModel.parent = null 
+            }
+        }
+    }
 
-			val imgDb = AugmentedImageDatabase.deserialize(session, dbFile.inputStream())
-			val config = session.config.apply {
-				augmentedImageDatabase = imgDb
-				updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-			}
+    private fun hideAllModels() {
+        // Log.d(TAG, "hideAllModels: Clearing all models from scene.")
+        wheelModelPool.forEach { 
+            it.isVisible = false 
+            it.parent = null
+        }
+    }
 
-			session.configure(config)
-			isMarkerDbSetup = true
-			Log.d(TAG_MARKER_BASED, "AR Session configured with marker database")
-		} catch (e: Exception) {
-			Log.e(TAG_MARKER_BASED, "Failed to setup marker database", e)
-		}
-	}
+    fun setupMarkerDatabase(session: Session) {
+        // Log.d(TAG, "setupMarkerDatabase: Starting setup...")
+        try {
+            val augmentedImageDatabase = AugmentedImageDatabase(session)
 
-	// *Create new WheelNode
-	private fun createNewWheelNode(modelPath: String, node: Node): ModelNode {
-		return modelLoader.createModelNode(modelPath).apply {
-			position = Float3(node.worldPosition)
-		}
-	}
+            val inputStream = context.assets.open(MARKER_DB_NAME)
+            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
 
-	// *Distance between two positions in 3D space
-	private fun distanceBetweenNode(pos1: Float3, pos2: Float3): Float {
-		val dx = pos1.x - pos2.x
-		val dy = pos1.y - pos2.y
-		val dz = pos1.z - pos2.z
-		return sqrt(dx*dx + dy*dy + dz*dz)
-	}
+            augmentedImageDatabase.addImage("marker", bitmap, 0.15f)
 
-	// *Update or add wheel node based on proximity
-	private fun updateOrAddWheelNode(modelPath: String, baseNode: TrackableNode): ModelNode {
-		val newPos = Float3(baseNode.worldPosition)
+            val config = session.config.apply {
+                this.augmentedImageDatabase = augmentedImageDatabase
+                updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                focusMode = Config.FocusMode.AUTO
+            }
+            session.configure(config)
+            // Log.d(TAG, "setupMarkerDatabase: Loaded JPG directly.")
+        } catch (e: Exception) {
+            Log.e(TAG, "setupMarkerDatabase: Error", e)
+        }
+    }
 
-		val childNodes = wheelNodes.childNodes.toList()
-		val nearest = childNodes
-			.mapIndexed { i, node -> distanceBetweenNode(node.position, newPos) to i }
-			.minByOrNull { it.first }
+    // *Rotation Calc
+    private fun getRotationFromThreeVector(center: Vector3, up: Vector3, left: Vector3): Float3 {
+        // Log.d(TAG, "getRotationFromThreeVector: Calculating rotation...")
+        val upVec = Vector3.subtract(up, center).normalized()
+        val leftVec = Vector3.subtract(left, center).normalized()
+        val forwardVec = Vector3.cross(upVec, leftVec).normalized()
 
-		val modelNode: ModelNode = when {
-			childNodes.isEmpty() -> {
-				wheelNodes.addChildNode(createNewWheelNode(modelPath, baseNode))
-			}
+        val m12 = upVec.x
+        val m22 = upVec.y
+        val m31 = leftVec.z
+        val m32 = upVec.z
+        val m33 = forwardVec.z
 
-			nearest != null && nearest.first < 0.5f -> {
-				(childNodes[nearest.second] as ModelNode).apply { position = newPos }
-			}
+        val pitch = atan2(-m32, sqrt(m31 * m31 + m33 * m33)).toFloat()
+        val yaw = atan2(m31, m33).toFloat()
+        val roll = atan2(m12, m22).toFloat()
 
-			childNodes.size < 3 -> {
-				wheelNodes.addChildNode(createNewWheelNode(modelPath, baseNode))
-			}
+        return Float3(
+            roll * 180f / PI.toFloat(),
+            pitch * 180f / PI.toFloat(),
+            yaw * 180f / PI.toFloat()
+        )
+    }
 
-			else -> {
-				val furthest = childNodes
-					.mapIndexed { i, node -> distanceBetweenNode(node.position, newPos) to i }
-					.maxByOrNull { it.first }
-				(childNodes[furthest?.second ?: 0] as ModelNode).apply { position = newPos }
-			}
-		}
-		modelNode.isVisible = true
-		return modelNode
-	}
+    // *Extension Functions
+    private fun Float3.toVector3() = Vector3(x, y, z)
+    private fun com.google.ar.core.Pose.toVector3() = Vector3(tx(), ty(), tz())
 
-	// *Get rotation with 3 vector points
-	private fun getRotationFromThreeVector(center: Vector3, up: Vector3, left: Vector3): Float3 {
-		val upVec = normalized(subtract(up, center))
-		val leftVec = normalized(subtract(left, center))
-		val forwardVec = normalized(cross(upVec, leftVec))
+    private fun Vector3.normalized(): Vector3 {
+        val len = sqrt(x * x + y * y + z * z)
+        return if (len != 0.0f) Vector3(x / len, y / len, z / len) else Vector3(0.0f, 0.0f, 0.0f)
+    }
 
-		// val m11 = leftVec.x
-		val m12 = upVec.x
-		// val m13 = forwardVec.x
-		// val m21 = leftVec.y
-		val m22 = upVec.y
-		// val m23 = forwardVec.y
-		val m31 = leftVec.z
-		val m32 = upVec.z
-		val m33 = forwardVec.z
+    fun clear() {
+        // Log.d(TAG, "clear: Destroying all nodes and clearing pools.")
+        wheelModelPool.forEach { it.destroy() }
+        wheelModelPool.clear()
 
-		val pitch = atan2(-m32, sqrt(m31 * m31 + m33 * m33))
-		val yaw = atan2(m31, m33)
-		val roll = atan2(m12, m22)
+        markerNodes.values.forEach { it.destroy() }
+        markerNodes.clear()
 
-		return Float3(
-			roll * 180f / PI.toFloat(),
-			pitch * 180f / PI.toFloat(),
-			yaw * 180f / PI.toFloat()
-		)
-	}
-
-	// *Clear wheelNodes
-	fun clearWheelNodes() {
-        wheelNodes.destroy()
+        markerlessNodePool.forEach { it.destroy() }
+        markerlessNodePool.clear()
     }
 }
