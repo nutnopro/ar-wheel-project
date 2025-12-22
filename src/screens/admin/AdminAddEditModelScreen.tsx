@@ -6,6 +6,7 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
+  StyleSheet,
 } from 'react-native';
 import Ionicons from '@react-native-vector-icons/ionicons';
 import AddEditModelForm from './../../components/forms/AddEditModel';
@@ -57,7 +58,7 @@ export default function AdminAddEditModelScreen({ navigation, route }: any) {
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -68,4 +69,4 @@ const styles = {
   },
   title: { fontSize: 18, fontWeight: 'bold' },
   saveBtn: { fontSize: 16, fontWeight: 'bold' },
-};
+});
