@@ -1,4 +1,4 @@
-// src/screens/admin/StoreDashboard.tsx
+// src/screens/admin/SystemDashboard.tsx
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { COLORS } from '../../theme/colors';
@@ -12,12 +12,12 @@ const StatCard = ({ title, value, color }: any) => (
   </View>
 );
 
-export default function StoreDashboard() {
+export default function SystemDashboard() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: COLORS.background, padding: 16 }}
     >
-      <Text style={styles.title}>ภาพรวมร้านค้า</Text>
+      <Text style={styles.title}>ภาพรวมระบบ</Text>
 
       <View style={styles.grid}>
         <StatCard title="ยอดเข้าชม" value="1,204" color="#3B82F6" />

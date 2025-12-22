@@ -7,7 +7,16 @@ export interface User {
   role: UserRole;
   avatarUrl?: string;
 }
+// *Components interface
+export interface SettingPanelProps {
+  visible: boolean;
+  onClose: () => void;
+  title?: string;
+  children: React.ReactNode;
+  height?: number | string; // เผื่ออยากปรับความสูง (default: 50%)
+}
 
+// *Screens interface
 export interface Product {
   id: number;
   name: string;
@@ -19,6 +28,7 @@ export interface Product {
   isFavorite?: boolean; // เอาไว้เช็คหน้า Favorite
 }
 
+// *API Response interface
 export interface ApiResponse<T> {
   success: boolean;
   data: T;

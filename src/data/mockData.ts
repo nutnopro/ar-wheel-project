@@ -1,5 +1,5 @@
-// src/data/models.js
-export const MODELS = [
+// src/data/mockData.js
+export const MockData = [
   {
     id: 1,
     name: 'Sport Classic',

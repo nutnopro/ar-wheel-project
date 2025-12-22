@@ -1,18 +1,18 @@
 // src/screens/auth/SplashScreen.tsx
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { COLORS } from '../../theme/colors';
 
 export default function SplashScreen({ navigation }: any) {
-  useEffect(() => {
-    setTimeout(() => navigation.replace('Login'), 2000); // จำลองการโหลด
-  }, []);
-
   return (
-    <View style={styles.container}>
+    <TouchableOpacity
+      style={styles.container}
+      activeOpacity={1}
+      onPress={() => navigation.replace('Login')}
+    >
       <Text style={styles.logo}>ARWheel</Text>
-      <Text style={styles.sub}>Virtual Fitting Room</Text>
-    </View>
+      <Text style={styles.sub}>Tap to start</Text>
+    </TouchableOpacity>
   );
 }
 const styles = StyleSheet.create({
@@ -23,5 +23,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logo: { fontSize: 40, fontWeight: '900', color: '#fff' },
-  sub: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: 8 },
+  sub: { fontSize: 16, color: 'rgba(255,255,255,0.8)', marginTop: 20 },
 });

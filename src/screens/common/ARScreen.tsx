@@ -1,4 +1,4 @@
-// src/screens/user/ARScreen.tsx (หน้า 8)
+// src/screens/user/ARScreen.tsx
 import React, { useEffect, useCallback } from 'react';
 import {
   View,
