@@ -1,50 +1,64 @@
-// src/components/SearchBar.tsx
+//src/components/SearchBar.tsx
 import React from 'react';
-import { View, TextInput, StyleSheet } from 'react-native';
-import Ionicons from '@react-native-vector-icons/Ionicons';
-import { useTheme } from '../contexts/ThemeContext';
+import { View, TextInput, StyleSheet, ViewStyle } from 'react-native';
+import Ionicons from '@react-native-vector-icons/ionicons';
+import { COLORS } from '../theme/colors';
 
-type Props = {
+interface Props {
   value?: string;
-  onChangeText?: (t: string) => void;
-  onSubmitEditing?: () => void;
-};
+  onChangeText?: (text: string) => void;
+  placeholder?: string;
+  containerStyle?: ViewStyle;
+  editable?: boolean; // เพิ่มตัวนี้เผื่อใช้เป็นแค่ปุ่มกด (หน้า Home)
+}
 
 export default function SearchBar({
   value,
   onChangeText,
-  onSubmitEditing,
+  placeholder = 'ค้นหา...',
+  containerStyle,
+  editable = true,
 }: Props) {
-  const { colors } = useTheme();
   return (
-    <View
-      style={[
-        styles.wrap,
-        { backgroundColor: colors.card, borderColor: colors.border },
-      ]}
-    >
-      <Ionicons name="search" size={18} color={colors.textDim} />
+    <View style={[styles.container, containerStyle]}>
+      <Ionicons
+        name="search"
+        size={20}
+        color={COLORS.textDim}
+        style={styles.icon}
+      />
       <TextInput
-        style={[styles.input, { color: colors.text }]}
+        style={styles.input}
         value={value}
         onChangeText={onChangeText}
-        placeholder="ค้นหา โมเดลหรือแบรนด์..."
-        placeholderTextColor={colors.textDim}
-        returnKeyType="search"
-        onSubmitEditing={onSubmitEditing}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.textDim}
+        editable={editable}
+        autoCorrect={false}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    height: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    alignItems: 'center',
+  container: {
     flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F1F5F9', // สีเทาอ่อนๆ ตัดกับพื้นหลังขาว
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 48,
+    borderWidth: 1,
+    borderColor: 'transparent', // เผื่ออยากใส่ขอบ
   },
-  input: { flex: 1, paddingHorizontal: 8 },
+  icon: {
+    marginRight: 8,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    color: COLORS.text,
+    height: '100%',
+    paddingVertical: 0, // แก้ bug ตัวหนังสือลอยใน Android
+  },
 });

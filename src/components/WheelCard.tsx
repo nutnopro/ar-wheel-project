@@ -1,87 +1,66 @@
 // src/components/WheelCard.tsx
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Ionicons from '@react-native-vector-icons/Ionicons';
+import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { COLORS } from '../theme/colors';
 
-type Wheel = {
-  id: number;
+interface Wheel {
+  id: number | string;
   name: string;
-  brand?: string;
-  price?: number | string;
-  size?: number;
-  material?: string;
-  pattern?: string;
-  color?: string;
-  weight?: string;
-};
+  brand: string;
+  price: number;
+  img?: string | null; // รองรับกรณีไม่มีรูป
+}
 
-type Props = {
+interface Props {
   wheel: Wheel;
-  onPress?: () => void;
-  onFavorite?: (id: number) => void;
-  isFavorite?: boolean;
-  showPrice?: boolean;
-  compact?: boolean;
-};
+  onPress: () => void;
+}
 
-export default function WheelCard({
-  wheel,
-  onPress,
-  onFavorite,
-  isFavorite,
-  showPrice = true,
-  compact = false,
-}: Props) {
+export default function WheelCard({ wheel, onPress }: Props) {
   return (
     <TouchableOpacity
-      style={[styles.card, compact && styles.compactCard]}
+      style={styles.card}
+      activeOpacity={0.8} // กดแล้วจางลงนิดนึงให้รู้ว่ากด
       onPress={onPress}
     >
+      {/* ส่วนรูปภาพ */}
       <View style={styles.imageContainer}>
-        <View
-          style={[
-            styles.wheelImage,
-            { backgroundColor: wheel.color || '#cbd5e1' },
-          ]}
-        >
-          <View style={styles.wheelRim} />
-          {wheel.pattern && (
-            <Text style={styles.patternText}>{wheel.pattern}</Text>
-          )}
-        </View>
-
-        {onFavorite && (
-          <TouchableOpacity
-            style={styles.favoriteButton}
-            onPress={() => onFavorite(wheel.id)}
-          >
-            <Ionicons
-              name={isFavorite ? 'heart' : 'heart-outline'}
-              size={16}
-              color={isFavorite ? '#ff4444' : '#999'}
-            />
-          </TouchableOpacity>
-        )}
+        <Image
+          source={
+            wheel.img
+              ? { uri: wheel.img }
+              : { uri: 'https://via.placeholder.com/300' }
+          }
+          style={styles.image}
+          resizeMode="cover"
+        />
+        {/* Badge ป้าย New/Sale (ถ้ามีอนาคตเพิ่มได้ตรงนี้) */}
       </View>
 
-      <View style={styles.info}>
+      {/* ส่วนข้อมูล */}
+      <View style={styles.infoContainer}>
+        <Text style={styles.brand}>{wheel.brand}</Text>
         <Text style={styles.name} numberOfLines={1}>
           {wheel.name}
         </Text>
-        {wheel.brand && (
-          <Text style={styles.brand} numberOfLines={1}>
-            {wheel.brand}
-          </Text>
-        )}
-        {showPrice && <Text style={styles.price}>฿{wheel.price}</Text>}
-        {!compact && (
-          <View style={styles.specs}>
-            {wheel.material && (
-              <Text style={styles.spec}>{wheel.material}</Text>
-            )}
-            {wheel.weight && <Text style={styles.spec}>{wheel.weight}</Text>}
+
+        <View style={styles.footer}>
+          <Text style={styles.price}>฿{wheel.price.toLocaleString()}</Text>
+
+          {/* ปุ่ม + เล็กๆ หรือ Icon ลูกศร เพื่อกระตุ้นให้กด */}
+          <View style={styles.iconBtn}>
+            {/* ใส่ Icon บวก หรือลูกศรก็ได้ */}
+            <Text
+              style={{
+                color: COLORS.primary,
+                fontSize: 18,
+                fontWeight: 'bold',
+              }}
+            >
+              +
+            </Text>
           </View>
-        )}
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -89,63 +68,61 @@ export default function WheelCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'white',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 15,
-    elevation: 3,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    marginBottom: 16,
+    // Shadow Styling
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 4, // เงาสำหรับ Android
+    overflow: 'hidden', // เพื่อให้รูปไม่ล้นขอบโค้ง
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.03)', // ขอบจางๆ เพิ่มมิติ
   },
-  compactCard: { padding: 10, marginBottom: 10 },
   imageContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  wheelImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    height: 140,
+    backgroundColor: '#F8FAFC',
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#ddd',
   },
-  wheelRim: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#333',
-    position: 'absolute',
+  image: {
+    width: '100%',
+    height: '100%',
   },
-  patternText: {
-    position: 'absolute',
-    bottom: -15,
-    fontSize: 8,
-    color: '#666',
-    textAlign: 'center',
+  infoContainer: {
+    padding: 12,
   },
-  favoriteButton: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 4,
-    elevation: 2,
+  brand: {
+    fontSize: 12,
+    color: COLORS.textDim,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  info: { alignItems: 'center' },
-  name: { fontSize: 14, fontWeight: 'bold', color: '#333' },
-  brand: { fontSize: 12, color: '#666' },
-  price: { fontSize: 16, fontWeight: 'bold', color: '#667eea' },
-  specs: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap' },
-  spec: {
-    fontSize: 10,
-    color: '#999',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginHorizontal: 2,
-    marginVertical: 1,
+  name: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 8,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  price: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  iconBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#EFF6FF', // สีฟ้าอ่อนมากๆ
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
