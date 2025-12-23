@@ -14,6 +14,7 @@ import io.github.sceneview.ar.node.PoseNode
 import io.github.sceneview.collision.Vector3
 import io.github.sceneview.node.ModelNode
 import kotlin.math.*
+import android.graphics.PointF
 
 class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView) {
     private val modelManager = ModelManager()
@@ -21,9 +22,9 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
     private val TAG = "ARRendering: "
-
 	private val MARKER_DB_NAME = "markers/marker.jpg"
 	private val MODEL_PATH = "models/wheel.glb"
+    private val YOLO_INPUT_SIZE = 320f
 
     private var previousMode: ARActivity.ARMode? = null
 
@@ -33,6 +34,11 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private var lastInferenceTime = 0L
     private var frameIntervalNs = 33_000_000L
+
+    @Volatile
+    private var pendingDetections: List<OnnxRuntimeHandler.Detection>? = null
+
+    private var isInferencing = false // ป้องกันการเรียกซ้อน
 
     fun render(session: Session, arSceneView: ARSceneView, frame: Frame, currentMode: ARActivity.ARMode) {
         // Log.d(TAG, "render: Frame update, Mode=$currentMode")
@@ -44,7 +50,10 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
         when (currentMode) {
             ARActivity.ARMode.MARKER_BASED -> processMarkerBased(arSceneView, frame)
-            ARActivity.ARMode.MARKERLESS -> processMarkerless(arSceneView, frame)
+            ARActivity.ARMode.MARKERLESS -> {
+                processPendingMarkerlessDetections(arSceneView, frame)
+                triggerMarkerlessInference(frame)
+            }
         }
     }
 
@@ -85,79 +94,194 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         updateModelPool(arSceneView, activeMarkerNodes)
     }
 
-    private fun processMarkerless(arSceneView: ARSceneView, frame: Frame) {
-        // Log.d(TAG, "processMarkerless: Processing markerless AR frame")
-        val currentTime = frame.timestamp
-        if (currentTime - lastInferenceTime < frameIntervalNs) return
-        lastInferenceTime = currentTime
+    // private fun processMarkerless(arSceneView: ARSceneView, frame: Frame) {
+    //     // Log.d(TAG, "processMarkerless: Processing markerless AR frame")
+    //     val currentTime = frame.timestamp
+    //     if (currentTime - lastInferenceTime < frameIntervalNs) return
+    //     lastInferenceTime = currentTime
 
-        // Log.d(TAG, "processMarkerless: Starting inference cycle")
+    //     // Log.d(TAG, "processMarkerless: Starting inference cycle")
+    //     val start = System.nanoTime()
+    //     val tensor = frameConverter.convertFrameToTensor(frame)
+
+    //     onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
+    //         // Log.d(TAG, "processMarkerless: Inference callback received with ${detections.size} detections")
+    //         val inferenceDuration = (System.nanoTime() - start) / 1_000_000
+    //         val fullFrameStart = System.nanoTime()
+
+    //         if (onnxOverlayView.visibility == View.VISIBLE) {
+    //             onnxOverlayView.updateDetections(detections)
+    //         }
+
+    //         // *prepare Nodes for YOLO (Reset Pool)
+    //         markerlessNodePool.forEach { it.isVisible = false }
+    //         val activeHitNodes = mutableListOf<PoseNode>()
+
+    //         detections.forEachIndexed { index, bbox ->
+    //             val centerX = bbox.x * arSceneView.width
+    //             val centerY = bbox.y * arSceneView.height
+    //             // Log.d(TAG, "Detection #$index: x=$centerX, y=$centerY, conf=${bbox.confidence}")
+
+    //             // *extract Node from Pool (create new if exhausted)
+    //             if (index >= markerlessNodePool.size) {
+    //                 // Log.d(TAG, "processMarkerless: Pool exhausted. Creating new HitResultNode.")
+    //                 val newNode = HitResultNode(arSceneView.engine, xPx = centerX, yPx = centerY)
+    //                 arSceneView.addChildNode(newNode)
+    //                 markerlessNodePool.add(newNode)
+    //             }
+                
+    //             val node = markerlessNodePool[index]
+                
+    //             // *calculate HitTest to place on real surface
+    //             //!!!!!!!!!!1111
+    //             val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
+    //             if (hitResult != null) {
+    //                 // Log.d(TAG, "processMarkerless: HitTest success for detection #$index")
+    //                 node.hitResult = hitResult
+    //                 node.isVisible = true
+
+    //                 // *calculate Rotation (optional)
+    //                 val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
+    //                 val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
+
+    //                 if (upPosHits != null && leftPosHits != null) {
+    //                     val centerPos = node.worldPosition.toVector3()
+    //                     val upPos = upPosHits.hitPose.toVector3()
+    //                     val leftPos = leftPosHits.hitPose.toVector3()
+    //                     node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+    //                     // Log.d(TAG, "processMarkerless: Rotation calculated for #$index")
+    //                 }
+
+    //                 activeHitNodes.add(node)
+    //             }
+    //         }
+
+    //         // *use Object Pool to manage 3D Models
+    //         updateModelPool(arSceneView, activeHitNodes)
+
+    //         // *calculate frame interval dynamically
+    //         val fullFrameDuration = System.nanoTime() - fullFrameStart
+    //         frameIntervalNs = when {
+    //             fullFrameDuration < 25_000_000L -> 22_000_000L
+    //             fullFrameDuration > 50_000_000L -> 50_000_000L
+    //             else -> 33_000_000L
+    //         }
+    //         // Log.d(TAG, "processMarkerless: Cycle complete. Next interval: ${frameIntervalNs/1_000_000}ms")
+    //     }
+    // }
+
+    private fun triggerMarkerlessInference(frame: Frame) {
+        val currentTime = frame.timestamp
+        // เช็คเวลา และเช็คว่ากำลังรันอยู่หรือไม่ (ป้องกันคิวเต็ม)
+        if (isInferencing || currentTime - lastInferenceTime < frameIntervalNs) return
+        
+        lastInferenceTime = currentTime
+        isInferencing = true // ล็อก
+
         val start = System.nanoTime()
+        
+        // แปลงภาพ (ระวัง: ต้องแน่ใจว่า frameConverter จัดการปิด image ภายในแล้ว)
         val tensor = frameConverter.convertFrameToTensor(frame)
 
+        // รัน AI ใน Background Thread
         onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
-            // Log.d(TAG, "processMarkerless: Inference callback received with ${detections.size} detections")
-            val inferenceDuration = (System.nanoTime() - start) / 1_000_000
-            val fullFrameStart = System.nanoTime()
+            // AI เสร็จแล้ว เก็บผลใส่ตัวแปรกลาง
+            pendingDetections = detections
+            isInferencing = false // ปลดล็อก
 
-            if (onnxOverlayView.visibility == View.VISIBLE) {
-                onnxOverlayView.updateDetections(detections)
-            }
-
-            // *prepare Nodes for YOLO (Reset Pool)
-            markerlessNodePool.forEach { it.isVisible = false }
-            val activeHitNodes = mutableListOf<PoseNode>()
-
-            detections.forEachIndexed { index, bbox ->
-                val centerX = bbox.x * arSceneView.width
-                val centerY = bbox.y * arSceneView.height
-                // Log.d(TAG, "Detection #$index: x=$centerX, y=$centerY, conf=${bbox.confidence}")
-
-                // *extract Node from Pool (create new if exhausted)
-                if (index >= markerlessNodePool.size) {
-                    // Log.d(TAG, "processMarkerless: Pool exhausted. Creating new HitResultNode.")
-                    val newNode = HitResultNode(arSceneView.engine, xPx = centerX, yPx = centerY)
-                    arSceneView.addChildNode(newNode)
-                    markerlessNodePool.add(newNode)
-                }
-                
-                val node = markerlessNodePool[index]
-                
-                // *calculate HitTest to place on real surface
-                val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
-                if (hitResult != null) {
-                    // Log.d(TAG, "processMarkerless: HitTest success for detection #$index")
-                    node.hitResult = hitResult
-                    node.isVisible = true
-
-                    // *calculate Rotation (optional)
-                    val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
-                    val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
-
-                    if (upPosHits != null && leftPosHits != null) {
-                        val centerPos = node.worldPosition.toVector3()
-                        val upPos = upPosHits.hitPose.toVector3()
-                        val leftPos = leftPosHits.hitPose.toVector3()
-                        node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
-                        // Log.d(TAG, "processMarkerless: Rotation calculated for #$index")
-                    }
-
-                    activeHitNodes.add(node)
-                }
-            }
-
-            // *use Object Pool to manage 3D Models
-            updateModelPool(arSceneView, activeHitNodes)
-
-            // *calculate frame interval dynamically
-            val fullFrameDuration = System.nanoTime() - fullFrameStart
-            frameIntervalNs = when {
-                fullFrameDuration < 25_000_000L -> 22_000_000L
-                fullFrameDuration > 50_000_000L -> 50_000_000L
-                else -> 33_000_000L
-            }
-            // Log.d(TAG, "processMarkerless: Cycle complete. Next interval: ${frameIntervalNs/1_000_000}ms")
+            // ปรับ interval ตามความเร็วเครื่อง
+            val duration = (System.nanoTime() - start)
+            frameIntervalNs = if (duration > 50_000_000L) 66_000_000L else 33_000_000L
         }
+    }
+
+    private fun processPendingMarkerlessDetections(arSceneView: ARSceneView, frame: Frame) {
+        // ดึงค่าจากตัวแปรกลางมาใช้ แล้วเคลียร์ทิ้ง
+        val detections = pendingDetections ?: return
+        pendingDetections = null 
+
+        // อัปเดต UI Overlay (ทำงานบน UI Thread ปลอดภัยแน่นอน)
+        if (onnxOverlayView.visibility == View.VISIBLE) {
+            onnxOverlayView.updateDetections(detections)
+        }
+
+        // ซ่อน Node เดิมก่อน
+        markerlessNodePool.forEach { it.isVisible = false }
+        val activeHitNodes = mutableListOf<PoseNode>()
+
+        detections.forEachIndexed { index, detection ->
+            // *แก้ BUG: แปลงพิกัดจาก YOLO (Square+Pad) -> Screen (Rect)
+            val screenPoint = mapBoundingBoxToScreen(detection, arSceneView.width, arSceneView.height)
+            
+            // ใช้ค่าที่แปลงแล้ว
+            val centerX = screenPoint.x
+            val centerY = screenPoint.y
+
+            // เตรียม Node
+            if (index >= markerlessNodePool.size) {
+                val newNode = HitResultNode(arSceneView.engine, xPx = centerX, yPx = centerY)
+                arSceneView.addChildNode(newNode)
+                markerlessNodePool.add(newNode)
+            }
+            
+            val node = markerlessNodePool[index]
+            
+            // *สำคัญ: ใช้ frame ปัจจุบัน (ที่ยังไม่ตาย) ทำ HitTest
+            val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
+            
+            if (hitResult != null) {
+                node.hitResult = hitResult
+                node.isVisible = true
+
+                // Calculate Rotation
+                val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
+                val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
+
+                if (upPosHits != null && leftPosHits != null) {
+                    val centerPos = node.worldPosition.toVector3()
+                    val upPos = upPosHits.hitPose.toVector3()
+                    val leftPos = leftPosHits.hitPose.toVector3()
+                    node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+                }
+
+                activeHitNodes.add(node)
+            }
+        }
+
+        updateModelPool(arSceneView, activeHitNodes)
+    }
+
+    private fun mapBoundingBoxToScreen(detection: OnnxRuntimeHandler.Detection, viewW: Int, viewH: Int): PointF {
+        val inputSize = YOLO_INPUT_SIZE // ต้องตรงกับใน OnnxRuntimeHandler
+
+        // 1. คำนวณ Scale ว่าภาพถูกย่อลงไปเท่าไหร่ (ยึดด้านที่ยาวที่สุดเป็นหลัก)
+        // หน้าจอ AR แนวตั้ง: ความสูงจะเป็นด้านยาว (Height > Width)
+        // ดังนั้น scale จะถูกคิดจากความสูงหน้าจอ เทียบกับ inputSize
+        val scale = inputSize / viewH.toFloat() 
+
+        // 2. คำนวณขนาดจริงของภาพเมื่ออยู่ในกล่อง 320
+        val scaledWidthInBox = viewW * scale
+        val scaledHeightInBox = viewH * scale // จะเท่ากับ 320 พอดี
+
+        // 3. คำนวณขอบดำ (Padding) ที่เกิดขึ้นในกล่อง 320
+        // ปกติภาพแนวตั้งจะมีขอบดำซ้าย-ขวา (Pillarbox)
+        val xPadding = (inputSize - scaledWidthInBox) / 2f
+        val yPadding = (inputSize - scaledHeightInBox) / 2f // ปกติจะเป็น 0 ถ้าเต็มความสูง
+
+        // 4. แปลง Normalized (0..1) กลับเป็น Pixel ในกล่อง 320 ก่อน
+        val xInBox = detection.x * inputSize
+        val yInBox = detection.y * inputSize
+
+        // 5. ลบขอบดำออก (Un-pad)
+        val xNoPad = xInBox - xPadding
+        val yNoPad = yInBox - yPadding
+
+        // 6. ขยายกลับให้เต็มหน้าจอ (Un-scale)
+        // ระวัง: ต้อง Clamp ค่าไม่ให้น้อยกว่า 0 หรือเกินหน้าจอ
+        val finalX = (xNoPad / scale).coerceIn(0f, viewW.toFloat())
+        val finalY = (yNoPad / scale).coerceIn(0f, viewH.toFloat())
+
+        return PointF(finalX, finalY)
     }
 
     private fun updateModelPool(arSceneView: ARSceneView, targets: List<PoseNode>) {
