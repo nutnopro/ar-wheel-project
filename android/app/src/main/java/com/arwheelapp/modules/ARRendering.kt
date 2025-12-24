@@ -34,11 +34,11 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private var lastInferenceTime = 0L
     private var frameIntervalNs = 33_000_000L
+    private var isInferencing = false // ป้องกันการเรียกซ้อน
 
     @Volatile
     private var pendingDetections: List<OnnxRuntimeHandler.Detection>? = null
 
-    private var isInferencing = false // ป้องกันการเรียกซ้อน
 
     fun render(session: Session, arSceneView: ARSceneView, frame: Frame, currentMode: ARActivity.ARMode) {
         // Log.d(TAG, "render: Frame update, Mode=$currentMode")
@@ -133,7 +133,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     //             val node = markerlessNodePool[index]
                 
     //             // *calculate HitTest to place on real surface
-    //             //!!!!!!!!!!1111
     //             val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
     //             if (hitResult != null) {
     //                 // Log.d(TAG, "processMarkerless: HitTest success for detection #$index")
@@ -174,12 +173,12 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         val currentTime = frame.timestamp
         // เช็คเวลา และเช็คว่ากำลังรันอยู่หรือไม่ (ป้องกันคิวเต็ม)
         if (isInferencing || currentTime - lastInferenceTime < frameIntervalNs) return
-        
+
         lastInferenceTime = currentTime
         isInferencing = true // ล็อก
 
         val start = System.nanoTime()
-        
+
         // แปลงภาพ (ระวัง: ต้องแน่ใจว่า frameConverter จัดการปิด image ภายในแล้ว)
         val tensor = frameConverter.convertFrameToTensor(frame)
 
@@ -197,6 +196,8 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private fun processPendingMarkerlessDetections(arSceneView: ARSceneView, frame: Frame) {
         // ดึงค่าจากตัวแปรกลางมาใช้ แล้วเคลียร์ทิ้ง
+        if (frame.camera.trackingState != TrackingState.TRACKING) return
+
         val detections = pendingDetections ?: return
         pendingDetections = null 
 
@@ -211,11 +212,15 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
         detections.forEachIndexed { index, detection ->
             // *แก้ BUG: แปลงพิกัดจาก YOLO (Square+Pad) -> Screen (Rect)
-            val screenPoint = mapBoundingBoxToScreen(detection, arSceneView.width, arSceneView.height)
+            val screenPoint = mapBoundingBoxToScreen(frame, detection)
             
             // ใช้ค่าที่แปลงแล้ว
             val centerX = screenPoint.x
             val centerY = screenPoint.y
+
+            if (centerX < 0 || centerX > arSceneView.width || centerY < 0 || centerY > arSceneView.height) {
+                return@forEachIndexed
+            }
 
             // เตรียม Node
             if (index >= markerlessNodePool.size) {
@@ -226,62 +231,155 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             
             val node = markerlessNodePool[index]
             
-            // *สำคัญ: ใช้ frame ปัจจุบัน (ที่ยังไม่ตาย) ทำ HitTest
-            val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
-            
-            if (hitResult != null) {
-                node.hitResult = hitResult
-                node.isVisible = true
+            try {
+                val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
+                
+                if (hitResult != null) {
+                    node.hitResult = hitResult
+                    node.isVisible = true
 
-                // Calculate Rotation
-                val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
-                val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
+                    // คำนวณ Rotation
+                    val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
+                    val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
 
-                if (upPosHits != null && leftPosHits != null) {
-                    val centerPos = node.worldPosition.toVector3()
-                    val upPos = upPosHits.hitPose.toVector3()
-                    val leftPos = leftPosHits.hitPose.toVector3()
-                    node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+                    if (upPosHits != null && leftPosHits != null) {
+                        val centerPos = node.worldPosition.toVector3()
+                        val upPos = upPosHits.hitPose.toVector3()
+                        val leftPos = leftPosHits.hitPose.toVector3()
+                        node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+                    }
+
+                    activeHitNodes.add(node)
                 }
-
-                activeHitNodes.add(node)
+            } catch (e: Exception) {
+                // Log.e(TAG, "HitTest failed: ${e.message}")
             }
-        }
 
+            // *สำคัญ: ใช้ frame ปัจจุบัน (ที่ยังไม่ตาย) ทำ HitTest
+            // val hitResult = frame.hitTest(centerX, centerY).firstOrNull()
+            
+            // if (hitResult != null) {
+            //     node.hitResult = hitResult
+            //     node.isVisible = true
+
+            //     // Calculate Rotation
+            //     val upPosHits = frame.hitTest(centerX, centerY * 0.9f).firstOrNull()
+            //     val leftPosHits = frame.hitTest(centerX * 0.9f, centerY).firstOrNull()
+
+            //     if (upPosHits != null && leftPosHits != null) {
+            //         val centerPos = node.worldPosition.toVector3()
+            //         val upPos = upPosHits.hitPose.toVector3()
+            //         val leftPos = leftPosHits.hitPose.toVector3()
+            //         node.rotation = getRotationFromThreeVector(centerPos, upPos, leftPos)
+            //     }
+
+            //     activeHitNodes.add(node)
+            // }
+        }
         updateModelPool(arSceneView, activeHitNodes)
     }
 
-    private fun mapBoundingBoxToScreen(detection: OnnxRuntimeHandler.Detection, viewW: Int, viewH: Int): PointF {
-        val inputSize = YOLO_INPUT_SIZE // ต้องตรงกับใน OnnxRuntimeHandler
+    private fun mapBoundingBoxToScreen(frame: Frame, detection: OnnxRuntimeHandler.Detection): PointF {
+        // val inputSize = YOLO_INPUT_SIZE // ต้องตรงกับใน OnnxRuntimeHandler
 
-        // 1. คำนวณ Scale ว่าภาพถูกย่อลงไปเท่าไหร่ (ยึดด้านที่ยาวที่สุดเป็นหลัก)
-        // หน้าจอ AR แนวตั้ง: ความสูงจะเป็นด้านยาว (Height > Width)
-        // ดังนั้น scale จะถูกคิดจากความสูงหน้าจอ เทียบกับ inputSize
-        val scale = inputSize / viewH.toFloat() 
+        // // 1. คำนวณ Scale ว่าภาพถูกย่อลงไปเท่าไหร่ (ยึดด้านที่ยาวที่สุดเป็นหลัก)
+        // // หน้าจอ AR แนวตั้ง: ความสูงจะเป็นด้านยาว (Height > Width)
+        // // ดังนั้น scale จะถูกคิดจากความสูงหน้าจอ เทียบกับ inputSize
+        // val scale = inputSize / viewH.toFloat() 
 
-        // 2. คำนวณขนาดจริงของภาพเมื่ออยู่ในกล่อง 320
-        val scaledWidthInBox = viewW * scale
-        val scaledHeightInBox = viewH * scale // จะเท่ากับ 320 พอดี
+        // // 2. คำนวณขนาดจริงของภาพเมื่ออยู่ในกล่อง 320
+        // val scaledWidthInBox = viewW * scale
+        // val scaledHeightInBox = viewH * scale // จะเท่ากับ 320 พอดี
 
-        // 3. คำนวณขอบดำ (Padding) ที่เกิดขึ้นในกล่อง 320
-        // ปกติภาพแนวตั้งจะมีขอบดำซ้าย-ขวา (Pillarbox)
-        val xPadding = (inputSize - scaledWidthInBox) / 2f
-        val yPadding = (inputSize - scaledHeightInBox) / 2f // ปกติจะเป็น 0 ถ้าเต็มความสูง
+        // // 3. คำนวณขอบดำ (Padding) ที่เกิดขึ้นในกล่อง 320
+        // // ปกติภาพแนวตั้งจะมีขอบดำซ้าย-ขวา (Pillarbox)
+        // val xPadding = (inputSize - scaledWidthInBox) / 2f
+        // val yPadding = (inputSize - scaledHeightInBox) / 2f // ปกติจะเป็น 0 ถ้าเต็มความสูง
+        
+        // // 4. แปลง Normalized (0..1) กลับเป็น Pixel ในกล่อง 320 ก่อน
+        // val xInBox = detection.x * inputSize
+        // val yInBox = detection.y * inputSize
+        
+        // // 5. ลบขอบดำออก (Un-pad)
+        // val xNoPad = xInBox - xPadding
+        // val yNoPad = yInBox - yPadding
+        
+        // // 6. ขยายกลับให้เต็มหน้าจอ (Un-scale)
+        // // ระวัง: ต้อง Clamp ค่าไม่ให้น้อยกว่า 0 หรือเกินหน้าจอ
+        // val finalX = (xNoPad / scale).coerceIn(0f, viewW.toFloat())
+        // val finalY = (yNoPad / scale).coerceIn(0f, viewH.toFloat())
 
-        // 4. แปลง Normalized (0..1) กลับเป็น Pixel ในกล่อง 320 ก่อน
-        val xInBox = detection.x * inputSize
-        val yInBox = detection.y * inputSize
+        // return PointF(finalX, finalY)
+        
 
-        // 5. ลบขอบดำออก (Un-pad)
-        val xNoPad = xInBox - xPadding
-        val yNoPad = yInBox - yPadding
+        // val contentWidth = YOLO_INPUT_SIZE * 0.75f // 320 * (3/4) = 240
+        // val padX = (YOLO_INPUT_SIZE - contentWidth) / 2f // (320-240)/2 = 40
+        
+        // // แปลงเป็น 0..1 เทียบกับรูปภาพ Portrait จริงๆ
+        // val normX_Portrait = (detection.x * YOLO_INPUT_SIZE - padX) / contentWidth
+        // val normY_Portrait = detection.y // ความสูงเต็มพอดี ไม่ต้องตัด Padding
+        
+        // // 2. Un-rotate: แปลงจาก Portrait (AI เห็น) กลับไปเป็น Sensor Coordinate (Landscape)
+        // // ตาม Logic ใน FrameConverter: SensorX = PortraitY, SensorY = 1 - PortraitX
+        // val sensorX = normY_Portrait
+        // val sensorY = 1.0f - normX_Portrait
 
-        // 6. ขยายกลับให้เต็มหน้าจอ (Un-scale)
-        // ระวัง: ต้อง Clamp ค่าไม่ให้น้อยกว่า 0 หรือเกินหน้าจอ
-        val finalX = (xNoPad / scale).coerceIn(0f, viewW.toFloat())
-        val finalY = (yNoPad / scale).coerceIn(0f, viewH.toFloat())
+        // // 3. Transform: ให้ ARCore แปลงจาก Sensor 0..1 ไปเป็น Screen Pixel (View)
+        // // วิธีนี้จะแก้ปัญหา ARCore Crop ภาพ (Zoom) ทำให้ตำแหน่งแม่นยำขึ้น
+        // val inputCoords = floatArrayOf(sensorX, sensorY)
+        // val outputCoords = floatArrayOf(0f, 0f)
 
-        return PointF(finalX, finalY)
+        // try {
+        //     frame.transformCoordinates2d(
+        //         Coordinates2d.IMAGE_NORMALIZED, inputCoords,
+        //         Coordinates2d.VIEW, outputCoords
+        //     )
+        // } catch (e: Exception) {
+        //     // กรณี Error ให้คืนค่าตรงกลางจอไปก่อน
+        //     return PointF(0f, 0f) 
+        // }
+        // return PointF(outputCoords[0], outputCoords[1])
+
+
+        val intrinsics = frame.camera.imageIntrinsics
+        val imageDimensions = intrinsics.imageDimensions // [Width, Height] ของภาพดิบ (Landscape)
+        
+        // คำนวณ Ratio เมื่อภาพถูกหมุนเป็น Portrait (Height / Width)
+        // เช่น 1920x1080 (16:9) -> Portrait คือ 1080/1920 = 0.5625
+        val rawW = imageDimensions[0].toFloat()
+        val rawH = imageDimensions[1].toFloat()
+
+        if (rawW == 0f || rawH == 0f) return PointF(0f, 0f)
+
+        val rotatedAspect = rawH / rawW 
+
+        // 2. คำนวณ Un-letterbox ด้วย Ratio จริง
+        val contentWidth = YOLO_INPUT_SIZE * rotatedAspect
+        val padX = (YOLO_INPUT_SIZE - contentWidth) / 2f
+        
+        // แปลงเป็น 0..1 เทียบกับรูปภาพ Portrait
+        val normX_Portrait = (detection.x * YOLO_INPUT_SIZE - padX) / contentWidth
+        val normY_Portrait = detection.y 
+        
+        // 3. Un-rotate: แปลงกลับเป็น Sensor Coordinate (Landscape) เพื่อส่งให้ ARCore
+        val sensorX = normY_Portrait
+        val sensorY = 1.0f - normX_Portrait
+
+        // 4. Transform: ให้ ARCore แปลงจาก Sensor -> Screen Pixel (View)
+        // ฟังก์ชันนี้จะจัดการเรื่อง Zoom/Crop ของหน้าจอให้เอง
+        val inputCoords = floatArrayOf(sensorX, sensorY)
+        val outputCoords = floatArrayOf(0f, 0f)
+
+        try {
+            frame.transformCoordinates2d(
+                Coordinates2d.IMAGE_NORMALIZED, inputCoords,
+                Coordinates2d.VIEW, outputCoords
+            )
+        } catch (e: Exception) {
+            return PointF(0f, 0f) 
+        }
+
+        return PointF(outputCoords[0], outputCoords[1])
     }
 
     private fun updateModelPool(arSceneView: ARSceneView, targets: List<PoseNode>) {
