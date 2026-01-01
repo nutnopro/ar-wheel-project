@@ -1,32 +1,3 @@
-// App.tsx
-// import React from 'react';
-// import { StatusBar } from 'react-native';
-// import { SafeAreaProvider } from 'react-native-safe-area-context';
-// import { NavigationContainer } from '@react-navigation/native';
-// import { ThemeProvider } from './src/contexts/ThemeContext';
-// import { AuthProvider } from './src/contexts/AuthContext';
-// import AppNavigator from './src/navigation/AppNavigator';
-
-// export default function App() {
-//   return (
-//     <SafeAreaProvider>
-//       <ThemeProvider>
-//         <AuthProvider>
-//           <NavigationContainer>
-//             <StatusBar barStyle="light-content" />
-//             <AppNavigator />
-//           </NavigationContainer>
-//         </AuthProvider>
-//       </ThemeProvider>
-//     </SafeAreaProvider>
-//   );
-// }
-
-
-
-
-
-
 import React, { useCallback } from 'react';
 import {
   StatusBar,
