@@ -141,7 +141,7 @@ class ARActivity : ComponentActivity() {
     }
 
     private fun startARLoop() {
-        arSceneView.onFrame = { _ ->
+        arSceneView.onFrame = onFrame@{ _ ->
             val frame = arSceneView.frame ?: return@onFrame
 
             arRendering.render(arSceneView, frame, currentMode)

@@ -6,7 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.util.Log
 import android.view.View
-import com.arwheelapp.utils.OnnxRuntimeHandler.Detection
+import com.arwheelapp.processor.OnnxRuntimeHandler.Detection
 
 class OnnxOverlayView(context: Context) : View(context) {
     private val TAG = "OnnxOverlayView: "

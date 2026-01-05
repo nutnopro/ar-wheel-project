@@ -61,6 +61,18 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         setupBackButton()
     }
 
+    private fun toggleMode() {
+        currentMode = if (currentMode == ARMode.MARKERLESS) {
+            ARMode.MARKER_BASED
+        } else {
+            ARMode.MARKERLESS
+        }
+
+        updateToggleUI()
+
+        onModeSelected?.invoke(currentMode)
+    }
+
 	private fun updateToggleUI() {
         val modeText = if (currentMode == ARMode.MARKERLESS) "Mode: Markerless" else "Mode: Marker-based"
         

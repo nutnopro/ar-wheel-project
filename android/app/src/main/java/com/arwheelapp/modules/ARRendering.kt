@@ -98,7 +98,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         }
                     }
 
-                    if (imageNode.children.isEmpty()) {
+                    if (imageNode.childNodes.isEmpty()) {
                         val model = getOrCreateModel(arSceneView)
                         
                         imageNode.addChildNode(model)
@@ -197,7 +197,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         if (existingWheel != null) {
             val model = existingWheel.modelNode
             
-            model.position = lerp(model.position, position, 0.2f)
+            model.position = mix(model.position, position, 0.2f)
             model.quaternion = slerp(model.quaternion, rotation, 0.2f)
             // model.rotation = rotation
 
@@ -216,7 +216,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
-    private fun calculateAveragedPose(poses: List<Pose>): Pair<Float3, Float3> {
+    private fun calculateAveragedPose(poses: List<Pose>): Pair<Float3, Quaternion> {
         var sumX = 0f;
         var sumY = 0f;
         var sumZ = 0f
@@ -316,7 +316,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         augmentedImageMap.values.forEach { it?.destroy() }
         augmentedImageMap.clear()
 
-        activeMarkerlessWheels.forEach { it?.destroy() }
         activeMarkerlessWheels.clear()
     }
 }
