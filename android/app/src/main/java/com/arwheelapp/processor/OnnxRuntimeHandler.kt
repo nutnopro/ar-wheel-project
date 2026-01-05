@@ -15,7 +15,7 @@ class OnnxRuntimeHandler(private val context: Context) {
     private val MODEL_PATH = "ai/yolov11n.onnx"
     private val INPUT_SIZE = 320
     private val CONFIDENCE_THRESHOLD = 0.5f
-    private val IOU_THRESHOLD
+    private val IOU_THRESHOLD = 0.4f
 
     data class Detection(
         val boundingBox: RectF,

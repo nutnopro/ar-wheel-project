@@ -23,21 +23,15 @@ class OnnxOverlayView(context: Context) : View(context) {
 
     private val textPaint = Paint().apply {
         color = Color.BLUE
-        textSize = 32f
+        textSize = 40f
         style = Paint.Style.FILL
+        isAntiAlias = true
     }
 
     fun updateDetections(newDetections: List<Detection>) {
-        // if (newDetections.isNotEmpty()) {
-        //     Log.d(TAG, "updateDetections: Received ${newDetections.size} detections. Requesting redraw.")
-        // } else {
-        //     Log.d(TAG, "updateDetections: Received empty list. Clearing overlay.")
-        // }
-
         detections.clear()
         detections.addAll(newDetections)
-
-        // use postInvalidate for thread safety
+        
         postInvalidate()
     }
 
@@ -49,27 +43,23 @@ class OnnxOverlayView(context: Context) : View(context) {
         val viewW = width.toFloat()
         val viewH = height.toFloat()
 
-        // Log.d(TAG, "onDraw: Drawing ${detections.size} boxes on canvas ($viewW x $viewH)")
+        detections.forEach { det ->
+            if (det.confidence < CONFIDENCE_THRESHOLD) return@forEach
+            val bbox = det.boundingBox
 
-        detections.forEachIndexed { index, det ->
-            if (det.confidence < CONFIDENCE_THRESHOLD) return@forEachIndexed
-
-            // Convert Normalized coordinates (0..1) back to actual Pixels
-            val centerX = det.x * viewW
-            val centerY = det.y * viewH
-            val boxWidth = det.w * viewW
-            val boxHeight = det.h * viewH
-
-            val left = centerX - boxWidth / 2
-            val top = centerY - boxHeight / 2
-            val right = centerX + boxWidth / 2
-            val bottom = centerY + boxHeight / 2
-
-            val label = "$className ${"%.2f".format(det.confidence)}"
+            val left = bbox.left * viewW
+            val top = bbox.top * viewH
+            val right = bbox.right * viewW
+            val bottom = bbox.bottom * viewH
 
             canvas.drawRect(left, top, right, bottom, boxPaint)
-            canvas.drawText(label, left, maxOf(top - 8f, 32f), textPaint)
-            // Log.d(TAG, "onDraw: Box #$index -> [L:$left, T:$top, R:$right, B:$bottom]")
+
+            val label = "$className ${(det.confidence * 100).toInt()}%"
+            
+            val textX = left
+            val textY = if (top - 10f < 40f) top + 40f else top - 10f
+
+            canvas.drawText(label, textX, textY, textPaint)
         }
     }
 }
