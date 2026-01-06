@@ -89,7 +89,13 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
         val updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
 
+        val visibleCount = updatedAugmentedImages.count { image ->
+            image.trackingState == TrackingState.TRACKING
+        }
+        Log.d(TAG, "Frame นี้เจอ Marker จำนวน: $visibleCount ใบ")
+
         for (image in updatedAugmentedImages) {
+            Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState}")
             when (image.trackingState) {
                 TrackingState.TRACKING -> {
                     val imageNode = augmentedImageMap.getOrPut(image) {
@@ -98,29 +104,35 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         }
                     }
 
-                    if (imageNode.childNodes.isEmpty()) {
+                    val hasModel = imageNode.childNodes.any { it is ModelNode }
+
+                    if (!hasModel) {
                         val model = getOrCreateModel(arSceneView)
-                        
-                        imageNode.addChildNode(model)
-                        model.isVisible = true 
-                        
+
                         model.position = Float3(0f, 0f, 0f)
                         model.rotation = Float3(0f, 0f, 0f)
+                        model.isVisible = true 
+
+                        imageNode.addChildNode(model)
+                        Log.d(TAG, "Attached model to Marker ID: ${image.index}")
                     }
                 }
                 TrackingState.STOPPED -> {
                     val node = augmentedImageMap.remove(image)
-                    node?.let {
-                        it.childNodes.forEach { child -> 
-                            if (child is ModelNode) {
-                                child.parent = null
-                                child.isVisible = false
-                            }
+                    node?.let { imgNode ->
+                        imgNode.childNodes.filterIsInstance<ModelNode>().forEach { model ->
+                            model.parent = null
+                            model.isVisible = false
                         }
-                        it.destroy()
                     }
+
+                    arSceneView.removeChildNode(imgNode)
+                    imgNode.destroy()
                 }
-                else -> { /* Do nothing for PAUSED state */}
+                TrackingState.STOPPED -> {
+                    val node = augmentedImageMap[image]
+                    node?.childNodes?.forEach { it.isVisible = false }
+                }
             }
         }
     }
@@ -149,7 +161,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         val currentTime = SystemClock.uptimeMillis()
         if (currentTime - lastHitTestTime < HITTEST_INTERVAL_MS) return
         lastHitTestTime = currentTime
-        
+
         val detections = latestDetections
         if (detections.isEmpty()) return
 
@@ -166,7 +178,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
             val radiusX = (bbox.width() * arSceneView.width * DONUT_RADIUS_FACTOR) / 2
             val radiusY = (bbox.height() * arSceneView.height * DONUT_RADIUS_FACTOR) / 2
-            
+
             val validPoses = mutableListOf<Pose>()
             validPoses.add(centerPose)
 
@@ -174,7 +186,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 val angle = (2 * Math.PI * i) / DONUT_POINTS
                 val dx = (cos(angle) * radiusX).toFloat()
                 val dy = (sin(angle) * radiusY).toFloat()
-                
+
                 val donutHits = frame.hitTest(centerX + dx, centerY + dy)
                 val hit = donutHits.firstOrNull { it.trackable is Plane }
                 hit?.let { validPoses.add(it.hitPose) }
@@ -196,7 +208,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
         if (existingWheel != null) {
             val model = existingWheel.modelNode
-            
+
             model.position = mix(model.position, position, 0.2f)
             model.quaternion = slerp(model.quaternion, rotation, 0.2f)
             // model.rotation = rotation
@@ -206,11 +218,11 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
         } else {
             val model = getOrCreateModel(arSceneView)
-            
+
             model.position = position
             model.quaternion = rotation
             model.isVisible = true
-            
+
             arSceneView.addChildNode(model) 
             activeMarkerlessWheels.add(MarkerlessWheel(modelNode = model))
         }
@@ -274,7 +286,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private fun getOrCreateModel(arSceneView: ARSceneView): ModelNode {
         val freeModel = modelPool.find { it.parent == null }
-        
+
         return if (freeModel != null) {
             freeModel
         } else {
