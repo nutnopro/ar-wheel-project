@@ -1,8 +1,6 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.graphics.PointF
-import android.graphics.RectF
 import android.util.Log
 import android.view.View
 import android.os.SystemClock
@@ -10,9 +8,6 @@ import com.google.ar.core.*
 import dev.romainguy.kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
-import io.github.sceneview.ar.node.HitResultNode
-import io.github.sceneview.ar.node.PoseNode
-import io.github.sceneview.collision.Vector3
 import io.github.sceneview.node.ModelNode
 import kotlin.math.*
 import java.util.*
@@ -34,6 +29,8 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val DONUT_POINTS = 8
     private val DONUT_RADIUS_FACTOR = 0.6f
     private val MIN_DISTANCE_THRESHOLD = 0.5f
+
+    private val SNAP_DISTANCE_THRESHOLD = 0.4f
 
     private var previousMode: ARMode? = null
     private var lastInferenceTime = 0L
@@ -94,6 +91,8 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
         Log.d(TAG, "Frame นี้เจอ Marker จำนวน: $visibleCount ใบ")
 
+        val claimedModels = mutableSetOf<ModelNode>()
+
         for (image in updatedAugmentedImages) {
             Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState}")
             when (image.trackingState) {
@@ -116,6 +115,66 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         imageNode.addChildNode(model)
                         Log.d(TAG, "Attached model to Marker ID: ${image.index}")
                     }
+
+
+
+
+
+                    val markerPose = image.centerPose
+                    val markerPos = Float3(markerPose.tx(), markerPose.ty(), markerPose.tz())
+                    val markerRot = Quaternion(markerPose.qx(), markerPose.qy(), markerPose.qz(), markerPose.qw())
+
+                    // --- ขั้นตอนการจับคู่ (Matching) ---
+                    
+                    // หาโมเดลที่:
+                    // 1. ยังไม่ถูกใครจองในเฟรมนี้ ( !claimedModels.contains )
+                    // 2. อยู่ใกล้ Marker นี้ที่สุด
+                    val closestWheel = activeVirtualWheels
+                        .filter { !claimedModels.contains(it.modelNode) }
+                        .minByOrNull { wheel ->
+                            distance(wheel.modelNode.position, markerPos)
+                        }
+
+                    val dist = if (closestWheel != null) distance(closestWheel.modelNode.position, markerPos) else Float.MAX_VALUE
+
+                    if (closestWheel != null && dist < SNAP_DISTANCE_THRESHOLD) {
+                        // CASE A: เจอคู่เก่า (โมเดลเดิมที่อยู่ใกล้ๆ) -> ดึงมาอัปเดต
+                        val model = closestWheel.modelNode
+                        
+                        // ขยับตำแหน่ง (Lerp ให้ดูนุ่มนวล)
+                        model.position = mix(model.position, markerPos, 0.4f) // เพิ่มความไวเป็น 0.4 ให้ทันมือ
+                        model.quaternion = slerp(model.quaternion, markerRot, 0.4f)
+                        
+                        model.isVisible = true
+                        closestWheel.lastUpdated = SystemClock.uptimeMillis()
+                        
+                        // จอง! ห้าม Marker อื่นมาแย่งตัวนี้ไปใช้ในรอบนี้
+                        claimedModels.add(model)
+                        
+                    } else {
+                        // CASE B: ไม่เจอคู่ หรืออยู่ไกลเกินไป -> สร้างใหม่
+                        val newModel = getOrCreateModel(arSceneView)
+                        
+                        // ต้องแน่ใจว่า add เข้า scene โดยตรง (ไม่ผ่าน ImageNode)
+                        if (newModel.parent != arSceneView) {
+                            newModel.parent = arSceneView
+                        }
+
+                        newModel.position = markerPos
+                        newModel.quaternion = markerRot
+                        newModel.isVisible = true
+                        
+                        val newWheel = MarkerlessWheel(newModel, SystemClock.uptimeMillis())
+                        activeVirtualWheels.add(newWheel)
+                        
+                        // จองตัวใหม่นี้ไว้เลย
+                        claimedModels.add(newModel)
+                    }
+
+
+
+
+
                 }
                 TrackingState.STOPPED -> {
                     val node = augmentedImageMap.remove(image)
@@ -135,6 +194,25 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 }
             }
         }
+        
+
+
+
+
+        activeVirtualWheels.forEach { wheel ->
+            if (!claimedModels.contains(wheel.modelNode)) {
+                // ซ่อนโมเดลที่ไม่มีเจ้าของ (Marker หาย/หลุดเฟรม)
+                wheel.modelNode.isVisible = false
+                
+                // Optional: ถ้าอยาก destroy ทิ้งเลยเมื่อไม่ใช้นานๆ
+                // if (SystemClock.uptimeMillis() - wheel.lastUpdated > 5000) { ... }
+            }
+        }
+
+
+
+
+
     }
 
     // *Run Inference @ 15 FPS
@@ -318,7 +396,17 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     }
 
     private fun distance(p1: Float3, p2: Float3): Float {
-        return sqrt((p1.x - p2.x).pow(2) + (p1.y - p2.y).pow(2) + (p1.z - p2.z).pow(2))
+        val dx = p1.x - p2.x
+        val dy = p1.y - p2.y
+        val dz = p1.z - p2.z
+        return sqrt(dx * dx + dy * dy + dz * dz)
+    }
+
+    private fun distance(pose1: Pose, pose2: Pose): Float {
+        val dx = pose1.tx() - pose2.tx()
+        val dy = pose1.ty() - pose2.ty()
+        val dz = pose1.tz() - pose2.tz()
+        return sqrt(dx * dx + dy * dy + dz * dz)
     }
 
     fun clear() {
