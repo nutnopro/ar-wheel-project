@@ -12,15 +12,10 @@ import ai.onnxruntime.*
 
 class OnnxRuntimeHandler(private val context: Context) {
     private val TAG = "OnnxRuntimeHandler: "
-    private val MODEL_PATH = "ai/yolov11n.onnx"
+    private val MODEL_PATH = "yolov11n.onnx"
     private val INPUT_SIZE = 320
-    private val CONFIDENCE_THRESHOLD = 0.5f
+    private val CONFIDENCE_THRESHOLD = 0.8f
     private val IOU_THRESHOLD = 0.4f
-
-    data class Detection(
-        val boundingBox: RectF,
-        val confidence: Float
-    )
 
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession by lazy { createSession() }
@@ -29,17 +24,22 @@ class OnnxRuntimeHandler(private val context: Context) {
     // *Load model .onnx from assets
     private fun createSession(): OrtSession {
         val modelFile = File(context.filesDir, "yolov11n.onnx")
+        val options = OrtSession.SessionOptions().apply {
+            setIntraOpNumThreads(2)
+            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+        }
+        try {
+            options.addNnapi()
+        } catch (e: Exception) {
+            Log.w(TAG, "NNAPI failed, falling back to CPU", e)
+        }
+
         if (!modelFile.exists()) {
             context.assets.open(MODEL_PATH).use { input ->
                 FileOutputStream(modelFile).use { output ->
                     input.copyTo(output)
                 }
             }
-        }
-
-        val options = OrtSession.SessionOptions().apply {
-            setIntraOpNumThreads(2)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
 
         return env.createSession(modelFile.absolutePath, options)
@@ -79,23 +79,28 @@ class OnnxRuntimeHandler(private val context: Context) {
 
     // *Parse output array to Detection list
     private fun parseOutput(output: Array<*>): List<Detection> {
+    // output จาก ONNX Runtime Java บางทีเป็น float[][][] (3D Array)
+        // Shape: [Batch][Channel][Anchor] -> [1][5][2100]
+        val rawData = output as Array<Array<FloatArray>> 
+        val outputData = rawData[0] // ตัด Batch dimension ออก เหลือ [5][2100]
+
         val detections = mutableListOf<Detection>()
-        if (output.isEmpty()) return detections
+        val numAnchors = outputData[0].size // 2100
 
-        // *YOLO Shape: [1, 5, 8400] (Batch, [cx,cy,w,h,conf], Anchors)
-        val arr = output as Array<Array<FloatArray>>
-        val batch0 = arr[0]
-
-        val numAnchors = batch0[0].size
+        // Optimization: ดึง Array ออกมาก่อน จะได้ไม่ต้อง lookup array 2 ชั้นใน loop
+        val xArr = outputData[0]
+        val yArr = outputData[1]
+        val wArr = outputData[2]
+        val hArr = outputData[3]
+        val confArr = outputData[4]
 
         for (i in 0 until numAnchors) {
-            val confidence = batch0[4][i]
-
+            val confidence = confArr[i]
             if (confidence > CONFIDENCE_THRESHOLD) {
-                val cx = batch0[0][i]
-                val cy = batch0[1][i]
-                val w = batch0[2][i]
-                val h = batch0[3][i]
+                val cx = xArr[i]
+                val cy = yArr[i]
+                val w = wArr[i]
+                val h = hArr[i]
 
                 //* Convert BBox to RectF
                 val left = (cx - w / 2) / INPUT_SIZE

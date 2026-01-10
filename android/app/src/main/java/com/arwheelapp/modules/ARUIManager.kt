@@ -10,7 +10,7 @@ import android.widget.LinearLayout
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Button
-import com.arwheelapp.utils.ARMode
+import com.arwheelapp.utils.ArTypes.ARMode
 
 class ARUIManager(private val context: Context, private val rootLayout: FrameLayout, private val overlayView: View) {
     var onModeSelected: ((ARMode) -> Unit)? = null

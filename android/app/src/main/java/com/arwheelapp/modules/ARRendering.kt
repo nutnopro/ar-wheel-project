@@ -13,10 +13,11 @@ import kotlin.math.*
 import java.util.*
 import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.processor.OnnxRuntimeHandler
-import com.arwheelapp.utils.ARMode
+import com.arwheelapp.utils.ArTypes.ARMode
+import com.arwheelapp.utils.ArTypes.Detection
 
-class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView) {
-    private val modelManager = ModelManager()
+class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView, private val arSceneView: ARSceneView) {
+    private val modelManager = ModelManager(arSceneView)
     private val frameConverter = FrameConverter()
     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
@@ -46,7 +47,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     )
 
     @Volatile
-    private var latestDetections: List<OnnxRuntimeHandler.Detection> = emptyList()
+    private var latestDetections: List<Detection> = emptyList()
 
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
         if (previousMode != currentMode) {
@@ -368,7 +369,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return if (freeModel != null) {
             freeModel
         } else {
-            var newModel = modelManager.createModelNode(arSceneView, MODEL_PATH)
+            var newModel = modelManager.createModelNode(MODEL_PATH)
 
             modelPool.add(newModel)
             newModel
