@@ -13,7 +13,7 @@ class OnnxOverlayView(context: Context) : View(context) {
     private val className = "wheel"
 
     private val detections: MutableList<Detection> = mutableListOf()
-    private val CONFIDENCE_THRESHOLD: Float = 0.5f
+    private val CONFIDENCE_THRESHOLD: Float = 0.8f
 
     private val boxPaint = Paint().apply {
         color = Color.CYAN
@@ -43,14 +43,18 @@ class OnnxOverlayView(context: Context) : View(context) {
         val viewW = width.toFloat()
         val viewH = height.toFloat()
 
+        val imageSize = minOf(viewW, viewH) 
+        val offsetX = (viewW - imageSize) / 2
+        val offsetY = (viewH - imageSize) / 2
+
         detections.forEach { det ->
             if (det.confidence < CONFIDENCE_THRESHOLD) return@forEach
             val bbox = det.boundingBox
 
-            val left = bbox.left * viewW
-            val top = bbox.top * viewH
-            val right = bbox.right * viewW
-            val bottom = bbox.bottom * viewH
+            val left = (bbox.left * imageSize) + offsetX
+            val top = (bbox.top * imageSize) + offsetY
+            val right = (bbox.right * imageSize) + offsetX
+            val bottom = (bbox.bottom * imageSize) + offsetY
 
             canvas.drawRect(left, top, right, bottom, boxPaint)
 

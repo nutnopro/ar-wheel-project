@@ -22,8 +22,10 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
     private val TAG = "ARRendering: "
-	private val MARKER_DB_NAME = "markers/marker.jpg"
+
+    // !! Change to ui later.
 	private val MODEL_PATH = "models/wheel.glb"
+    private val scaleFactor = 1f
 
     private val INFERENCE_INTERVAL_MS = 1000L / 15L // *~15 FPS
     private val HITTEST_INTERVAL_MS = 1000L / 20L   // *~20 FPS
@@ -39,7 +41,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private val modelPool = mutableListOf<ModelNode>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
-    private val activeMarkerlessWheels = mutableListOf<MarkerlessWheel>()
+    private val markerlessActiveModels = mutableListOf<MarkerlessWheel>()
 
     data class MarkerlessWheel(
         var modelNode: ModelNode,
@@ -51,7 +53,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
         if (previousMode != currentMode) {
-            handleModeSwitch(currentMode)
+            handleModeSwitch()
             previousMode = currentMode
         }
 
@@ -66,21 +68,19 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
-    private fun handleModeSwitch(newMode: ARMode) {
-        Log.d(TAG, "Switching to mode: $newMode")
-
+    private fun handleModeSwitch() {
         modelPool.forEach { model ->
             model.parent = null
             model.isVisible = false
         }
         
         if (previousMode == ARMode.MARKER_BASED) {
-            augmentedImageMap.values.forEach { it.destroy() }
+            augmentedImageMap.values.forEach { it?.destroy() }
             augmentedImageMap.clear()
         }
 
         if (previousMode == ARMode.MARKERLESS) {
-            activeMarkerlessWheels.clear()
+            markerlessActiveModels.clear()
         }
     }
 
@@ -92,128 +92,42 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
         Log.d(TAG, "Frame นี้เจอ Marker จำนวน: $visibleCount ใบ")
 
-        val claimedModels = mutableSetOf<ModelNode>()
-
         for (image in updatedAugmentedImages) {
             Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState}")
             when (image.trackingState) {
                 TrackingState.TRACKING -> {
-                    val imageNode = augmentedImageMap.getOrPut(image) {
-                        AugmentedImageNode(arSceneView.engine, image).apply {
-                            arSceneView.addChildNode(this)
-                        }
-                    }
+                    if (augmentedImageMap.containsKey(image)) {
+                        augmentedImageMap[image]?.isVisible = true
+                    } else {
+                        Log.d(TAG, "Found new marker: ${image.name}")
 
-                    val hasModel = imageNode.childNodes.any { it is ModelNode }
+                        val imageNode = AugmentedImageNode(arSceneView.engine, image)
 
-                    if (!hasModel) {
-                        val model = getOrCreateModel(arSceneView)
-
-                        model.position = Float3(0f, 0f, 0f)
-                        model.rotation = Float3(0f, 0f, 0f)
+                        val model = getOrCreateModel(MODEL_PATH)
+                        model.scale = Float3(scaleFactor, scaleFactor, scaleFactor) 
                         model.isVisible = true 
 
                         imageNode.addChildNode(model)
+                        arSceneView.addChildNode(imageNode)
+
+                        augmentedImageMap[image] = imageNode
                         Log.d(TAG, "Attached model to Marker ID: ${image.index}")
                     }
-
-
-
-
-
-                    val markerPose = image.centerPose
-                    val markerPos = Float3(markerPose.tx(), markerPose.ty(), markerPose.tz())
-                    val markerRot = Quaternion(markerPose.qx(), markerPose.qy(), markerPose.qz(), markerPose.qw())
-
-                    // --- ขั้นตอนการจับคู่ (Matching) ---
-                    
-                    // หาโมเดลที่:
-                    // 1. ยังไม่ถูกใครจองในเฟรมนี้ ( !claimedModels.contains )
-                    // 2. อยู่ใกล้ Marker นี้ที่สุด
-                    val closestWheel = activeVirtualWheels
-                        .filter { !claimedModels.contains(it.modelNode) }
-                        .minByOrNull { wheel ->
-                            distance(wheel.modelNode.position, markerPos)
-                        }
-
-                    val dist = if (closestWheel != null) distance(closestWheel.modelNode.position, markerPos) else Float.MAX_VALUE
-
-                    if (closestWheel != null && dist < SNAP_DISTANCE_THRESHOLD) {
-                        // CASE A: เจอคู่เก่า (โมเดลเดิมที่อยู่ใกล้ๆ) -> ดึงมาอัปเดต
-                        val model = closestWheel.modelNode
-                        
-                        // ขยับตำแหน่ง (Lerp ให้ดูนุ่มนวล)
-                        model.position = mix(model.position, markerPos, 0.4f) // เพิ่มความไวเป็น 0.4 ให้ทันมือ
-                        model.quaternion = slerp(model.quaternion, markerRot, 0.4f)
-                        
-                        model.isVisible = true
-                        closestWheel.lastUpdated = SystemClock.uptimeMillis()
-                        
-                        // จอง! ห้าม Marker อื่นมาแย่งตัวนี้ไปใช้ในรอบนี้
-                        claimedModels.add(model)
-                        
-                    } else {
-                        // CASE B: ไม่เจอคู่ หรืออยู่ไกลเกินไป -> สร้างใหม่
-                        val newModel = getOrCreateModel(arSceneView)
-                        
-                        // ต้องแน่ใจว่า add เข้า scene โดยตรง (ไม่ผ่าน ImageNode)
-                        if (newModel.parent != arSceneView) {
-                            newModel.parent = arSceneView
-                        }
-
-                        newModel.position = markerPos
-                        newModel.quaternion = markerRot
-                        newModel.isVisible = true
-                        
-                        val newWheel = MarkerlessWheel(newModel, SystemClock.uptimeMillis())
-                        activeVirtualWheels.add(newWheel)
-                        
-                        // จองตัวใหม่นี้ไว้เลย
-                        claimedModels.add(newModel)
-                    }
-
-
-
-
-
-                }
-                TrackingState.STOPPED -> {
-                    val node = augmentedImageMap.remove(image)
-                    node?.let { imgNode ->
-                        imgNode.childNodes.filterIsInstance<ModelNode>().forEach { model ->
-                            model.parent = null
-                            model.isVisible = false
-                        }
-                    }
-
-                    arSceneView.removeChildNode(imgNode)
-                    imgNode.destroy()
                 }
                 TrackingState.STOPPED -> {
                     val node = augmentedImageMap[image]
-                    node?.childNodes?.forEach { it.isVisible = false }
+                    if (node != null) {
+                        arSceneView.removeChildNode(node)
+                        node.destroy()
+                        augmentedImageMap.remove(image)
+                    }
+                }
+                TrackingState.PAUSED -> {
+                    val node = augmentedImageMap[image]
+                    node?.isVisible = false
                 }
             }
         }
-        
-
-
-
-
-        activeVirtualWheels.forEach { wheel ->
-            if (!claimedModels.contains(wheel.modelNode)) {
-                // ซ่อนโมเดลที่ไม่มีเจ้าของ (Marker หาย/หลุดเฟรม)
-                wheel.modelNode.isVisible = false
-                
-                // Optional: ถ้าอยาก destroy ทิ้งเลยเมื่อไม่ใช้นานๆ
-                // if (SystemClock.uptimeMillis() - wheel.lastUpdated > 5000) { ... }
-            }
-        }
-
-
-
-
-
     }
 
     // *Run Inference @ 15 FPS
@@ -280,7 +194,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     }
 
     private fun updateOrCreateModel(arSceneView: ARSceneView, position: Float3, rotation: Quaternion) {
-        val existingWheel = activeMarkerlessWheels.find { wheel ->
+        val existingWheel = markerlessActiveModels.find { wheel ->
             val dist = distance(wheel.modelNode.position, position)
             dist < MIN_DISTANCE_THRESHOLD
         }
@@ -296,14 +210,14 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             existingWheel.lastUpdated = SystemClock.uptimeMillis()
 
         } else {
-            val model = getOrCreateModel(arSceneView)
+            val model = getOrCreateModel(MODEL_PATH)
 
             model.position = position
             model.quaternion = rotation
             model.isVisible = true
 
             arSceneView.addChildNode(model) 
-            activeMarkerlessWheels.add(MarkerlessWheel(modelNode = model))
+            markerlessActiveModels.add(MarkerlessWheel(modelNode = model))
         }
     }
 
@@ -349,7 +263,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             finalSumY += it.ty()
             finalSumZ += it.tz()
         }
-        
+
         val avgPos = Float3(
             finalSumX / finalPoses.size,
             finalSumY / finalPoses.size,
@@ -363,36 +277,16 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return Pair(avgPos, targetRot)
     }
 
-    private fun getOrCreateModel(arSceneView: ARSceneView): ModelNode {
+    private fun getOrCreateModel(path: String): ModelNode {
         val freeModel = modelPool.find { it.parent == null }
 
         return if (freeModel != null) {
             freeModel
         } else {
-            var newModel = modelManager.createModelNode(MODEL_PATH)
+            var newModel = modelManager.createModelNode(path)
 
             modelPool.add(newModel)
             newModel
-        }
-    }
-
-    fun setupMarkerDatabase(session: Session) {
-        try {
-            val augmentedImageDatabase = AugmentedImageDatabase(session)
-
-            val inputStream = context.assets.open(MARKER_DB_NAME)
-            val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-
-            augmentedImageDatabase.addImage("marker", bitmap, 0.15f)
-
-            val config = session.config.apply {
-                this.augmentedImageDatabase = augmentedImageDatabase
-                updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                focusMode = Config.FocusMode.AUTO
-            }
-            session.configure(config)
-        } catch (e: Exception) {
-            Log.e(TAG, "setupMarkerDatabase: Error", e)
         }
     }
 
@@ -417,6 +311,36 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         augmentedImageMap.values.forEach { it?.destroy() }
         augmentedImageMap.clear()
 
-        activeMarkerlessWheels.clear()
+        markerlessActiveModels.clear()
+    }
+
+    fun setupMarkerDatabase(session: Session) {
+        try {
+            val augmentedImageDatabase = AugmentedImageDatabase(session)
+            val assetManager = context.assets
+            val markerFolder = "markers"
+            val fileNames = assetManager.list(markerFolder) ?: emptyArray()
+            
+            for (filename in fileNames) {
+            if (filename.lowercase().endsWith(".jpg") || filename.lowercase().endsWith(".png")) {
+                assetManager.open("$markerFolder/$filename").use { inputStream ->
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    val markerName = filename.substringBeforeLast(".")
+                    
+                    augmentedImageDatabase.addImage(markerName, bitmap, 0.15f)
+                    Log.d(TAG, "Loaded Marker: $markerName ✅")
+                }
+            }
+        }
+        
+        val config = session.config.apply {
+            this.augmentedImageDatabase = augmentedImageDatabase
+            updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+            focusMode = Config.FocusMode.AUTO
+        }
+        session.configure(config)
+        } catch (e: Exception) {
+            Log.e(TAG, "setupMarkerDatabase: Error", e)
+        }
     }
 }
