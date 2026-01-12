@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import android.view.View
 import android.os.SystemClock
+import android.graphics.PointF
+import android.graphics.BitmapFactory
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
@@ -26,14 +28,13 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     // !! Change to ui later.
 	private val MODEL_PATH = "models/wheel.glb"
     private val scaleFactor = 1f
+    private val diameterFactor = 1f
 
     private val INFERENCE_INTERVAL_MS = 1000L / 15L // *~15 FPS
     private val HITTEST_INTERVAL_MS = 1000L / 20L   // *~20 FPS
     private val DONUT_POINTS = 8
     private val DONUT_RADIUS_FACTOR = 0.6f
-    private val MIN_DISTANCE_THRESHOLD = 0.5f
-
-    private val SNAP_DISTANCE_THRESHOLD = 0.4f
+    private val SNAP_THRESHOLD = 0.5f
 
     private var previousMode: ARMode? = null
     private var lastInferenceTime = 0L
@@ -41,12 +42,12 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private val modelPool = mutableListOf<ModelNode>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
-    private val markerlessActiveModels = mutableListOf<MarkerlessWheel>()
+    private val markerlessActiveModels = mutableListOf<ModelNode>()
 
-    data class MarkerlessWheel(
-        var modelNode: ModelNode,
-        var lastUpdated: Long = 0L
-    )
+    // data class MarkerlessWheel(
+    //     var modelNode: ModelNode,
+    //     var lastUpdated: Long = 0L
+    // )
 
     @Volatile
     private var latestDetections: List<Detection> = emptyList()
@@ -73,7 +74,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             model.parent = null
             model.isVisible = false
         }
-        
+
         if (previousMode == ARMode.MARKER_BASED) {
             augmentedImageMap.values.forEach { it?.destroy() }
             augmentedImageMap.clear()
@@ -149,6 +150,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
+    // !Maybe use opencv to find circle or ellipse and cernter point
     // *Hit Test & Update Models @ 20 FPS
     private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
         val currentTime = SystemClock.uptimeMillis()
@@ -156,126 +158,215 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         lastHitTestTime = currentTime
 
         val detections = latestDetections
-        if (detections.isEmpty()) return
+        if (detections.isEmpty()) {
+            markerlessActiveModels.forEach { it.isVisible = false }
+            return
+        }
+
+        val claimedModels = mutableSetOf<ModelNode>()
+
+        val viewW = arSceneView.width
+        val viewH = arSceneView.height
 
         for (det in detections) {
             val bbox = det.boundingBox
 
-            val centerX = bbox.centerX() * arSceneView.width
-            val centerY = bbox.centerY() * arSceneView.height
+            val cx = bbox.centerX() * viewW
+            val cy = bbox.centerY() * viewH
+            val w = bbox.width() * viewW
+            val h = bbox.height() * viewH
 
-            val centerHits = frame.hitTest(centerX, centerY)
-            val centerPose = centerHits.firstOrNull { 
-                it.trackable is Plane || it.trackable is Point 
-            }?.hitPose ?: continue
+            val testPoints = mutableListOf<PointF>()
+            testPoints.add(PointF(cx, cy))
 
-            val radiusX = (bbox.width() * arSceneView.width * DONUT_RADIUS_FACTOR) / 2
-            val radiusY = (bbox.height() * arSceneView.height * DONUT_RADIUS_FACTOR) / 2
+            val r25W = w * 0.25f / 2f
+            val r25H = h * 0.25f / 2f
+            testPoints.add(PointF(cx, cy - r25H)) // N
+            testPoints.add(PointF(cx, cy + r25H)) // S
+            testPoints.add(PointF(cx - r25W, cy)) // W
+            testPoints.add(PointF(cx + r25W, cy)) // E
 
-            val validPoses = mutableListOf<Pose>()
-            validPoses.add(centerPose)
+            val r60W = w * 0.60f / 2f
+            val r60H = h * 0.60f / 2f
+            testPoints.add(PointF(cx + r60W, cy - r60H)) // NE
+            testPoints.add(PointF(cx - r60W, cy - r60H)) // NW
+            testPoints.add(PointF(cx + r60W, cy + r60H)) // SE
+            testPoints.add(PointF(cx - r60W, cy + r60H)) // SW
 
-            for (i in 0 until DONUT_POINTS) {
-                val angle = (2 * Math.PI * i) / DONUT_POINTS
-                val dx = (cos(angle) * radiusX).toFloat()
-                val dy = (sin(angle) * radiusY).toFloat()
+            val validHits = mutableListOf<Float3>()
+            for (pt in testPoints) {
+                val hitList = frame.hitTest(pt.x, pt.y)
 
-                val donutHits = frame.hitTest(centerX + dx, centerY + dy)
-                val hit = donutHits.firstOrNull { it.trackable is Plane }
-                hit?.let { validPoses.add(it.hitPose) }
+                val hit = hitList.firstOrNull { 
+                    it.trackable is Plane && (it.trackable as Plane).isPoseInPolygon(it.hitPose) 
+                }
+
+                if (hit != null) {
+                    val pose = hit.hitPose
+                    validHits.add(Float3(pose.tx(), pose.ty(), pose.tz()))
+                }
             }
-            
-            if (validPoses.size < 3) continue
 
-            val (finalPosition, finalRotation) = calculateAveragedPose(validPoses)
+            val bestPos = calculateBestPosition(validHits)
 
-            updateOrCreateModel(arSceneView, finalPosition, finalRotation)
-        }
-    }
+            if (bestPos != null) {
+                val cameraPos = arSceneView.camera.worldPosition
+                val finalRot = calculateVerticalRotation(bestPos, cameraPos)
 
-    private fun updateOrCreateModel(arSceneView: ARSceneView, position: Float3, rotation: Quaternion) {
-        val existingWheel = markerlessActiveModels.find { wheel ->
-            val dist = distance(wheel.modelNode.position, position)
-            dist < MIN_DISTANCE_THRESHOLD
-        }
+                val closestModel = markerlessActiveModels
+                    .filter { !claimedModels.contains(it) } 
+                    .minByOrNull { distance(it.position, bestPos) }
+                
+                val dist = if (closestModel != null) distance(closestModel.position, bestPos) else Float.MAX_VALUE
 
-        if (existingWheel != null) {
-            val model = existingWheel.modelNode
+                if (closestModel != null && dist < SNAP_THRESHOLD) {
+                    val model = closestModel
+                    
+                    model.position = mix(model.position, bestPos, 0.4f) 
+                    model.quaternion = slerp(model.quaternion, finalRot, 0.2f) 
+                    model.isVisible = true
+                    
+                    claimedModels.add(model) 
+                } else {
+                    val newModel = getOrCreateModel(MODEL_PATH)
+                    
+                    newModel.position = bestPos
+                    newModel.quaternion = finalRot
+                    newModel.isVisible = true
+                    
+                    if (newModel.parent == null) {
+                        arSceneView.addChildNode(newModel)
+                    }
+                    
+                    if (!markerlessActiveModels.contains(newModel)) {
+                        markerlessActiveModels.add(newModel)
+                    }
 
-            model.position = mix(model.position, position, 0.2f)
-            model.quaternion = slerp(model.quaternion, rotation, 0.2f)
-            // model.rotation = rotation
-
-            model.isVisible = true
-            existingWheel.lastUpdated = SystemClock.uptimeMillis()
-
-        } else {
-            val model = getOrCreateModel(MODEL_PATH)
-
-            model.position = position
-            model.quaternion = rotation
-            model.isVisible = true
-
-            arSceneView.addChildNode(model) 
-            markerlessActiveModels.add(MarkerlessWheel(modelNode = model))
-        }
-    }
-
-    private fun calculateAveragedPose(poses: List<Pose>): Pair<Float3, Quaternion> {
-        var sumX = 0f;
-        var sumY = 0f;
-        var sumZ = 0f
-        poses.forEach { 
-            sumX += it.tx()
-            sumY += it.ty()
-            sumZ += it.tz()
-        }
-        val preAvgX = sumX / poses.size
-        val preAvgY = sumY / poses.size
-        val preAvgZ = sumZ / poses.size
-
-        val distances = poses.map {
-            val dx = it.tx() - preAvgX
-            val dy = it.ty() - preAvgY
-            val dz = it.tz() - preAvgZ
-            sqrt(dx * dx + dy * dy + dz * dz)
-        }
-
-        val meanDist = distances.average()
-        val variance = distances.map { (it - meanDist).pow(2) }.average()
-        val stdDev = sqrt(variance)
-        val threshold = meanDist + (1.5 * stdDev)
-
-        val validPoses = mutableListOf<Pose>()
-        for (i in poses.indices) {
-            if (distances[i] <= threshold) {
-                validPoses.add(poses[i])
+                    claimedModels.add(newModel)
+                }
             }
         }
 
-        val finalPoses = if (validPoses.isEmpty()) poses else validPoses
-
-        var finalSumX = 0f;
-        var finalSumY = 0f;
-        var finalSumZ = 0f
-        finalPoses.forEach {
-            finalSumX += it.tx()
-            finalSumY += it.ty()
-            finalSumZ += it.tz()
+        for (model in markerlessActiveModels) {
+            if (!claimedModels.contains(model)) {
+                model.isVisible = false
+            }
         }
+    }
 
-        val avgPos = Float3(
-            finalSumX / finalPoses.size,
-            finalSumY / finalPoses.size,
-            finalSumZ / finalPoses.size
+    private fun calculateBestPosition(points: List<Float3>): Float3? {
+        if (points.isEmpty()) return null
+        if (points.size == 1) return points[0]
+
+        val avgX = points.map { it.x }.average().toFloat()
+        val avgY = points.map { it.y }.average().toFloat()
+        val avgZ = points.map { it.z }.average().toFloat()
+        val centroid = Float3(avgX, avgY, avgZ)
+
+        val validPoints = points.filter { distance(it, centroid) < 0.2f }
+
+        if (validPoints.isEmpty()) return centroid 
+
+        return Float3(
+            validPoints.map { it.x }.average().toFloat(),
+            validPoints.map { it.y }.average().toFloat(),
+            validPoints.map { it.z }.average().toFloat()
         )
-
-        val mainPose = poses[0]
-        val q = mainPose.rotationQuaternion
-        val targetRot = Quaternion(q[0], q[1], q[2], q[3])
-
-        return Pair(avgPos, targetRot)
     }
+
+    private fun calculateVerticalRotation(objPos: Float3, cameraPos: Float3): Quaternion {
+        val direction = Float3(
+            cameraPos.x - objPos.x,
+            0f,
+            cameraPos.z - objPos.z
+        )
+        
+        val len = sqrt(direction.x * direction.x + direction.z * direction.z)
+        if (len < 0.01f) return Quaternion()
+        
+        return Quaternion.lookRotation(direction, Float3(0f, 1f, 0f))
+    }
+
+    // private fun updateOrCreateModel(arSceneView: ARSceneView, position: Float3, rotation: Quaternion) {
+    //     val existingWheel = markerlessActiveModels.find { wheel ->
+    //         val dist = distance(wheel.position, position)
+    //         dist < SNAP_THRESHOLD
+    //     }
+
+    //     if (existingWheel != null) {
+    //         val model = existingWheel
+
+    //         model.position = mix(model.position, position, 0.2f)
+    //         model.quaternion = slerp(model.quaternion, rotation, 0.2f)
+    //         model.isVisible = true
+
+    //     } else {
+    //         val model = getOrCreateModel(MODEL_PATH)
+
+    //         model.position = position
+    //         model.quaternion = rotation
+    //         model.isVisible = true
+
+    //         arSceneView.addChildNode(model) 
+    //         markerlessActiveModels.add(model)
+    //     }
+    // }
+
+    // private fun calculateAveragedPose(poses: List<Pose>): Pair<Float3, Quaternion> {
+    //     var sumX = 0f;
+    //     var sumY = 0f;
+    //     var sumZ = 0f
+    //     poses.forEach { 
+    //         sumX += it.tx()
+    //         sumY += it.ty()
+    //         sumZ += it.tz()
+    //     }
+    //     val preAvgX = sumX / poses.size
+    //     val preAvgY = sumY / poses.size
+    //     val preAvgZ = sumZ / poses.size
+
+    //     val distances = poses.map {
+    //         val dx = it.tx() - preAvgX
+    //         val dy = it.ty() - preAvgY
+    //         val dz = it.tz() - preAvgZ
+    //         sqrt(dx * dx + dy * dy + dz * dz)
+    //     }
+
+    //     val meanDist = distances.average()
+    //     val variance = distances.map { (it - meanDist).pow(2) }.average()
+    //     val stdDev = sqrt(variance)
+    //     val threshold = meanDist + (1.5 * stdDev)
+
+    //     val validPoses = mutableListOf<Pose>()
+    //     for (i in poses.indices) {
+    //         if (distances[i] <= threshold) {
+    //             validPoses.add(poses[i])
+    //         }
+    //     }
+
+    //     val finalPoses = if (validPoses.isEmpty()) poses else validPoses
+
+    //     var finalSumX = 0f;
+    //     var finalSumY = 0f;
+    //     var finalSumZ = 0f
+    //     finalPoses.forEach {
+    //         finalSumX += it.tx()
+    //         finalSumY += it.ty()
+    //         finalSumZ += it.tz()
+    //     }
+
+    //     val avgPos = Float3(
+    //         finalSumX / finalPoses.size,
+    //         finalSumY / finalPoses.size,
+    //         finalSumZ / finalPoses.size
+    //     )
+
+    //     val mainPose = poses[0]
+    //     val q = mainPose.rotationQuaternion
+    //     val targetRot = Quaternion(q[0], q[1], q[2], q[3])
+
+    //     return Pair(avgPos, targetRot)
+    // }
 
     private fun getOrCreateModel(path: String): ModelNode {
         val freeModel = modelPool.find { it.parent == null }
