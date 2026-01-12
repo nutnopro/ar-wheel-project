@@ -13,7 +13,7 @@ import com.google.ar.core.Session
 import com.google.ar.core.Config
 import java.util.EnumSet
 import io.github.sceneview.ar.ARSceneView
-import com.arwheelapp.utils.ArTypes.ARMode
+import com.arwheelapp.utils.ARMode
 
 class ARActivity : ComponentActivity() {
     private val arSceneView: ARSceneView by lazy { ARSceneView(this) }

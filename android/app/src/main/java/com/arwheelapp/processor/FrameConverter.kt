@@ -20,7 +20,7 @@ class FrameConverter {
     fun convertFrameToTensor(frame: Frame): FloatArray {
         val image = try {
             frame.acquireCameraImage()
-        } catch {
+        } catch (e: Exception) {
             null
         } ?: return FloatArray(3 * INPUT_SIZE * INPUT_SIZE)
 

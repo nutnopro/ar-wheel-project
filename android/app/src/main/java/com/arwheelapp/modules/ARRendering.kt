@@ -15,8 +15,8 @@ import kotlin.math.*
 import java.util.*
 import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.processor.OnnxRuntimeHandler
-import com.arwheelapp.utils.ArTypes.ARMode
-import com.arwheelapp.utils.ArTypes.Detection
+import com.arwheelapp.utils.ARMode
+import com.arwheelapp.utils.Detection
 
 class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView, private val arSceneView: ARSceneView) {
     private val modelManager = ModelManager(arSceneView)
@@ -25,7 +25,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private val TAG = "ARRendering: "
 
-    // !! Change to ui later.
+    // !!Change to ui later.
 	private val MODEL_PATH = "models/wheel.glb"
     private val scaleFactor = 1f
     private val diameterFactor = 1f
@@ -44,6 +44,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
     private val markerlessActiveModels = mutableListOf<ModelNode>()
 
+    // !Maybe timer to detach unused models
     // data class MarkerlessWheel(
     //     var modelNode: ModelNode,
     //     var lastUpdated: Long = 0L
@@ -210,7 +211,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             val bestPos = calculateBestPosition(validHits)
 
             if (bestPos != null) {
-                val cameraPos = arSceneView.camera.worldPosition
+                val cameraPos = arSceneView.cameraNode.worldPosition
                 val finalRot = calculateVerticalRotation(bestPos, cameraPos)
 
                 val closestModel = markerlessActiveModels
@@ -221,23 +222,23 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
                 if (closestModel != null && dist < SNAP_THRESHOLD) {
                     val model = closestModel
-                    
+
                     model.position = mix(model.position, bestPos, 0.4f) 
                     model.quaternion = slerp(model.quaternion, finalRot, 0.2f) 
                     model.isVisible = true
-                    
+
                     claimedModels.add(model) 
                 } else {
                     val newModel = getOrCreateModel(MODEL_PATH)
-                    
+
                     newModel.position = bestPos
                     newModel.quaternion = finalRot
                     newModel.isVisible = true
-                    
+
                     if (newModel.parent == null) {
                         arSceneView.addChildNode(newModel)
                     }
-                    
+
                     if (!markerlessActiveModels.contains(newModel)) {
                         markerlessActiveModels.add(newModel)
                     }
@@ -275,16 +276,12 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     }
 
     private fun calculateVerticalRotation(objPos: Float3, cameraPos: Float3): Quaternion {
-        val direction = Float3(
-            cameraPos.x - objPos.x,
-            0f,
-            cameraPos.z - objPos.z
-        )
-        
-        val len = sqrt(direction.x * direction.x + direction.z * direction.z)
-        if (len < 0.01f) return Quaternion()
-        
-        return Quaternion.lookRotation(direction, Float3(0f, 1f, 0f))
+        val dx = cameraPos.x - objPos.x
+        val dz = cameraPos.z - objPos.z
+
+        val angleY = atan2(dx, dz)
+
+        return Quaternion.fromAxisAngle(Float3(0f, 1f, 0f), angleY)
     }
 
     // private fun updateOrCreateModel(arSceneView: ARSceneView, position: Float3, rotation: Quaternion) {
