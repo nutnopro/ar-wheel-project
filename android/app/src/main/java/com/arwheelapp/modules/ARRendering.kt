@@ -11,6 +11,8 @@ import dev.romainguy.kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.collision.*
+import io.github.sceneview.math.*
 import kotlin.math.*
 import java.util.*
 import com.arwheelapp.processor.FrameConverter
@@ -284,6 +286,11 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return Quaternion.fromAxisAngle(Float3(0f, 1f, 0f), angleY)
     }
 
+
+
+
+
+
     // private fun updateOrCreateModel(arSceneView: ARSceneView, position: Float3, rotation: Quaternion) {
     //     val existingWheel = markerlessActiveModels.find { wheel ->
     //         val dist = distance(wheel.position, position)
@@ -293,7 +300,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     //     if (existingWheel != null) {
     //         val model = existingWheel
 
-    //         model.position = mix(model.position, position, 0.2f)
+    //         model.position = lerp(model.position, position, 0.2f)
     //         model.quaternion = slerp(model.quaternion, rotation, 0.2f)
     //         model.isVisible = true
 
@@ -364,6 +371,10 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     //     return Pair(avgPos, targetRot)
     // }
+
+
+
+
 
     private fun getOrCreateModel(path: String): ModelNode {
         val freeModel = modelPool.find { it.parent == null }
