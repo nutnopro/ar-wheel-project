@@ -419,19 +419,19 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             val assetManager = context.assets
             val markerFolder = "markers"
             val fileNames = assetManager.list(markerFolder) ?: emptyArray()
-            
+
             for (filename in fileNames) {
             if (filename.lowercase().endsWith(".jpg") || filename.lowercase().endsWith(".png")) {
                 assetManager.open("$markerFolder/$filename").use { inputStream ->
                     val bitmap = BitmapFactory.decodeStream(inputStream)
                     val markerName = filename.substringBeforeLast(".")
-                    
+
                     augmentedImageDatabase.addImage(markerName, bitmap, 0.15f)
                     Log.d(TAG, "Loaded Marker: $markerName ✅")
                 }
             }
         }
-        
+
         val config = session.config.apply {
             this.augmentedImageDatabase = augmentedImageDatabase
             updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
