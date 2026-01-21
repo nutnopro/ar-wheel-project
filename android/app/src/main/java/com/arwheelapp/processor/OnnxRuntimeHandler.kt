@@ -63,8 +63,10 @@ class OnnxRuntimeHandler(private val context: Context) {
             try {
                 session.run(mapOf("images" to inputTensor)).use { result ->
                     val output = result[0].value
-
-                    finalDetections = nms(rawDetections)
+                    if (output is Array<*>) {
+                        val rawDetections = parseOutput(output)
+                        finalDetections = rawDetections
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "runOnnxInferenceAsync: Inference failed", e)
@@ -102,7 +104,6 @@ class OnnxRuntimeHandler(private val context: Context) {
                     val y1 = boxInfo[1]
                     val x2 = boxInfo[2]
                     val y2 = boxInfo[3]
-                    // val classId = boxInfo[5] // ถ้าต้องการใช้ Class ID ให้ดึงตรงนี้
 
                     // Normalize coordinates (0.0 - 1.0) สำหรับวาดบนหน้าจอ
                     val left = x1 / INPUT_SIZE
@@ -117,18 +118,14 @@ class OnnxRuntimeHandler(private val context: Context) {
                         bottom.coerceIn(0f, 1f)
                     )
 
-                    detections.add(Detection(boundingBox = rect, confidence = score))
+                    if (rect.width() > 0 && rect.height() > 0) {
+                        detections.add(Detection(boundingBox = rect, confidence = score))
+                    }
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing output: ${e.message}")
-            // Fallback: ลอง Cast เป็น float[][][] กรณีใช้ library มาตรฐานบางตัว
-            try {
-                val rawData = output as Array<Array<FloatArray>> // ลอง Cast แบบเดิม
-                // ... (Logic เดียวกัน)
-            } catch (e2: Exception) {
-                Log.e(TAG, "Critical casting error", e2)
-            }
+            e.printStackTrace()
         }
 
         return detections

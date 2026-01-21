@@ -146,7 +146,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
             onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
                 latestDetections = detections
-                onnxOverlayView.updateDetections(detections)
+                onnxOverlayView.updateDetections(latestDetections)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error converting frame to tensor", e)
@@ -291,18 +291,66 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
 
 
+
+
+    // private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
+    //     val currentTime = SystemClock.uptimeMillis()
+    //     if (currentTime - lastHitTestTime < HITTEST_INTERVAL_MS) return
+    //     lastHitTestTime = currentTime
+
+    //     val detections = latestDetections
+    //     if (detections.isEmpty()) return
+
+    //     for (det in detections) {
+    //         val bbox = det.boundingBox
+
+    //         val centerX = bbox.centerX() * arSceneView.width
+    //         val centerY = bbox.centerY() * arSceneView.height
+
+    //         val centerHits = frame.hitTest(centerX, centerY)
+    //         val centerPose = centerHits.firstOrNull { 
+    //             it.trackable is Plane || it.trackable is Point 
+    //         }?.hitPose ?: continue
+
+    //         val radiusX = (bbox.width() * arSceneView.width * DONUT_RADIUS_FACTOR) / 2
+    //         val radiusY = (bbox.height() * arSceneView.height * DONUT_RADIUS_FACTOR) / 2
+
+    //         val validPoses = mutableListOf<Pose>()
+    //         validPoses.add(centerPose)
+
+    //         for (i in 0 until DONUT_POINTS) {
+    //             val angle = (2 * Math.PI * i) / DONUT_POINTS
+    //             val dx = (cos(angle) * radiusX).toFloat()
+    //             val dy = (sin(angle) * radiusY).toFloat()
+
+    //             val donutHits = frame.hitTest(centerX + dx, centerY + dy)
+    //             val hit = donutHits.firstOrNull { it.trackable is Plane }
+    //             hit?.let { validPoses.add(it.hitPose) }
+    //         }
+            
+    //         if (validPoses.size < 3) continue
+
+    //         val (finalPosition, finalRotation) = calculateAveragedPose(validPoses)
+
+    //         updateOrCreateModel(arSceneView, finalPosition, finalRotation)
+    //     }
+    // }
+
     // private fun updateOrCreateModel(arSceneView: ARSceneView, position: Float3, rotation: Quaternion) {
     //     val existingWheel = markerlessActiveModels.find { wheel ->
-    //         val dist = distance(wheel.position, position)
-    //         dist < SNAP_THRESHOLD
+    //         val dist = distance(wheel.modelNode.position, position)
+    //         dist < MIN_DISTANCE_THRESHOLD
     //     }
 
     //     if (existingWheel != null) {
-    //         val model = existingWheel
+    //         val model = existingWheel.modelNode
 
-    //         model.position = lerp(model.position, position, 0.2f)
+    //         model.position = mix(model.position, position, 0.2f)
     //         model.quaternion = slerp(model.quaternion, rotation, 0.2f)
+    //         // model.rotation = rotation
+
     //         model.isVisible = true
+    //         existingWheel.lastUpdated = SystemClock.uptimeMillis()
 
     //     } else {
     //         val model = getOrCreateModel(MODEL_PATH)
@@ -312,9 +360,11 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     //         model.isVisible = true
 
     //         arSceneView.addChildNode(model) 
-    //         markerlessActiveModels.add(model)
+    //         markerlessActiveModels.add(MarkerlessWheel(modelNode = model))
     //     }
     // }
+
+
 
     // private fun calculateAveragedPose(poses: List<Pose>): Pair<Float3, Quaternion> {
     //     var sumX = 0f;
