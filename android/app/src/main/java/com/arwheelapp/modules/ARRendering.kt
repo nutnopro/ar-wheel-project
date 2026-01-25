@@ -10,7 +10,7 @@ import com.google.ar.core.*
 import dev.romainguy.kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
-import io.github.sceneview.node.ModelNode
+import io.github.sceneview.node.Node
 import io.github.sceneview.collision.*
 import io.github.sceneview.math.*
 import kotlin.math.*
@@ -42,9 +42,9 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private var lastInferenceTime = 0L
     private var lastHitTestTime = 0L
 
-    private val modelPool = mutableListOf<ModelNode>()
+    private val modelPool = mutableListOf<Node>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
-    private val markerlessActiveModels = mutableListOf<ModelNode>()
+    private val markerlessActiveModels = mutableListOf<Node>()
 
     // !Maybe timer to detach unused models
     // data class MarkerlessWheel(
@@ -166,7 +166,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             return
         }
 
-        val claimedModels = mutableSetOf<ModelNode>()
+        val claimedModels = mutableSetOf<Node>()
 
         val viewW = arSceneView.width
         val viewH = arSceneView.height
@@ -200,8 +200,9 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             for (pt in testPoints) {
                 val hitList = frame.hitTest(pt.x, pt.y)
 
-                val hit = hitList.firstOrNull { 
-                    it.trackable is Plane && (it.trackable as Plane).isPoseInPolygon(it.hitPose) 
+                val hit = hitList.firstOrNull {
+                    val trackable = it.trackable
+                    trackable is com.google.ar.core.Plane && trackable.isPoseInPolygon(it.hitPose)
                 }
 
                 if (hit != null) {
@@ -277,7 +278,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         )
     }
 
-    private fun calculateVerticalRotation(objPos: Float3, cameraPos: Float3): Quaternion {
+    private fun calculateVerticalRotation(objPos: Float3, cameraPos: Float3): dev.romainguy.kotlin.math.Quaternion {
         val dx = cameraPos.x - objPos.x
         val dz = cameraPos.z - objPos.z
 
@@ -426,7 +427,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
 
 
-    private fun getOrCreateModel(path: String): ModelNode {
+    private fun getOrCreateModel(path: String): Node {
         val freeModel = modelPool.find { it.parent == null }
 
         return if (freeModel != null) {
