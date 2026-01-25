@@ -8,7 +8,7 @@ import io.github.sceneview.node.Node
 import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.collision.Box
 import io.github.sceneview.math.Color
-import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.*
 import kotlin.math.max
 
 class ModelManager(private val arSceneView: ARSceneView) {
@@ -18,15 +18,18 @@ class ModelManager(private val arSceneView: ARSceneView) {
 	fun createModelNode(modelPath: String): Node {
 		val rootNode = Node(arSceneView.engine).apply { isVisible = false }
 
-        val instance = modelLoader.createModelInstance(
+        modelLoader.createModelInstance(
 			assetFileLocation = modelPath
-		) { modelInstance ->
+		)?.let { modelInstance ->
 			val modelNode = ModelNode(modelInstance = modelInstance).apply { isVisible = true }
 
-			val size = modelNode.boundingBox.size
-			val maxDimension = max(size.x, size.y)
+			val box = modelNode.boundingBox
+			val sizeX = box.halfExtent[0] * 2.0f
+			val sizeY = box.halfExtent[1] * 2.0f
+			val sizeZ = box.halfExtent[2] * 2.0f
+			val maxDimension = max(sizeX, sizeY)
 			val radius = (maxDimension / 2.0f) * 0.98f
-			val halfThickness = size.z / 2
+			val halfThickness = sizeZ / 2
 
 			modelNode.position = Float3(0f, 0f, -halfThickness + 0.01f)
 
