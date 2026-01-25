@@ -18,28 +18,25 @@ class ModelManager(private val arSceneView: ARSceneView) {
 	fun createModelNode(modelPath: String): Node {
 		val rootNode = Node(arSceneView.engine).apply { isVisible = false }
 
-        val instance = modelLoader.createModelInstance(assetFileLocation = modelPath)
-		val model = ModelNode(
-			modelInstance = instance
-		).apply {
-			isVisible = true
+        val instance = modelLoader.createModelInstance(
+			assetFileLocation = modelPath
+		) { modelInstance ->
+			val modelNode = ModelNode(modelInstance = modelInstance).apply { isVisible = true }
+
+			val size = modelNode.boundingBox.size
+			val maxDimension = max(size.x, size.y)
+			val radius = (maxDimension / 2.0f) * 0.98f
+			val halfThickness = size.z / 2
+
+			modelNode.position = Float3(0f, 0f, -halfThickness + 0.01f)
+
+			val backplate = createBackplate(radius)
+			backplate.rotation = Float3(90f, 0f, 0f)
+			backplate.position = Float3(0f, 0f, halfThickness - 0.005f)
+
+			rootNode.addChildNode(backplate)
+			rootNode.addChildNode(modelNode)
 		}
-
-		val boundingBox = model.collisionShape as Box
-		val size = boundingBox.size
-
-		val maxDimension = max(size.x, size.y)
-        val radius = (maxDimension / 2.0f) * 0.98f
-		val halfThickness = size.z / 2
-
-		model.position = Float3(0f, 0f, -halfThickness + 0.01f)
-
-        val backplate = createBackplate(radius)
-        backplate.rotation = Float3(90f, 0f, 0f)
-        backplate.position = Float3(0f, 0f, halfThickness - 0.005f)
-
-        rootNode.addChildNode(model)
-        rootNode.addChildNode(backplate)
 
 		return rootNode
 	}
@@ -56,7 +53,6 @@ class ModelManager(private val arSceneView: ARSceneView) {
 			engine = arSceneView.engine,
             radius = radius,
             height = 0.003f,
-            center = Float3(0f, 0f, 0f),
 			materialInstance = blackMaterial
 		).apply { isVisible = true }
 	}
