@@ -6,11 +6,9 @@ import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
-import java.util.PriorityQueue
 import kotlinx.coroutines.*
 import ai.onnxruntime.*
 import com.arwheelapp.utils.Detection
-import android.os.SystemClock
 
 class OnnxRuntimeHandler(private val context: Context) {
     private val TAG = "OnnxRuntimeHandler: "
@@ -19,10 +17,7 @@ class OnnxRuntimeHandler(private val context: Context) {
     private val CONFIDENCE_THRESHOLD = 0.4f
 
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
-    private val session: OrtSession by lazy { 
-        Log.d(TAG, "🚀 Initializing OrtSession...")
-        createSession()
-    }
+    private val session: OrtSession by lazy { createSession() }
     private val inferenceScope = CoroutineScope(Dispatchers.Default)
 
     // *Load model .onnx from assets
@@ -34,31 +29,20 @@ class OnnxRuntimeHandler(private val context: Context) {
         }
 
         if (!modelFile.exists()) {
-            Log.d(TAG, "📂 Model not found in internal storage. Copying from assets...")
             context.assets.open(MODEL_PATH).use { input ->
                 FileOutputStream(modelFile).use { output ->
                     input.copyTo(output)
                 }
             }
-            Log.d(TAG, "✅ Model copied to: ${modelFile.absolutePath}")
         }
 
-        // return env.createSession(modelFile.absolutePath, options)
-
-        val session = env.createSession(modelFile.absolutePath, options)
-        Log.i(TAG, "📊 Model Metadata:")
-        session.inputInfo.forEach { (name, info) -> Log.i(TAG, "  Input: name='$name', info=$info") }
-        session.outputInfo.forEach { (name, info) -> Log.i(TAG, "  Output: name='$name', info=$info") }
-        return session
+        return env.createSession(modelFile.absolutePath, options)
     }
 
     // *Run inference with ONNX Runtime with Coroutine
     fun runOnnxInferenceAsync(tensor: FloatArray, callback: (List<Detection>) -> Unit) {
         inferenceScope.launch {
-            val totalStartTime = SystemClock.uptimeMillis()
             val shape = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
-            // var finalDetections: List<Detection> = emptyList()
-            val tensorStartTime = SystemClock.uptimeMillis()
 
             val inputTensor = try {
                 OnnxTensor.createTensor(env, FloatBuffer.wrap(tensor), shape)
@@ -67,33 +51,16 @@ class OnnxRuntimeHandler(private val context: Context) {
                 withContext(Dispatchers.Main) { callback(emptyList()) }
                 return@launch
             }
-            val tensorDuration = SystemClock.uptimeMillis() - tensorStartTime
 
             try {
-                val inferenceStartTime = SystemClock.uptimeMillis()
                 session.run(mapOf("images" to inputTensor)).use { result ->
-                    val inferenceDuration = SystemClock.uptimeMillis() - inferenceStartTime
                     val output = result[0].value
 
-                    val parseStartTime = SystemClock.uptimeMillis()
                     val finalDetections = if (output is Array<*>) {
                         parseOutput(output)
                     } else {
-                        Log.w(TAG, "⚠️ Unexpected output type: ${output?.javaClass?.simpleName}")
                         emptyList()
                     }
-                    val parseDuration = SystemClock.uptimeMillis() - parseStartTime
-                    val totalDuration = SystemClock.uptimeMillis() - totalStartTime
-                    Log.d(TAG, "⏱️ Perf: Total=${totalDuration}ms | Tensor=${tensorDuration}ms | Inference=${inferenceDuration}ms | Parse=${parseDuration}ms | Detections=${finalDetections.size}")
-
-                    
-                    // if (output is Array<*>) {
-                    //     val rawDetections = parseOutput(output)
-                    //     finalDetections = rawDetections
-                    //     Log.d(TAG, "Detections: ${finalDetections.size}")
-                    // } else {
-                    //     Log.w(TAG, "⚠️ Unexpected output type: ${output?.javaClass?.simpleName}")
-                    // }
 
                     withContext(Dispatchers.Main) { callback(finalDetections) }
                 }
@@ -121,10 +88,10 @@ class OnnxRuntimeHandler(private val context: Context) {
             val batchData = output as Array<Array<FloatArray>> // [1][300][6]
             val boxes = batchData[0] // ดึง Batch แรกออกมา -> [300][6]
 
-            if (boxes.isNotEmpty()) {
-                val f = boxes[0]
-                Log.v(TAG, "📦 Top Box Raw: [x1=${f[0]}, y1=${f[1]}, x2=${f[2]}, y2=${f[3]}, conf=${f[4]}, class=${f[5]}]")
-            }
+            // if (boxes.isNotEmpty()) {
+            //     val f = boxes[0]
+            //     Log.v(TAG, "📦 Top Box Raw: [x1=${f[0]}, y1=${f[1]}, x2=${f[2]}, y2=${f[3]}, conf=${f[4]}, class=${f[5]}]")
+            // }
 
             // วนลูปตามจำนวน Box (300 ตัว)
             for ((index, boxInfo) in boxes.withIndex()) {
@@ -147,13 +114,11 @@ class OnnxRuntimeHandler(private val context: Context) {
 
                     if (rect.width() > 0 && rect.height() > 0) {
                         detections.add(Detection(boundingBox = rect, confidence = score))
-                        Log.v(TAG, "  🎯 Det[$index]: Conf=${String.format("%.2f", score)}, Rect=[$left, $top, $right, $bottom]")
                     }
                 }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing output: ${e.message}")
-            Log.e(TAG, "Actual output structure: ${output.contentDeepToString().take(200)}...")
         }
 
         return detections

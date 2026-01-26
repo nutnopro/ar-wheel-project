@@ -89,17 +89,17 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
         val updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
 
-        val visibleCount = updatedAugmentedImages.count { image ->
-            image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING
-        }
-        Log.d(TAG, "Frame founded marker: $visibleCount markers")
+        // val visibleCount = updatedAugmentedImages.count { image ->
+        //     image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING
+        // }
+        // Log.d(TAG, "Frame founded marker: $visibleCount markers")
 
         for (image in updatedAugmentedImages) {
-            Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState} | Method: ${image.trackingMethod}")
+            // Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState} | Method: ${image.trackingMethod}")
             when (image.trackingState) {
                 TrackingState.TRACKING -> {
                     if (!augmentedImageMap.containsKey(image)) {
-                        Log.d(TAG, "Found new marker: ${image.name}")
+                        // Log.d(TAG, "Found new marker: ${image.name}")
                         val imageNode = AugmentedImageNode(arSceneView.engine, image)
 
                         val model = getOrCreateModel(MODEL_PATH)
@@ -110,7 +110,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         arSceneView.addChildNode(imageNode)
 
                         augmentedImageMap[image] = imageNode
-                        Log.d(TAG, "Attached model to Marker ID: ${image.index}")
                     }
 
                     val node = augmentedImageMap[image]

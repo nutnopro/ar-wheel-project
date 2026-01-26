@@ -55,7 +55,6 @@ class OnnxOverlayView(context: Context) : View(context) {
             val bottom = (bbox.bottom * INPUT_SIZE * scale) + offsetY
 
             canvas.drawRect(left, top, right, bottom, boxPaint)
-
             canvas.drawText("${(det.confidence * 100).toInt()}%", left, top - 10, textPaint)
         }
     }
