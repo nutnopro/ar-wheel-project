@@ -11,7 +11,6 @@ import dev.romainguy.kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
 import io.github.sceneview.node.Node
-// import io.github.sceneview.collision.*
 import io.github.sceneview.math.*
 import kotlin.math.*
 import java.util.*
@@ -91,19 +90,16 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         val updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
 
         val visibleCount = updatedAugmentedImages.count { image ->
-            image.trackingState == TrackingState.TRACKING
+            image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING
         }
-        Log.d(TAG, "Frame founded markker: $visibleCount markers")
+        Log.d(TAG, "Frame founded marker: $visibleCount markers")
 
         for (image in updatedAugmentedImages) {
-            Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState}")
+            Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState} | Method: ${image.trackingMethod}")
             when (image.trackingState) {
                 TrackingState.TRACKING -> {
-                    if (augmentedImageMap.containsKey(image)) {
-                        augmentedImageMap[image]?.isVisible = true
-                    } else {
+                    if (!augmentedImageMap.containsKey(image)) {
                         Log.d(TAG, "Found new marker: ${image.name}")
-
                         val imageNode = AugmentedImageNode(arSceneView.engine, image)
 
                         val model = getOrCreateModel(MODEL_PATH)
@@ -116,7 +112,16 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         augmentedImageMap[image] = imageNode
                         Log.d(TAG, "Attached model to Marker ID: ${image.index}")
                     }
+
+                    val node = augmentedImageMap[image]
+                    if (image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING) {
+                        node?.isVisible = true
+                    } else if (image.trackingMethod == AugmentedImage.TrackingMethod.LAST_KNOWN_POSE) {
+                        node?.isVisible = false
+                    }
                 }
+
+                
                 TrackingState.STOPPED -> {
                     val node = augmentedImageMap[image]
                     if (node != null) {
@@ -125,9 +130,9 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         augmentedImageMap.remove(image)
                     }
                 }
+
                 TrackingState.PAUSED -> {
-                    val node = augmentedImageMap[image]
-                    node?.isVisible = false
+                    augmentedImageMap[image]?.isVisible = false
                 }
             }
         }

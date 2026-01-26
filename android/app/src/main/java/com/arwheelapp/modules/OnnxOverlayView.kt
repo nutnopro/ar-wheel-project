@@ -10,10 +10,9 @@ import com.arwheelapp.utils.Detection
 
 class OnnxOverlayView(context: Context) : View(context) {
     private val TAG = "OnnxOverlayView: "
-    private val className = "wheel"
 
     private val detections: MutableList<Detection> = mutableListOf()
-    private val CONFIDENCE_THRESHOLD: Float = 0.8f
+    private val INPUT_SIZE = 320f
 
     private val boxPaint = Paint().apply {
         color = Color.CYAN
@@ -31,7 +30,7 @@ class OnnxOverlayView(context: Context) : View(context) {
     fun updateDetections(newDetections: List<Detection>) {
         detections.clear()
         detections.addAll(newDetections)
-        
+
         postInvalidate()
     }
 
@@ -43,27 +42,21 @@ class OnnxOverlayView(context: Context) : View(context) {
         val viewW = width.toFloat()
         val viewH = height.toFloat()
 
-        val imageSize = minOf(viewW, viewH) 
-        val offsetX = (viewW - imageSize) / 2
-        val offsetY = (viewH - imageSize) / 2
+        val scale = maxOf(viewW, viewH) / INPUT_SIZE
+        val offsetX = (viewW - (INPUT_SIZE * scale)) / 2
+        val offsetY = (viewH - (INPUT_SIZE * scale)) / 2
 
         detections.forEach { det ->
-            if (det.confidence < CONFIDENCE_THRESHOLD) return@forEach
             val bbox = det.boundingBox
 
-            val left = (bbox.left * imageSize) + offsetX
-            val top = (bbox.top * imageSize) + offsetY
-            val right = (bbox.right * imageSize) + offsetX
-            val bottom = (bbox.bottom * imageSize) + offsetY
+            val left = (bbox.left * INPUT_SIZE * scale) + offsetX
+            val top = (bbox.top * INPUT_SIZE * scale) + offsetY
+            val right = (bbox.right * INPUT_SIZE * scale) + offsetX
+            val bottom = (bbox.bottom * INPUT_SIZE * scale) + offsetY
 
             canvas.drawRect(left, top, right, bottom, boxPaint)
 
-            val label = "$className ${(det.confidence * 100).toInt()}%"
-            
-            val textX = left
-            val textY = if (top - 10f < 40f) top + 40f else top - 10f
-
-            canvas.drawText(label, textX, textY, textPaint)
+            canvas.drawText("${(det.confidence * 100).toInt()}%", left, top - 10, textPaint)
         }
     }
 }
