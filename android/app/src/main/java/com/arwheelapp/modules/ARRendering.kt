@@ -324,6 +324,175 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
 
+	// เพิ่ม Constants สำหรับการสุ่มจุด
+    // private val DONUT_POINTS = 8         // จำนวนจุดรอบวงกลม
+    // private val DONUT_RADIUS_FACTOR = 0.5f // รัศมีวงกลม (50% ของขนาด BBox)
+
+    // // *Hit Test & Update Models (Refined Logic)
+    // private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
+    //     val currentTime = SystemClock.uptimeMillis()
+    //     if (currentTime - lastHitTestTime < HITTEST_INTERVAL_MS) return
+    //     lastHitTestTime = currentTime
+
+    //     val detections = latestDetections
+    //     if (detections.isEmpty()) {
+    //         markerlessActiveModels.forEach { it.isVisible = false }
+    //         return
+    //     }
+
+    //     val claimedModels = mutableSetOf<Node>()
+    //     val viewW = arSceneView.width.toFloat()
+    //     val viewH = arSceneView.height.toFloat()
+
+    //     for (det in detections) {
+    //         val bbox = det.boundingBox
+
+    //         // 1. คำนวณจุดกึ่งกลาง
+    //         val cx = bbox.centerX() * viewW
+    //         val cy = bbox.centerY() * viewH
+            
+    //         // 2. เตรียมรายการ Hit Poses ที่ "ไม่ใช่พื้น" (!isUpwardSurface)
+    //         val validPoses = mutableListOf<Pose>()
+            
+    //         // A. เช็คจุดตรงกลาง (สำคัญสุดสำหรับ Rotation)
+    //         val centerHits = frame.hitTest(cx, cy)
+    //         var centerPose: Pose? = null
+            
+    //         // หาจุดตรงกลางที่เป็นแนวตั้ง (ไม่ใช่พื้น)
+    //         val validCenterHit = centerHits.firstOrNull { hit ->
+    //             (hit.trackable is com.google.ar.core.Plane || hit.trackable is Point) &&
+    //             !isUpwardSurface(hit.hitPose)
+    //         }
+
+    //         if (validCenterHit != null) {
+    //             centerPose = validCenterHit.hitPose
+    //             validPoses.add(centerPose)
+    //         }
+
+    //         // B. Donut Sampling (สุ่มจุดรอบๆ เป็นวงกลม)
+    //         val radiusX = (bbox.width() * viewW * DONUT_RADIUS_FACTOR) / 2f
+    //         val radiusY = (bbox.height() * viewH * DONUT_RADIUS_FACTOR) / 2f
+
+    //         for (i in 0 until DONUT_POINTS) {
+    //             val angle = (2 * Math.PI * i) / DONUT_POINTS
+    //             val dx = (cos(angle) * radiusX).toFloat()
+    //             val dy = (sin(angle) * radiusY).toFloat()
+
+    //             val donutHits = frame.hitTest(cx + dx, cy + dy)
+    //             val hit = donutHits.firstOrNull { 
+    //                 // ยอมรับ Plane หรือ Point ก็ได้ ขอแค่ไม่ใช่พื้น
+    //                 (it.trackable is com.google.ar.core.Plane || it.trackable is Point) &&
+    //                 !isUpwardSurface(it.hitPose)
+    //             }
+                
+    //             if (hit != null) {
+    //                 validPoses.add(hit.hitPose)
+    //             }
+    //         }
+
+    //         // ต้องมีจุดที่เชื่อถือได้อย่างน้อย 2-3 จุด
+    //         if (validPoses.isEmpty()) continue
+
+    //         // 3. คำนวณตำแหน่งเฉลี่ยโดยตัดค่า Error ทิ้ง (Statistical Outlier Removal)
+    //         val bestPos = calculateAveragePositionWithOutlierRemoval(validPoses) ?: continue
+
+    //         // 4. คำนวณ Rotation
+    //         // เงื่อนไข: ใช้ตรงกลางเป็นหลัก แต่ถ้าตรงกลางใช้ไม่ได้ (เช่น ไปโดนพื้น) ให้ใช้จุดแรกใน validPoses แทน
+    //         val refPose = centerPose ?: validPoses.first()
+    //         val q = refPose.rotationQuaternion
+    //         val targetRot = Quaternion(x = q[0], y = q[1], z = q[2], w = q[3])
+
+    //         // 5. หาโมเดลที่ใกล้ที่สุดหรือสร้างใหม่ (Logic เดิม)
+    //         val closestModel = markerlessActiveModels
+    //             .filter { !claimedModels.contains(it) }
+    //             .minByOrNull { distance(it.position, bestPos) }
+
+    //         val dist = if (closestModel != null) distance(closestModel.position, bestPos) else Float.MAX_VALUE
+
+    //         if (closestModel != null && dist < SNAP_THRESHOLD) {
+    //             val model = closestModel
+    //             val dynamicAlpha = calculateDynamicAlpha(model.position, bestPos)
+
+    //             model.position = lerp(model.position, bestPos, dynamicAlpha)
+    //             model.quaternion = slerp(model.quaternion, targetRot, dynamicAlpha / 2)
+    //             model.isVisible = true
+
+    //             claimedModels.add(model)
+    //         } else {
+    //             val newModel = getOrCreateModel(MODEL_PATH)
+    //             newModel.position = bestPos
+    //             newModel.quaternion = targetRot
+    //             newModel.isVisible = true
+
+    //             if (newModel.parent == null) {
+    //                 arSceneView.addChildNode(newModel)
+    //             }
+    //             if (!markerlessActiveModels.contains(newModel)) {
+    //                 markerlessActiveModels.add(newModel)
+    //             }
+    //             claimedModels.add(newModel)
+    //         }
+    //     }
+
+    //     // ซ่อนโมเดลที่ไม่ได้ถูกใช้งานในรอบนี้
+    //     for (model in markerlessActiveModels) {
+    //         if (!claimedModels.contains(model)) {
+    //             model.isVisible = false
+    //         }
+    //     }
+    // }
+
+    // // ฟังก์ชันคำนวณค่าเฉลี่ยแบบตัด Outlier (Logic เก่าที่แม่นยำกว่า)
+    // private fun calculateAveragePositionWithOutlierRemoval(poses: List<Pose>): Float3? {
+    //     if (poses.isEmpty()) return null
+    //     if (poses.size == 1) return Float3(poses[0].tx(), poses[0].ty(), poses[0].tz())
+
+    //     // 1. หาค่าเฉลี่ยหยาบๆ ก่อน
+    //     val avgX = poses.map { it.tx() }.average()
+    //     val avgY = poses.map { it.ty() }.average()
+    //     val avgZ = poses.map { it.tz() }.average()
+
+    //     // 2. คำนวณระยะห่างจากค่าเฉลี่ย (Distance from Mean)
+    //     val distances = poses.map {
+    //         val dx = it.tx() - avgX
+    //         val dy = it.ty() - avgY
+    //         val dz = it.tz() - avgZ
+    //         sqrt(dx * dx + dy * dy + dz * dz)
+    //     }
+
+    //     // 3. หา Mean Distance และ Standard Deviation
+    //     val meanDist = distances.average()
+    //     val variance = distances.map { (it - meanDist).pow(2) }.average()
+    //     val stdDev = sqrt(variance)
+
+    //     // 4. กำหนด Threshold (ค่าเฉลี่ย + 1.5 เท่าของส่วนเบี่ยงเบนมาตรฐาน)
+    //     val threshold = meanDist + (1.5 * stdDev)
+
+    //     // 5. คัดเลือกเฉพาะจุดที่เกาะกลุ่มกัน (ตัดจุดที่กระโดดไกลๆ ทิ้ง)
+    //     val finalPoses = poses.filterIndexed { index, _ -> 
+    //         distances[index] <= threshold 
+    //     }
+
+    //     if (finalPoses.isEmpty()) return Float3(avgX.toFloat(), avgY.toFloat(), avgZ.toFloat())
+
+    //     // 6. คำนวณค่าเฉลี่ยรอบสุดท้าย
+    //     return Float3(
+    //         finalPoses.map { it.tx() }.average().toFloat(),
+    //         finalPoses.map { it.ty() }.average().toFloat(),
+    //         finalPoses.map { it.tz() }.average().toFloat()
+    //     )
+    // }
+
+    // // เช็คว่าพื้นผิวชี้ขึ้นฟ้าหรือไม่ (Floor Detection)
+    // private fun isUpwardSurface(pose: Pose): Boolean {
+    //     val axisY = FloatArray(3)
+    //     // ดึงแกน Y ของ Plane (Normal Vector)
+    //     pose.getTransformedAxis(1, 0f, axisY, 0)
+        
+    //     // ถ้าแกน Y ชี้ขึ้นฟ้า (ค่า y > 0.7 หรือมุมชันกว่า 45 องศา) ถือว่าเป็นพื้น
+    //     return axisY[1] > 0.7f
+    // }
+
     fun clear() {
         modelPool.forEach { it?.destroy() }
         modelPool.clear()
