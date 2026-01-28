@@ -75,27 +75,13 @@ class OnnxRuntimeHandler(private val context: Context) {
     // *Parse output for [1, 300, 6] format
     private fun parseOutput(output: Array<*>): List<Detection> {
         val detections = mutableListOf<Detection>()
-        // Output Shape: [1, 300, 6]
-        // Cast เป็น Array 3 มิติ (Java output ปกติจะเป็น float[][][])
-        // แต่ถ้า Library ของคุณ return เป็น Object Array ต้อง cast ให้ถูก
-        // โค้ดนี้รองรับ output มาตรฐานจาก onnxruntime-android
-        
+
         try {
-            // หมายเหตุ: output ใน Kotlin/Java มักจะเป็น array ของ primitive type หรือ Object array
-            // ตรงนี้ต้องระวังเรื่อง Type Casting ขึ้นอยู่กับ Version ของ Library
-            // สมมติว่าเป็น Array<Array<FloatArray>> ตามโค้ดเดิมของคุณ (หรือ float[][][])
-            
-            val batchData = output as Array<Array<FloatArray>> // [1][300][6]
-            val boxes = batchData[0] // ดึง Batch แรกออกมา -> [300][6]
+            val batchData = output as Array<Array<FloatArray>> // shape -> [1][300][6]
+            val boxes = batchData[0] // extract first batch -> [300][6]
 
-            // if (boxes.isNotEmpty()) {
-            //     val f = boxes[0]
-            //     Log.v(TAG, "📦 Top Box Raw: [x1=${f[0]}, y1=${f[1]}, x2=${f[2]}, y2=${f[3]}, conf=${f[4]}, class=${f[5]}]")
-            // }
-
-            // วนลูปตามจำนวน Box (300 ตัว)
-            for ((index, boxInfo) in boxes.withIndex()) {
-                // boxInfo มีขนาด 6 ตัว: [x1, y1, x2, y2, score, class_id]
+            // boxInfo have 6 values: [x1, y1, x2, y2, score, class_id]
+            for (boxInfo in boxes) {
                 val score = boxInfo[4]
 
                 if (score > CONFIDENCE_THRESHOLD) {
@@ -104,14 +90,13 @@ class OnnxRuntimeHandler(private val context: Context) {
                     val x2 = boxInfo[2]
                     val y2 = boxInfo[3]
 
-                    // Normalize coordinates (0.0 - 1.0) สำหรับวาดบนหน้าจอ
+                    // Normalize coordinates (0.0 - 1.0) to fit the overlay view
                     val left = (x1 / INPUT_SIZE).coerceIn(0f, 1f)
                     val top = (y1 / INPUT_SIZE).coerceIn(0f, 1f)
                     val right = (x2 / INPUT_SIZE).coerceIn(0f, 1f)
                     val bottom = (y2 / INPUT_SIZE).coerceIn(0f, 1f)
 
                     val rect = RectF(left, top, right, bottom)
-
                     if (rect.width() > 0 && rect.height() > 0) {
                         detections.add(Detection(boundingBox = rect, confidence = score))
                     }

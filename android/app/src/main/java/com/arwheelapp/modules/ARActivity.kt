@@ -72,7 +72,7 @@ class ARActivity : ComponentActivity() {
         rootLayout.addView(onnxOverlayView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
         uiManager.setupInterface()
-        setupUICallbacks()
+        // setupUICallbacks()
 
         setContentView(rootLayout)
     }
@@ -133,11 +133,46 @@ class ARActivity : ComponentActivity() {
             return
         }
 
+        // Setup UI Callbacks
+        uiManager.onBackClicked = {
+            finish() // ปิด Activity
+        }
+
+        uiManager.onModeSelected = { mode ->
+            currentMode = mode
+            Toast.makeText(this, "Switched to $mode", Toast.LENGTH_SHORT).show()
+            // Reset logic ถ้าจำเป็น
+            // arRendering.clear()
+        }
+
+        uiManager.onCaptureClicked = {
+            // TODO: ใส่ Logic ถ่ายรูปตรงนี้
+            takePhoto()
+        }
+
+        uiManager.onSizeSelected = { sizeInch ->
+            // TODO: ส่งค่า size ไป update ใน arRendering
+            // arRendering.updateWheelSize(sizeInch) 
+            Log.d(TAG, "User selected size: $sizeInch")
+        }
+
+        uiManager.onModelSelected = { modelName ->
+            // TODO: ส่งค่า model path ไปเปลี่ยนโมเดล
+            // arRendering.changeModel("models/$modelName.glb")
+            Log.d(TAG, "User selected model: $modelName")
+        }
+
         try {
             startARLoop()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start AR Loop", e)
         }
+    }
+
+    private fun takePhoto() {
+        val bitmap = arSceneView.bitmap // sceneview function (อาจต้องปรับตาม version lib)
+        Toast.makeText(this, "Photo Captured! (Mock)", Toast.LENGTH_SHORT).show()
+        // Save bitmap logic here...
     }
 
     private fun startARLoop() {
@@ -148,3 +183,19 @@ class ARActivity : ComponentActivity() {
         }
     }
 }
+
+// override fun onResume() {
+//         super.onResume()
+//         try {
+//             arSceneView.resume()
+//             uiManager.onResume() // ✅ เริ่มจับการหมุน
+//         } catch (e: Exception) {
+//             Log.e(TAG, "Error onResume", e)
+//         }
+//     }
+
+//     override fun onPause() {
+//         super.onPause()
+//         arSceneView.pause()
+//         uiManager.onPause() // ✅ หยุดจับการหมุน
+//     }
