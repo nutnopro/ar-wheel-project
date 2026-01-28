@@ -31,9 +31,9 @@ class ARActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            ensureARIsReady()
+            checkPermissionAndStartAR()
         } else {
-            Toast.makeText(this, "Camera permission required", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Camera permission is needed for AR", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -45,11 +45,7 @@ class ARActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        try {
-            ensureARIsReady()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in onResume", e) 
-        }
+        checkPermissionAndStartAR()
     }
 
     override fun onPause() {
@@ -62,7 +58,7 @@ class ARActivity : ComponentActivity() {
 
     // *Initialization
     private fun initViews() {
-        arSceneView.arCore.cameraPermissionLauncher = cameraPermissionLauncher
+        // arSceneView.arCore.cameraPermissionLauncher = cameraPermissionLauncher
 
         arSceneView.onSessionCreated = { session ->
             setupARSession(session)
@@ -144,17 +140,17 @@ class ARActivity : ComponentActivity() {
         }
     }
 
-    private fun ensureARIsReady() {
+    private fun checkPermissionAndStartAR() {
         val permission = android.Manifest.permission.CAMERA
-        if (ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        
+        if (ContextCompat.checkSelfPermission(this, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            try {
+                startARLoop()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start AR Loop", e)
+            }
+        } else {
             cameraPermissionLauncher.launch(permission)
-            return
-        }
-
-        try {
-            startARLoop()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to start AR Loop", e)
         }
     }
 
