@@ -1,23 +1,29 @@
 package com.arwheelapp.modules
 
 import android.content.Context
+import android.widget.Toast
 import android.util.Log
 import android.view.View
 import android.os.SystemClock
-import android.graphics.PointF
 import android.graphics.BitmapFactory
+import android.graphics.PointF
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.*
+import kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.math.*
-import kotlin.math.*
 import java.util.*
-import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.processor.OnnxRuntimeHandler
-import com.arwheelapp.utils.ARMode
+import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.utils.Detection
+import com.arwheelapp.utils.ARMode
+
 
 class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView, private val arSceneView: ARSceneView) {
     private val modelManager = ModelManager(arSceneView)
@@ -503,33 +509,47 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         markerlessActiveModels.clear()
     }
 
-    fun setupMarkerDatabase(session: Session) {
-        try {
-            val augmentedImageDatabase = AugmentedImageDatabase(session)
-            val assetManager = context.assets
-            val markerFolder = "markers"
-            val fileNames = assetManager.list(markerFolder) ?: emptyArray()
+    fun setupMarkerDatabase(session: Session, markerSize: Float = 0.15f) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Log.d(TAG, "⏳ Starting background marker loading...")
+                val augmentedImageDatabase = AugmentedImageDatabase(session)
+                val assetManager = context.assets
+                val markerFolder = "markers"
+                val fileNames = assetManager.list(markerFolder) ?: emptyArray()
 
-            for (filename in fileNames) {
-            if (filename.lowercase().endsWith(".jpg") || filename.lowercase().endsWith(".png")) {
-                assetManager.open("$markerFolder/$filename").use { inputStream ->
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    val markerName = filename.substringBeforeLast(".")
+                for (filename in fileNames) {
+                    if (filename.lowercase().endsWith(".jpg") || filename.lowercase().endsWith(".png")) {
+                        try {
+                            assetManager.open("$markerFolder/$filename").use { inputStream ->
+                                val bitmap = BitmapFactory.decodeStream(inputStream)
+                                val markerName = filename.substringBeforeLast(".")
 
-                    augmentedImageDatabase.addImage(markerName, bitmap, 0.15f)
-                    Log.d(TAG, "Loaded Marker: $markerName ✅")
+                                augmentedImageDatabase.addImage(markerName, bitmap, markerSize)
+                                Log.d(TAG, "Loaded Marker: $markerName ✅")
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Failed to load marker: $filename", e)
+                        }
+                    }
                 }
-            }
-        }
 
-        val config = session.config.apply {
-            this.augmentedImageDatabase = augmentedImageDatabase
-            updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-            focusMode = Config.FocusMode.AUTO
-        }
-        session.configure(config)
-        } catch (e: Exception) {
-            Log.e(TAG, "setupMarkerDatabase: Error", e)
+                withContext(Dispatchers.Main) {
+                    try {
+                        val config = session.config.apply {
+                            this.augmentedImageDatabase = augmentedImageDatabase
+                            updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                            focusMode = Config.FocusMode.AUTO
+                        }
+                        session.configure(config)
+                        Log.d(TAG, "Marker Database Configured Successfully!")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Session configuration failed", e)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in setupMarkerDatabase", e)
+            }
         }
     }
 }

@@ -19,7 +19,7 @@ class ARActivity : ComponentActivity() {
     private val arSceneView: ARSceneView by lazy { ARSceneView(this) }
     private val onnxOverlayView: OnnxOverlayView by lazy { OnnxOverlayView(this) }
     private val rootLayout: FrameLayout by lazy { FrameLayout(this) }
-    
+
     private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlayView, arSceneView) }
     private val uiManager: ARUIManager by lazy { ARUIManager(this, rootLayout, onnxOverlayView) }
 
@@ -68,74 +68,20 @@ class ARActivity : ComponentActivity() {
             setupARSession(session)
         }
 
+        arSceneView.planeRenderer.isVisible = false
+
         rootLayout.addView(arSceneView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         rootLayout.addView(onnxOverlayView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
         uiManager.setupInterface()
-        // setupUICallbacks()
+        setupUICallbacks()
 
         setContentView(rootLayout)
     }
 
     private fun setupUICallbacks() {
-        uiManager.onModeSelected = { mode ->
-            currentMode = mode
-        }
-
         uiManager.onBackClicked = {
             finish()
-        }
-    }
-
-    private fun setupARSession(session: Session) {
-        try {
-            configureSessionFor60FPS(session)
-
-            val config = Config(session).apply {
-                updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
-                instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
-                focusMode = Config.FocusMode.AUTO
-                
-                if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
-                    depthMode = Config.DepthMode.AUTOMATIC
-                }
-            }
-            session.configure(config)
-
-            arRendering.setupMarkerDatabase(session)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error configuring AR Session", e)
-        }
-    }
-
-    private fun configureSessionFor60FPS(session: Session) {
-        val filter = CameraConfigFilter(session)
-        
-        filter.targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60)
-
-        val validConfigs = session.getSupportedCameraConfigs(filter)
-
-        if (validConfigs.isNotEmpty()) {
-            session.cameraConfig = validConfigs[0]
-            Log.d(TAG, "ARCore configured for 60 FPS")
-        } else {
-            Log.w(TAG, "60 FPS not supported on this device, falling back to 30 FPS")
-        }
-    }
-
-    private fun ensureARIsReady() {
-        val permission = android.Manifest.permission.CAMERA
-        if (ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            cameraPermissionLauncher.launch(permission)
-            return
-        }
-
-        // Setup UI Callbacks
-        uiManager.onBackClicked = {
-            finish() // ปิด Activity
         }
 
         uiManager.onModeSelected = { mode ->
@@ -161,6 +107,49 @@ class ARActivity : ComponentActivity() {
             // arRendering.changeModel("models/$modelName.glb")
             Log.d(TAG, "User selected model: $modelName")
         }
+    }
+
+    private fun setupARSession(session: Session) {
+        try {
+            configureSessionFor60FPS(session)
+
+            val config = Config(session).apply {
+                updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+                instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
+                focusMode = Config.FocusMode.AUTO
+
+                if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                    depthMode = Config.DepthMode.AUTOMATIC
+                }
+            }
+            session.configure(config)
+            arRendering.setupMarkerDatabase(session)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configuring AR Session", e)
+        }
+    }
+
+    private fun configureSessionFor60FPS(session: Session) {
+        val filter = CameraConfigFilter(session)
+        filter.targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60)
+
+        val validConfigs = session.getSupportedCameraConfigs(filter)
+        if (validConfigs.isNotEmpty()) {
+            session.cameraConfig = validConfigs[0]
+            Log.d(TAG, "ARCore configured for 60 FPS")
+        } else {
+            Log.w(TAG, "60 FPS not supported on this device, falling back to 30 FPS")
+        }
+    }
+
+    private fun ensureARIsReady() {
+        val permission = android.Manifest.permission.CAMERA
+        if (ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            cameraPermissionLauncher.launch(permission)
+            return
+        }
 
         try {
             startARLoop()
@@ -170,7 +159,7 @@ class ARActivity : ComponentActivity() {
     }
 
     private fun takePhoto() {
-        val bitmap = arSceneView.bitmap // sceneview function (อาจต้องปรับตาม version lib)
+        // val bitmap = arSceneView.bitmap // sceneview function (อาจต้องปรับตาม version lib)
         Toast.makeText(this, "Photo Captured! (Mock)", Toast.LENGTH_SHORT).show()
         // Save bitmap logic here...
     }
@@ -178,7 +167,6 @@ class ARActivity : ComponentActivity() {
     private fun startARLoop() {
         arSceneView.onFrame = onFrame@{ _ ->
             val frame = arSceneView.frame ?: return@onFrame
-
             arRendering.render(arSceneView, frame, currentMode)
         }
     }

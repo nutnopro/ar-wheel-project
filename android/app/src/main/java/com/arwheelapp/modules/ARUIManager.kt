@@ -1,17 +1,17 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.view.ViewGroup
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
-import android.widget.Button
-import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
+import android.widget.FrameLayout
 import android.widget.TextView
+import android.widget.Button
 import android.widget.Toast
 import com.arwheelapp.utils.ARMode
 
@@ -34,8 +34,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var sizeList = listOf(15, 16, 17, 18, 19, 20, 21, 22)
 
     fun setupInterface() {
-        rootLayout.removeAllViews()
-
         // *Top Bar (Back & Mode)
         setupTopBar()
 
