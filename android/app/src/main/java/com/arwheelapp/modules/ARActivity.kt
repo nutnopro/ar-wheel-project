@@ -85,10 +85,15 @@ class ARActivity : ComponentActivity() {
             Toast.makeText(this, "Switched to $mode", Toast.LENGTH_SHORT).show()
             // Reset logic ถ้าจำเป็น
             // arRendering.clear()
+
+            // arRendering.clearAnchors() // ลบโมเดลเก่าออกก่อนเริ่มโหมดใหม่
         }
 
         uiManager.onCaptureClicked = {
             // TODO: ใส่ Logic ถ่ายรูปตรงนี้
+
+            arSceneView.startMirroringToSurface(...)
+
             takePhoto()
         }
 
@@ -96,12 +101,23 @@ class ARActivity : ComponentActivity() {
             // TODO: ส่งค่า size ไป update ใน arRendering
             // arRendering.updateWheelSize(sizeInch) 
             Log.d(TAG, "User selected size: $sizeInch")
+
+            arRendering.updateWheelSize(sizeInch)
         }
 
         uiManager.onModelSelected = { modelName ->
             // TODO: ส่งค่า model path ไปเปลี่ยนโมเดล
             // arRendering.changeModel("models/$modelName.glb")
             Log.d(TAG, "User selected model: $modelName")
+
+            // val fileName = when(modelName) {
+            //     "Wheel Type A" -> "wheel_a.glb"
+            //     "Wheel Type B" -> "wheel_b.glb" 
+            //     "Offroad" -> "offroad_wheel.glb"
+            //     else -> "wheel_default.glb"
+            // }
+
+            // arRendering.loadModel(fileName)
         }
     }
 
@@ -154,6 +170,7 @@ class ARActivity : ComponentActivity() {
         }
     }
 
+    // TODO: Implement actual photo capture logic
     private fun takePhoto() {
         // val bitmap = arSceneView.bitmap // sceneview function (อาจต้องปรับตาม version lib)
         Toast.makeText(this, "Photo Captured! (Mock)", Toast.LENGTH_SHORT).show()

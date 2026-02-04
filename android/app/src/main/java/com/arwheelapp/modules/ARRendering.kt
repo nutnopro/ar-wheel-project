@@ -52,11 +52,14 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val MIN_DIST = 0.02f
     private val MAX_DIST = 0.30f
 
-    // !!Change to ui later
+    private val DONUT_POINTS = 8         // จำนวนจุดรอบวงกลม
+    private val DONUT_RADIUS_FACTOR = 0.5f // รัศมีวงกลม (50% ของขนาด BBox)
+
+    // !!Change to ui
 	private val MODEL_PATH = "models/wheel.glb"
     private val scaleFactor = 1f
     private val diameterFactor = 1f
-    private val SNAP_THRESHOLD = 0.5f // !chang to model size later
+    private val SNAP_THRESHOLD = 0.5f // !chang to model size
 
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
         if (previousMode != currentMode) {
@@ -330,9 +333,9 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
 
-	// เพิ่ม Constants สำหรับการสุ่มจุด
-    // private val DONUT_POINTS = 8         // จำนวนจุดรอบวงกลม
-    // private val DONUT_RADIUS_FACTOR = 0.5f // รัศมีวงกลม (50% ของขนาด BBox)
+
+
+
 
     // // *Hit Test & Update Models (Refined Logic)
     // private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
