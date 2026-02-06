@@ -1,18 +1,24 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.view.View
 import android.view.Gravity
 import android.view.OrientationEventListener
-import android.view.View
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.PorterDuff
+import android.graphics.drawable.GradientDrawable
+import android.widget.Toast
+import android.widget.Button
+import android.widget.TextView
+import android.widget.ImageView
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
-import com.arwheelapp.utils.ARMode
+import androidx.core.content.ContextCompat
+import androidx.appcompat.widget.AppCompatImageView
 import kotlin.math.abs
+import com.arwheelapp.utils.ARMode
+import com.arwheelapp.R
 
 class ARUIManager(private val context: Context, private val rootLayout: FrameLayout, private val overlayView: View) {
 
@@ -24,7 +30,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     var onSizeSelected: ((Float) -> Unit)? = null
 
     // UI Elements
-    private var btnModeToggle: TextView? = null
+    private var btnModeToggle: AppCompatImageView? = null
     private var navContainer: LinearLayout? = null
     private var controlsContainer: LinearLayout? = null
     private var selectionContainer: LinearLayout? = null
@@ -66,16 +72,14 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Back Button
-        val btnBack = createIconButton("❮").apply {
+        val btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
             setOnClickListener { onBackClicked?.invoke() }
         }
 
         // Mode Button
-        btnModeToggle = createIconButton("◱").apply {
-            textSize = 20f
+        btnModeToggle = createIconButton(R.drawable.ic_layers).apply {
             setOnClickListener { toggleMode() }
         }
-        updateModeIcon()
 
         navContainer?.addView(btnBack)
         navContainer?.addView(createSpacer(30))
@@ -99,7 +103,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Model Button
-        val btnModel = createMenuButton("📦 Model").apply {
+        val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply {
             setOnClickListener { showModelSelector() }
         }
 
@@ -109,7 +113,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Settings Button
-        val btnSettings = createMenuButton("⚙ Size").apply {
+        val btnSettings = createMenuButton("Size", R.drawable.ic_settings).apply {
             setOnClickListener { showSizeSelector() }
         }
 
@@ -248,11 +252,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Selection Menu Position
-        selectionContainer?.apply {
-            // Re-orient content inside scrollview if visible
-            // (Simple reset for now)
-            visibility = View.GONE 
-        }
+        selectionContainer?.visibility = View.GONE 
     }
 
     private fun rotateView(view: View?, rotation: Float) {
@@ -278,13 +278,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL 
             }
 
-            // Adjust container for scrollview
-            if (isPortrait) {
-               // Need HorizontalScrollView for Portrait
-               // But to keep code simple, let's use Flow or just LinearLayout
-               // Let's swap to HorizontalScrollView for Portrait logic if needed
-            }
-
             // Simplified: Just use a list that flows based on orientation
             modelList.forEach { modelName ->
                 val item = createChipButton(modelName)
@@ -292,7 +285,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 item.setOnClickListener {
                     onModelSelected?.invoke(modelName)
                     selectionContainer?.visibility = View.GONE
-                    Toast.makeText(context, "Selected: $modelName", Toast.LENGTH_SHORT).show()
                 }
                 container.addView(item)
                 container.addView(createSpacer(30))
@@ -328,7 +320,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 item.setOnClickListener {
                     onSizeSelected?.invoke(size.toFloat())
                     selectionContainer?.visibility = View.GONE
-                    Toast.makeText(context, "Size: $size inch", Toast.LENGTH_SHORT).show()
                 }
                 container.addView(item)
                 container.addView(createSpacer(30))
@@ -389,25 +380,24 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     private fun updateModeIcon() {
-        val icon = if (currentMode == ARMode.MARKER_BASED) "◈" else "◱"
-        btnModeToggle?.text = icon
+        val iconRes = if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
+        btnModeToggle?.setImageResource(iconRes)
     }
 
     // --- Helper UI Functions ---
 
-    private fun createIconButton(icon: String): TextView {
-        return TextView(context).apply {
-            text = icon
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
+    private fun createIconButton(iconResId: Int): AppCompatImageView {
+        return AppCompatImageView(context).apply {
+            setImageResource(iconResId)
+            setColorFilter(Color.WHITE)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(30, 30, 30, 30)
             background = createRoundDrawable(Color.parseColor("#66000000"), 100f)
             layoutParams = LinearLayout.LayoutParams(120, 120)
         }
     }
 
-    private fun createMenuButton(label: String): TextView {
+    private fun createMenuButton(label: String, iconResId: Int): TextView {
         return TextView(context).apply {
             text = label
             setTextColor(Color.WHITE)
@@ -416,6 +406,16 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             typeface = Typeface.DEFAULT_BOLD
             background = createRoundDrawable(Color.parseColor("#99000000"), 30f)
             layoutParams = LinearLayout.LayoutParams(250, 100)
+
+            // insert Icon on the left
+            val drawable = ContextCompat.getDrawable(context, iconResId)
+            drawable?.setBounds(0, 0, 50, 50)
+            drawable?.setTint(Color.WHITE)
+            
+            // (Left, Top, Right, Bottom)
+            setCompoundDrawables(drawable, null, null, null)
+            compoundDrawablePadding = 15
+            setPadding(30, 0, 30, 0)
         }
     }
 
