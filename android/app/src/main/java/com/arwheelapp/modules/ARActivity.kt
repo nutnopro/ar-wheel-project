@@ -46,10 +46,12 @@ class ARActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         checkPermissionAndStartAR()
+        uiManager.onResume()
     }
 
     override fun onPause() {
         super.onPause()
+        uiManager.onPause()
     }
 
     override fun onDestroy() {
@@ -82,17 +84,12 @@ class ARActivity : ComponentActivity() {
 
         uiManager.onModeSelected = { mode ->
             currentMode = mode
-            Toast.makeText(this, "Switched to $mode", Toast.LENGTH_SHORT).show()
-            // Reset logic ถ้าจำเป็น
-            // arRendering.clear()
-
-            // arRendering.clearAnchors() // ลบโมเดลเก่าออกก่อนเริ่มโหมดใหม่
         }
 
         uiManager.onCaptureClicked = {
             // TODO: ใส่ Logic ถ่ายรูปตรงนี้
 
-            arSceneView.startMirroringToSurface(...)
+            // arSceneView.startMirroringToSurface(...)
 
             takePhoto()
         }
@@ -102,7 +99,7 @@ class ARActivity : ComponentActivity() {
             // arRendering.updateWheelSize(sizeInch) 
             Log.d(TAG, "User selected size: $sizeInch")
 
-            arRendering.updateWheelSize(sizeInch)
+            // arRendering.updateWheelSize(sizeInch)
         }
 
         uiManager.onModelSelected = { modelName ->
@@ -184,19 +181,3 @@ class ARActivity : ComponentActivity() {
         }
     }
 }
-
-// override fun onResume() {
-//         super.onResume()
-//         try {
-//             arSceneView.resume()
-//             uiManager.onResume() // ✅ เริ่มจับการหมุน
-//         } catch (e: Exception) {
-//             Log.e(TAG, "Error onResume", e)
-//         }
-//     }
-
-//     override fun onPause() {
-//         super.onPause()
-//         arSceneView.pause()
-//         uiManager.onPause() // ✅ หยุดจับการหมุน
-//     }
