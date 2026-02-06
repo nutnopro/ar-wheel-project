@@ -52,8 +52,8 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val MIN_DIST = 0.02f
     private val MAX_DIST = 0.30f
 
-    private val DONUT_POINTS = 8         // จำนวนจุดรอบวงกลม
-    private val DONUT_RADIUS_FACTOR = 0.5f // รัศมีวงกลม (50% ของขนาด BBox)
+    private val DONUT_POINTS = 8
+    private val DONUT_RADIUS_FACTOR = 0.5f
 
     // !!Change to ui
 	private val MODEL_PATH = "models/wheel.glb"
