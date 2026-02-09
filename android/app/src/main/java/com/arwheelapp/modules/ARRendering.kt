@@ -38,6 +38,29 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private var lastInferenceTime = 0L
     private var lastHitTestTime = 0L
 
+    // --- Dynamic FPS Settings ---
+    // AI Inference: 5 FPS -> 20 FPS
+    private val MIN_INFERENCE_INTERVAL = 200L // 5 FPS
+    private val MAX_INFERENCE_INTERVAL = 50L  // 20 FPS
+
+    // HitTest: 10 FPS -> 60 FPS
+    private val MIN_HITTEST_INTERVAL = 100L   // 10 FPS
+    private val MAX_HITTEST_INTERVAL = 16L    // ~60 FPS
+
+    private var currentInferenceInterval = MIN_INFERENCE_INTERVAL
+    private var currentHitTestInterval = MIN_HITTEST_INTERVAL
+
+    // Variables for Speed Calculation
+    private var lastCameraPose: Pose? = null
+    private var lastSpeedCheckTime = 0L
+    private val SPEED_CHECK_INTERVAL = 100L // Check speed every 0.1s
+    private val MOVEMENT_THRESHOLD_HIGH = 0.3f // 0.3 meters/second considered "Fast"
+
+    // Timestamps
+    private var previousMode: ARMode? = null
+    private var lastInferenceTime = 0L
+    private var lastHitTestTime = 0L
+
     private val modelPool = mutableListOf<Node>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
     private val markerlessActiveModels = mutableListOf<Node>()
@@ -49,21 +72,25 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val MIN_ALPHA = 0.05f
     private val MAX_ALPHA = 0.6f
     private val MIN_DIST = 0.02f
-    private val MAX_DIST = 0.30f
+    private val MAX_DIST = 0.3f
 
     private val DONUT_POINTS = 8
-    private val DONUT_RADIUS_FACTOR = 0.6f
+    private val DONUT_RADIUS_FACTOR = 0.64f
 
     @Volatile
-    private var snapThreshold = 0.4572f
+    private var snapThreshold = 0.457f
 
-	private val MODEL_PATH = "models/wheel.glb"     // !!Change to ui
+    @Volatile
+	private var MODEL_PATH = "models/wheel.glb"     // !!Change to ui
 
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
         if (previousMode != currentMode) {
             handleModeSwitch()
             previousMode = currentMode
         }
+
+        // Calculate Camera Speed to adjust FPS dynamically
+        calculateDynamicIntervals(frame)
 
         when (currentMode) {
             ARMode.MARKER_BASED -> {
@@ -93,20 +120,42 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
+    private fun calculateDynamicIntervals(frame: Frame) {
+        val currentTime = SystemClock.uptimeMillis()
+        if (currentTime - lastSpeedCheckTime < SPEED_CHECK_INTERVAL) return
+
+        val camera = frame.camera
+        val currentPose = camera.pose
+
+        if (lastCameraPose != null) {
+            // Calculate distance moved
+            val distance = distance(currentPose, lastCameraPose!!)
+
+            // Calculate speed (meters per second)
+            val timeDeltaSeconds = (currentTime - lastSpeedCheckTime) / 1000f
+            val speed = if (timeDeltaSeconds > 0) distance / timeDeltaSeconds else 0f
+
+            // Normalize speed to 0.0 - 1.0 range (based on threshold)
+            val speedFactor = (speed / MOVEMENT_THRESHOLD_HIGH).coerceIn(0f, 1f)
+
+            // Linear Interpolation (Lerp) for Intervals
+            currentInferenceInterval = lerp(MIN_INFERENCE_INTERVAL.toFloat(), MAX_INFERENCE_INTERVAL.toFloat(), speedFactor).toLong()
+            currentHitTestInterval = lerp(MIN_HITTEST_INTERVAL.toFloat(), MAX_HITTEST_INTERVAL.toFloat(), speedFactor).toLong()
+
+            // Log.d(TAG, "Speed: $speed m/s | AI Interval: $currentInferenceInterval ms | HitTest Interval: $currentHitTestInterval ms")
+        }
+
+        lastCameraPose = currentPose
+        lastSpeedCheckTime = currentTime
+    }
+
     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
         val updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
 
-        // val visibleCount = updatedAugmentedImages.count { image ->
-        //     image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING
-        // }
-        // Log.d(TAG, "Frame founded marker: $visibleCount markers")
-
         for (image in updatedAugmentedImages) {
-            // Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState} | Method: ${image.trackingMethod}")
             when (image.trackingState) {
                 TrackingState.TRACKING -> {
                     if (!augmentedImageMap.containsKey(image)) {
-                        // Log.d(TAG, "Found new marker: ${image.name}")
                         val imageNode = AugmentedImageNode(arSceneView.engine, image)
 
                         val model = getOrCreateModel(MODEL_PATH)
@@ -126,7 +175,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                     }
                 }
 
-                
                 TrackingState.STOPPED -> {
                     val node = augmentedImageMap[image]
                     if (node != null) {
@@ -143,10 +191,10 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
-    // *Run Inference @ 15 FPS
+    // *Run Inference @ Dynamic FPS
     private fun processMarkerlessInference(frame: Frame) {
         val currentTime = SystemClock.uptimeMillis()
-        if (currentTime - lastInferenceTime < INFERENCE_INTERVAL_MS) return
+        if (currentTime - lastInferenceTime < currentInferenceInterval) return
 
         lastInferenceTime = currentTime
 
@@ -158,7 +206,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 onnxOverlayView.updateDetections(latestDetections)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error converting frame to tensor", e)
+            Log.e(TAG, "Error running inference", e)
         }
     }
 
@@ -166,7 +214,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     // *Hit Test & Update Models @ 20 FPS
     private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
         val currentTime = SystemClock.uptimeMillis()
-        if (currentTime - lastHitTestTime < HITTEST_INTERVAL_MS) return
+        if (currentTime - lastHitTestTime < currentHitTestInterval) return
         lastHitTestTime = currentTime
 
         val detections = latestDetections
@@ -191,7 +239,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             var centerPose: Pose? = null
 
             val validCenterHit = centerHits.firstOrNull { hit ->
-                (hit.trackable is com.google.ar.core.Plane || hit.trackable is Point) &&
+                (hit.trackable is Plane || hit.trackable is Point) &&
                 !isUpwardSurface(hit.hitPose)
             }
 
@@ -211,7 +259,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
                 val donutHits = frame.hitTest(cx + dx, cy + dy)
                 val hit = donutHits.firstOrNull { 
-                    (it.trackable is com.google.ar.core.Plane || it.trackable is Point) &&
+                    (it.trackable is Plane || it.trackable is Point) &&
                     !isUpwardSurface(it.hitPose)
                 }
 
@@ -220,13 +268,12 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 }
             }
 
-            if (validPoses.isEmpty()) continue
+            if (validPoses.isEmpty() || validPoses.size < 3) continue
 
             // Statistical Outlier Removal
             val bestPos = calculateAveragePositionWithOutlierRemoval(validPoses) ?: continue
 
             // Calculate Rotation
-            // Use center pose if available
             val refPose = centerPose ?: validPoses.first()
             val q = refPose.rotationQuaternion
             val targetRot = Quaternion(x = q[0], y = q[1], z = q[2], w = q[3])
@@ -337,14 +384,14 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return sqrt(dx * dx + dy * dy + dz * dz)
     }
 
-    private fun getOrCreateModel(path: String): Node {
+    private fun getOrCreateModel(modelPath: String): Node {
         val freeModel = modelPool.find { it.parent == null || !it.isVisible }
 
         return if (freeModel != null) {
             freeModel.isVisible = true
             freeModel
         } else {
-            var newModel = modelManager.createModelNode(path)
+            var newModel = modelManager.createModelNode(modelPath)
 
             modelPool.add(newModel)
             newModel
@@ -352,6 +399,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     }
 
     fun updateNewModel(modelPath: String) {
+        MODEL_PATH = modelPath
         modelPool.forEach { rootNode ->
             modelManager.changeModel(rootNode, modelPath)
         }

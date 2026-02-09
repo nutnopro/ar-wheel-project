@@ -23,7 +23,22 @@ class OnnxRuntimeHandler(private val context: Context) {
     // *Load model .onnx from assets
     private fun createSession(): OrtSession {
         val modelFile = File(context.filesDir, MODEL_PATH)
+
         val options = OrtSession.SessionOptions().apply {
+            try {
+                addConfigEntry("session.use_xnnpack", "1")
+            }
+            catch(Exception e) {
+                Log.e(TAG, "XNNPACK not supported on this device", e)
+            }
+
+            try {
+                val nnapiFlags = EnumSet.of(NNAPIFlags.USE_FP16)
+                addNnapi(nnapiFlags) 
+            } catch (e: Exception) {
+                Log.e(TAG, "NNAPI not supported on this device, falling back to CPU")
+            }
+
             setIntraOpNumThreads(2)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
@@ -115,7 +130,6 @@ class OnnxRuntimeHandler(private val context: Context) {
             inferenceScope.cancel()
             session.close()
             env.close()
-            Log.d(TAG, "Closing ONNX resources")
         } catch (e: Exception) {
             Log.e(TAG, "Error closing resources", e)
         }

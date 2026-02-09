@@ -41,12 +41,16 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var modelList = listOf("Wheel Type A", "Wheel Type B", "Wheel Type C", "Offroad") // !Should be list of path of models
     private var sizeList = listOf(15, 16, 17, 18, 19)
 
+    fun setModels(models: List<String>) {
+        this.modelList = models
+    }
+
     fun setupInterface() {
         // Setup Containers
-        setupNavPanel()      // Top (Portrait) / Left (Landscape)
-        setupDebugPanel()    // Overlay toggle
-        setupControlsPanel() // Bottom (Portrait) / Right (Landscape)
-        setupSelectionMenu() // Popup menu
+        setupNavPanel()         // Top (Portrait) / Left (Landscape)
+        setupDebugPanel()       // Overlay toggle
+        setupControlsPanel()    // Bottom (Portrait) / Right (Landscape)
+        setupSelectionMenu()    // Popup menu
 
         // Start Orientation Listener
         setupOrientationListener()
@@ -180,9 +184,9 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
                 // Snap to 0, 90, 270 (Ignore 180/Upside down mostly)
                 val newRotation = when {
-                    orientation in 45..135 -> 270  // Landscape Right (Reverse)
-                    orientation in 225..315 -> 90  // Landscape Left
-                    else -> 0                      // Portrait
+                    orientation in 45..135 -> 270   // Landscape Right (Reverse)
+                    orientation in 225..315 -> 90   // Landscape Left
+                    else -> 0                       // Portrait
                 }
 
                 if (newRotation != currentRotation) {
@@ -205,7 +209,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
         // 1. Rotate All Icons/Buttons smoothly
         rotateView(btnModeToggle, viewRotation)
-        rotateView(navContainer?.getChildAt(0), viewRotation) // Back Button
+        rotateView(navContainer?.getChildAt(0), viewRotation)   // Back Button
         
         // Rotate Control Buttons (Model, Capture, Settings)
         for (i in 0 until (controlsContainer?.childCount ?: 0)) {
@@ -255,6 +259,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     // --- LifeCycle Methods (Must be called from Activity) ---
+
     fun onResume() {
         orientationListener?.enable()
     }
@@ -349,7 +354,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 params.width = FrameLayout.LayoutParams.WRAP_CONTENT
                 params.height = FrameLayout.LayoutParams.MATCH_PARENT
                 params.gravity = Gravity.END
-                params.marginEnd = 250 // Next to the vertical bar
+                params.marginEnd = 250  // Next to the vertical bar
                 params.bottomMargin = 0
                 orientation = LinearLayout.VERTICAL
             }
@@ -429,12 +434,10 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     private fun createCaptureButton(): View {
         return View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(180, 180)
+            layoutParams = LinearLayout.LayoutParams(200, 200)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.TRANSPARENT)
-                // setStroke(12, Color.WHITE)
-                setStroke(12, Color.GRAY)
+                setColor(Color.WHITE)
             }
             isClickable = true
         }
@@ -452,6 +455,4 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             layoutParams = LinearLayout.LayoutParams(size, size)
         }
     }
-    
-    fun setModels(models: List<String>) { this.modelList = models }
 }
