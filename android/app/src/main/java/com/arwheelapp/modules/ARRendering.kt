@@ -24,7 +24,6 @@ import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.utils.Detection
 import com.arwheelapp.utils.ARMode
 
-
 class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView, private val arSceneView: ARSceneView) {
     private val modelManager = ModelManager(arSceneView)
     private val frameConverter = FrameConverter()
@@ -46,19 +45,19 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     @Volatile
     private var latestDetections: List<Detection> = emptyList()
 
-    // *Dynamic lerp
+    // Dynamic lerp
     private val MIN_ALPHA = 0.05f
     private val MAX_ALPHA = 0.6f
     private val MIN_DIST = 0.02f
     private val MAX_DIST = 0.30f
 
     private val DONUT_POINTS = 8
-    private val DONUT_RADIUS_FACTOR = 0.5f
+    private val DONUT_RADIUS_FACTOR = 0.6f
+
+    @Volatile
+    private var snapThreshold = 0.4572f
 
 	private val MODEL_PATH = "models/wheel.glb"     // !!Change to ui
-    private val scaleFactor = 1f
-    private val diameterFactor = 1f
-    private val SNAP_THRESHOLD = 0.5f               // !chang to model size
 
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
         if (previousMode != currentMode) {
@@ -111,7 +110,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                         val imageNode = AugmentedImageNode(arSceneView.engine, image)
 
                         val model = getOrCreateModel(MODEL_PATH)
-                        model.scale = Float3(scaleFactor, scaleFactor, scaleFactor) 
                         model.isVisible = true 
 
                         imageNode.addChildNode(model)
@@ -240,7 +238,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
             val dist = if (closestModel != null) distance(closestModel.position, bestPos) else Float.MAX_VALUE
 
-            if (closestModel != null && dist < SNAP_THRESHOLD) {
+            if (closestModel != null && dist < snapThreshold) {
                 val model = closestModel
                 val dynamicAlpha = calculateDynamicAlpha(model.position, bestPos)
 
@@ -350,6 +348,22 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
             modelPool.add(newModel)
             newModel
+        }
+    }
+
+    fun updateNewModel(modelPath: String) {
+        modelPool.forEach { rootNode ->
+            modelManager.changeModel(rootNode, modelPath)
+        }
+    }
+
+    fun updateModelSize(sizeInch: Float) {
+        val sizeCm = sizeInch * 2.54f
+        snapThreshold = sizeCm / 100.0f
+        val scaleFactor = sizeCm / 45.72f   // 45.72cm = 18inch
+
+        modelPool.forEach { rootNode ->
+            modelManager.changeModelSize(rootNode, scaleFactor)
         }
     }
 

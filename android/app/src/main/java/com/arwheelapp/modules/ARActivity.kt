@@ -1,11 +1,17 @@
 package com.arwheelapp.modules
 
+import android.os.Environment
 import android.os.Bundle
+import android.os.Build
 import android.util.Log
+import android.content.ContentValues
+import android.provider.MediaStore
 import android.widget.FrameLayout
 import android.widget.Toast
-import androidx.activity.ComponentActivity
+import android.graphics.Bitmap
+import java.io.OutputStream
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.CameraConfig
@@ -60,8 +66,6 @@ class ARActivity : ComponentActivity() {
 
     // *Initialization
     private fun initViews() {
-        // arSceneView.arCore.cameraPermissionLauncher = cameraPermissionLauncher
-
         arSceneView.onSessionCreated = { session ->
             setupARSession(session)
         }
@@ -87,34 +91,17 @@ class ARActivity : ComponentActivity() {
         }
 
         uiManager.onCaptureClicked = {
-            // TODO: ใส่ Logic ถ่ายรูปตรงนี้
-
-            // arSceneView.startMirroringToSurface(...)
-
             takePhoto()
         }
 
-        uiManager.onSizeSelected = { sizeInch ->
-            // TODO: ส่งค่า size ไป update ใน arRendering
-            // arRendering.updateWheelSize(sizeInch) 
-            Log.d(TAG, "User selected size: $sizeInch")
+        uiManager.onModelSelected = { modelPath ->
+            arRendering.updateNewModel(modelPath)
+            Log.d(TAG, "User selected model: $modelPath")
 
-            // arRendering.updateWheelSize(sizeInch)
-        }
-
-        uiManager.onModelSelected = { modelName ->
-            // TODO: ส่งค่า model path ไปเปลี่ยนโมเดล
-            // arRendering.changeModel("models/$modelName.glb")
-            Log.d(TAG, "User selected model: $modelName")
-
-            // val fileName = when(modelName) {
-            //     "Wheel Type A" -> "wheel_a.glb"
-            //     "Wheel Type B" -> "wheel_b.glb" 
-            //     "Offroad" -> "offroad_wheel.glb"
-            //     else -> "wheel_default.glb"
-            // }
-
-            // arRendering.loadModel(fileName)
+            uiManager.onSizeSelected = { sizeInch ->
+                arRendering.updateModelSize(sizeInch) 
+                Log.d(TAG, "User selected size: $sizeInch")
+            }
         }
     }
 
@@ -167,11 +154,79 @@ class ARActivity : ComponentActivity() {
         }
     }
 
-    // TODO: Implement actual photo capture logic
     private fun takePhoto() {
-        // val bitmap = arSceneView.bitmap // sceneview function (อาจต้องปรับตาม version lib)
-        Toast.makeText(this, "Photo Captured! (Mock)", Toast.LENGTH_SHORT).show()
-        // Save bitmap logic here...
+        val bitmap = android.graphics.Bitmap.createBitmap(
+            arSceneView.width, 
+            arSceneView.height, 
+            Bitmap.Config.ARGB_8888
+        )
+
+        android.view.PixelCopy.request(
+            arSceneView, 
+            bitmap, 
+            { result ->
+                if (result == android.view.PixelCopy.SUCCESS) {
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        saveBitmapToGallery(bitmap)
+                    }
+                } else {
+                    runOnUiThread {
+                        Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }, 
+            android.os.Handler(android.os.Looper.getMainLooper())
+        )
+    }
+
+    private suspend fun saveBitmapToGallery(bitmap: Bitmap) {
+        val filename = "AR_IMG_${System.currentTimeMillis()}.jpg"
+
+        var fos: OutputStream? = null
+        var imageUri: android.net.Uri? = null
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+        }
+
+        val resolver = contentResolver        
+
+        try {
+            imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+            imageUri?.let { uri ->
+                fos = resolver.openOutputStream(uri)
+                fos?.let { stream ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(uri, contentValues, null, null)
+                }
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@ARActivity, "Saved image to gallery", Toast.LENGTH_LONG).show()
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            imageUri?.let { resolver.delete(it, null, null) }
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(this@ARActivity, "Failed to save image", Toast.LENGTH_SHORT).show()
+                // Toast.makeText(this@ARActivity, "Error saving photo: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } finally {
+            fos?.close()
+        }
     }
 
     private fun startARLoop() {

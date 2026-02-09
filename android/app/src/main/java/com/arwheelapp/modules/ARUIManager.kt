@@ -1,27 +1,23 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.view.View
 import android.view.Gravity
+import android.view.View
 import android.view.OrientationEventListener
-import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.PorterDuff
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.widget.Toast
-import android.widget.Button
-import android.widget.TextView
-import android.widget.ImageView
-import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.TextView
+import android.widget.Button
 import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.AppCompatImageView
-import kotlin.math.abs
 import com.arwheelapp.utils.ARMode
 import com.arwheelapp.R
 
 class ARUIManager(private val context: Context, private val rootLayout: FrameLayout, private val overlayView: View) {
-
     // Callbacks
     var onModeSelected: ((ARMode) -> Unit)? = null
     var onBackClicked: (() -> Unit)? = null
@@ -42,10 +38,12 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var orientationListener: OrientationEventListener? = null
 
     // Mock Data
-    private var modelList = listOf("Wheel Type A", "Wheel Type B", "Wheel Type C", "Offroad")
-    private var sizeList = listOf(15, 16, 17, 18, 19, 20, 21, 22)
+    private var modelList = listOf("Wheel Type A", "Wheel Type B", "Wheel Type C", "Offroad") // !Should be list of path of models
+    private var sizeList = listOf(15, 16, 17, 18, 19)
 
     fun setupInterface() {
+        rootLayout.removeAllViews()
+        rootLayout.setBackgroundColor(Color.WHITE)
 
         // Setup Containers
         setupNavPanel()      // Top (Portrait) / Left (Landscape)
@@ -438,7 +436,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.TRANSPARENT)
-                setStroke(12, Color.WHITE)
+                // setStroke(12, Color.WHITE)
+                setStroke(12, Color.GRAY)
             }
             isClickable = true
         }

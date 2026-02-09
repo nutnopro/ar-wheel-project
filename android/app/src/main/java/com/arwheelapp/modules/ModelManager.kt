@@ -1,11 +1,11 @@
 package com.arwheelapp.modules
 
 import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.loaders.MaterialLoader
+import io.github.sceneview.loaders.ModelLoader
+import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.node.CylinderNode
 import io.github.sceneview.collision.Box
 import io.github.sceneview.math.Color
 import dev.romainguy.kotlin.math.*
@@ -58,5 +58,21 @@ class ModelManager(private val arSceneView: ARSceneView) {
             height = 0.003f,
 			materialInstance = blackMaterial
 		).apply { isVisible = true }
+	}
+
+	fun changeModel(rootNode: Node, modelPath: String) {
+		rootNode.childNodes.forEach { child ->
+			if (child is ModelNode) {
+				modelLoader.createModelInstance(
+					assetFileLocation = modelPath
+				)?.let { modelInstance ->
+					child.modelInstance = modelInstance
+				}
+			}
+		}
+	}
+
+	fun changeModelSize(rootNode: Node, scaleFactor: Float) {
+		rootNode.scale = Float3(scaleFactor, scaleFactor, scaleFactor)
 	}
 }
