@@ -61,15 +61,33 @@ class ModelManager(private val arSceneView: ARSceneView) {
 	}
 
 	fun changeModel(rootNode: Node, modelPath: String) {
-		rootNode.childNodes.forEach { child ->
-			if (child is ModelNode) {
-				modelLoader.createModelInstance(
-					assetFileLocation = modelPath
-				)?.let { modelInstance ->
-					child.modelInstance = modelInstance
-				}
-			}
-		}
+		rootNode.childNodes.toList().forEach { child ->
+            rootNode.removeChildNode(child)
+            child.destroy()
+        }
+
+		modelLoader.createModelInstance(
+			assetFileLocation = modelPath
+		)?.let { modelInstance ->
+            val modelNode = ModelNode(modelInstance = modelInstance).apply { isVisible = true }
+
+			val box = modelNode.boundingBox
+			val sizeX = box.halfExtent[0] * 2.0f
+			val sizeY = box.halfExtent[1] * 2.0f
+			val sizeZ = box.halfExtent[2] * 2.0f
+			val maxDimension = max(sizeX, sizeY)
+			val radius = (maxDimension / 2.0f) * 0.98f
+			val halfThickness = sizeZ / 2
+
+			modelNode.position = Float3(0f, 0f, -halfThickness + 0.01f)
+
+			val backplate = createBackplate(radius)
+			backplate.rotation = Float3(90f, 0f, 0f)
+			backplate.position = Float3(0f, 0f, halfThickness - 0.005f)
+
+            rootNode.addChildNode(backplate)
+            rootNode.addChildNode(modelNode)
+        }
 	}
 
 	fun changeModelSize(rootNode: Node, scaleFactor: Float) {

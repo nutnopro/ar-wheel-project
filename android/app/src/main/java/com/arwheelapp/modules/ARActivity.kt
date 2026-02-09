@@ -13,11 +13,13 @@ import java.io.OutputStream
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.CameraConfig
 import com.google.ar.core.Session
 import com.google.ar.core.Config
 import java.util.EnumSet
+import kotlinx.coroutines.*
 import io.github.sceneview.ar.ARSceneView
 import com.arwheelapp.utils.ARMode
 
