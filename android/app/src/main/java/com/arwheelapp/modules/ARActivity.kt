@@ -39,7 +39,7 @@ class ARActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            checkPermissionAndStartAR()
+            startARLoop()
         } else {
             Toast.makeText(this, "Camera permission is needed for AR", Toast.LENGTH_LONG).show()
         }
@@ -144,15 +144,17 @@ class ARActivity : ComponentActivity() {
 
     private fun checkPermissionAndStartAR() {
         val permission = android.Manifest.permission.CAMERA
-        
-        if (ContextCompat.checkSelfPermission(this, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            try {
+
+        when {
+            ContextCompat.checkSelfPermission(this, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED -> {
                 startARLoop()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to start AR Loop", e)
             }
-        } else {
-            cameraPermissionLauncher.launch(permission)
+            ActivityCompat.shouldShowRequestPermissionRationale(this, permission) -> {
+                cameraPermissionLauncher.launch(permission)
+            }
+            else -> {
+                cameraPermissionLauncher.launch(permission)
+            }
         }
     }
 
