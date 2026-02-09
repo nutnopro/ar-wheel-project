@@ -6,8 +6,10 @@ import android.graphics.RectF
 import java.io.FileOutputStream
 import java.io.File
 import java.nio.FloatBuffer
+import java.util.EnumSet
 import kotlinx.coroutines.*
 import ai.onnxruntime.*
+import ai.onnxruntime.providers.NNAPIFlags
 import com.arwheelapp.utils.Detection
 
 class OnnxRuntimeHandler(private val context: Context) {
@@ -28,7 +30,7 @@ class OnnxRuntimeHandler(private val context: Context) {
             try {
                 addConfigEntry("session.use_xnnpack", "1")
             }
-            catch(Exception e) {
+            catch(e: Exception) {
                 Log.e(TAG, "XNNPACK not supported on this device", e)
             }
 

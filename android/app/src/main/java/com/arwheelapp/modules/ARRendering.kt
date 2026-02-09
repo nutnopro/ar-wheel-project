@@ -18,6 +18,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
 import io.github.sceneview.node.Node
 import io.github.sceneview.math.*
+import io.github.sceneview.collision.MathHelper.lerp
 import java.util.*
 import com.arwheelapp.processor.OnnxRuntimeHandler
 import com.arwheelapp.processor.FrameConverter
@@ -30,13 +31,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
     private val TAG = "ARRendering: "
-
-    private val INFERENCE_INTERVAL_MS = 1000L / 15L // ~15 FPS
-    private val HITTEST_INTERVAL_MS = 1000L / 20L   // ~20 FPS
-
-    private var previousMode: ARMode? = null
-    private var lastInferenceTime = 0L
-    private var lastHitTestTime = 0L
 
     // --- Dynamic FPS Settings ---
     // AI Inference: 5 FPS -> 20 FPS

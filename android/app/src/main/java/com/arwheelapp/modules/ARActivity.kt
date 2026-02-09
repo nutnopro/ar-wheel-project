@@ -12,6 +12,7 @@ import android.graphics.Bitmap
 import java.io.OutputStream
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.ar.core.CameraConfigFilter
