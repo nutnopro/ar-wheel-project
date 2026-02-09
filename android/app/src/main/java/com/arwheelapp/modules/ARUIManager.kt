@@ -42,9 +42,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var sizeList = listOf(15, 16, 17, 18, 19)
 
     fun setupInterface() {
-        rootLayout.removeAllViews()
-        rootLayout.setBackgroundColor(Color.WHITE)
-
         // Setup Containers
         setupNavPanel()      // Top (Portrait) / Left (Landscape)
         setupDebugPanel()    // Overlay toggle
