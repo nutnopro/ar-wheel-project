@@ -31,7 +31,7 @@ class ModelManager(private val arSceneView: ARSceneView) {
 			val radius = (maxDimension / 2.0f) * 0.98f
 			val halfThickness = sizeZ / 2
 
-			modelNode.position = Float3(0f, -halfThickness + 0.01f, 0f)
+			// modelNode.position = Float3(0f, -halfThickness + 0.01f, 0f)
 
 			val backplate = createBackplate(radius)
 			backplate.rotation = Float3(90f, 0f, 0f)
@@ -79,7 +79,7 @@ class ModelManager(private val arSceneView: ARSceneView) {
 			val radius = (maxDimension / 2.0f) * 0.98f
 			val halfThickness = sizeZ / 2
 
-			modelNode.position = Float3(0f, -halfThickness + 0.01f, 0f)
+			// modelNode.position = Float3(0f, -halfThickness + 0.01f, 0f)
 
 			val backplate = createBackplate(radius)
 			backplate.rotation = Float3(90f, 0f, 0f)

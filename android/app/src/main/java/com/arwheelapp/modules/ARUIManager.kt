@@ -59,13 +59,13 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private fun setupNavPanel() {
         navContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.START
-                topMargin = 40
+                topMargin = 60
                 marginStart = 40
             }
         }
@@ -127,7 +127,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         val wrapper = LinearLayout(context).apply {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
+                0,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 1f
             )
@@ -160,6 +160,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             layoutParams = FrameLayout.LayoutParams(-2, -2).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
                 marginStart = 20
+                topMargin = 200
             }
         }
         val btnDebug = Button(context).apply {
@@ -184,10 +185,11 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
                 // Snap to 0, 90, 270 (Ignore 180/Upside down mostly)
                 val newRotation = when {
-                    orientation in 45..135 -> 270   // Landscape Right (Reverse)
-                    orientation in 225..315 -> 90   // Landscape Left
-                    else -> 0                       // Portrait
-                }
+                    orientation >= 315 || orientation < 45 -> 0 // Portrait
+                    orientation in 45..135 -> 270               // Landscape Right
+                    orientation in 225..315 -> 90               // Landscape Left
+                    else -> 0
+
 
                 if (newRotation != currentRotation) {
                     currentRotation = newRotation
@@ -198,55 +200,72 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     private fun updateLayoutForRotation(rotation: Int) {
+        val isPortrait = rotation == 0
         // Rotation for Views (Counter-act device rotation)
         // Phone rotated 90 (Left) -> Views need -90
         // Phone rotated 270 (Right) -> Views need 90
-        val viewRotation = when (rotation) {
+        val targetRotation = when (rotation) {
             90 -> -90f
             270 -> 90f
             else -> 0f
         }
 
-        // 1. Rotate All Icons/Buttons smoothly
-        rotateView(btnModeToggle, viewRotation)
-        rotateView(navContainer?.getChildAt(0), viewRotation)   // Back Button
+        // Rotate All Icons/Buttons smoothly
+        rotateView(btnModeToggle, targetRotation)
+        rotateView(navContainer?.getChildAt(0), targetRotation)   // Back Button
         
         // Rotate Control Buttons (Model, Capture, Settings)
         for (i in 0 until (controlsContainer?.childCount ?: 0)) {
             val wrapper = controlsContainer?.getChildAt(i) as? LinearLayout
             val button = wrapper?.getChildAt(0)
-            rotateView(button, viewRotation)
-        }
-
-        // 2. Adjust Containers Layout (Horizontal <-> Vertical)
-        val isPortrait = rotation == 0
-
-        // Nav Container (Top-Left)
-        navContainer?.apply {
-            orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            // Adjust gravity/margin if needed, but Top-Left works for both usually
+            rotateView(button, targetRotation)
         }
 
         // Controls Container (Bottom)
         controlsContainer?.apply {
-            orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
-            
             val params = layoutParams as FrameLayout.LayoutParams
+
             if (isPortrait) {
                 // Bar at Bottom
+                orientation = LinearLayout.HORIZONTAL
                 params.width = FrameLayout.LayoutParams.MATCH_PARENT
                 params.height = FrameLayout.LayoutParams.WRAP_CONTENT
                 params.gravity = Gravity.BOTTOM
-                params.marginEnd = 0
                 params.bottomMargin = 60
+                params.marginEnd = 0
+
             } else {
                 // Bar at Right Side
+                orientation = LinearLayout.VERTICAL
                 params.width = FrameLayout.LayoutParams.WRAP_CONTENT
                 params.height = FrameLayout.LayoutParams.MATCH_PARENT
-                params.gravity = Gravity.END
+                params.gravity = Gravity.END or Gravity.CENTER_VERTICAL
                 params.bottomMargin = 0
                 params.marginEnd = 20
             }
+            layoutParams = params
+
+            for (i in 0 until childCount) {
+                val child = getChildAt(i)
+                val childParams = child.layoutParams as LinearLayout.LayoutParams
+                if (isPortrait) {
+                    childParams.width = 0
+                    childParams.height = LinearLayout.LayoutParams.WRAP_CONTENT
+                    childParams.weight = 1f
+                } else {
+                    childParams.width = LinearLayout.LayoutParams.WRAP_CONTENT
+                    childParams.height = 0
+                    childParams.weight = 1f
+                }
+                child.layoutParams = childParams
+            }
+        }
+
+        navContainer?.apply {
+            val params = layoutParams as FrameLayout.LayoutParams
+            // ปกติ Nav Bar จะอยู่มุมซ้ายบนเสมอไม่ว่าจะหมุนยังไง แค่หมุน icon เอา
+            // แต่ถ้าอยากย้ายตำแหน่งก็แก้ตรงนี้
+            params.gravity = Gravity.TOP or Gravity.START
             layoutParams = params
         }
 
@@ -273,9 +292,12 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private fun showModelSelector() {
         toggleSelectionMenu {
             val isPortrait = currentRotation == 0
-            val scrollView = android.widget.ScrollView(context) // Works for vertical list
+
+            val scrollView = if (isPortrait) android.widget.HorizontalScrollView(context) else android.widget.ScrollView(context)
+
             val container = LinearLayout(context).apply { 
                 orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL 
+                gravity = Gravity.CENTER
             }
 
             // Simplified: Just use a list that flows based on orientation
@@ -290,19 +312,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 container.addView(createSpacer(30))
             }
             
-            // Wrap in appropriate scrollview
-            val scrollWrapper: View = if (isPortrait) {
-                val hScroll = android.widget.HorizontalScrollView(context)
-                hScroll.addView(container)
-                hScroll
-            } else {
-                scrollView.addView(container)
-                scrollView
-            }
-            
-            selectionContainer?.addView(scrollWrapper)
-            
-            // Update Selection Container Layout Params based on rotation
+            scrollView.addView(container)
+            selectionContainer?.addView(scrollView)
             updateSelectionContainerParams()
         }
     }
@@ -310,8 +321,12 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private fun showSizeSelector() {
         toggleSelectionMenu {
             val isPortrait = currentRotation == 0
+
+            val scrollView = if (isPortrait) android.widget.HorizontalScrollView(context) else android.widget.ScrollView(context)
+
             val container = LinearLayout(context).apply { 
                 orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL 
+                gravity = Gravity.CENTER
             }
 
             sizeList.forEach { size ->
