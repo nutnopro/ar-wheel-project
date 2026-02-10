@@ -1,0 +1,423 @@
+// package com.arwheelapp.modules
+
+// import android.content.Context
+// import android.widget.Toast
+// import android.util.Log
+// import android.view.View
+// import android.os.SystemClock
+// import android.graphics.BitmapFactory
+// import android.graphics.PointF
+// import kotlinx.coroutines.CoroutineScope
+// import kotlinx.coroutines.Dispatchers
+// import kotlinx.coroutines.withContext
+// import kotlinx.coroutines.launch
+// import com.google.ar.core.*
+// import dev.romainguy.kotlin.math.*
+// import kotlin.math.*
+// import io.github.sceneview.ar.ARSceneView
+// import io.github.sceneview.ar.node.AugmentedImageNode
+// import io.github.sceneview.node.Node
+// import io.github.sceneview.math.*
+// import java.util.*
+// import com.arwheelapp.processor.OnnxRuntimeHandler
+// import com.arwheelapp.processor.FrameConverter
+// import com.arwheelapp.utils.Detection
+// import com.arwheelapp.utils.ARMode
+
+// class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView, private val arSceneView: ARSceneView) {
+//     private val modelManager = ModelManager(arSceneView)
+//     private val frameConverter = FrameConverter()
+//     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
+
+//     private val TAG = "ARRendering: "
+
+//     private val INFERENCE_INTERVAL_MS = 1000L / 15L // ~15 FPS
+//     private val HITTEST_INTERVAL_MS = 1000L / 20L   // ~20 FPS
+
+//     private var previousMode: ARMode? = null
+//     private var lastInferenceTime = 0L
+//     private var lastHitTestTime = 0L
+
+//     private val modelPool = mutableListOf<Node>()
+//     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
+//     private val markerlessActiveModels = mutableListOf<Node>()
+
+//     @Volatile
+//     private var latestDetections: List<Detection> = emptyList()
+
+//     // Dynamic lerp
+//     private val MIN_ALPHA = 0.05f
+//     private val MAX_ALPHA = 0.6f
+//     private val MIN_DIST = 0.02f
+//     private val MAX_DIST = 0.30f
+
+//     private val DONUT_POINTS = 8
+//     private val DONUT_RADIUS_FACTOR = 0.6f
+
+//     @Volatile
+//     private var snapThreshold = 0.4572f
+
+// 	private val MODEL_PATH = "models/wheel.glb"     // !!Change to ui
+
+//     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
+//         if (previousMode != currentMode) {
+//             handleModeSwitch()
+//             previousMode = currentMode
+//         }
+
+//         when (currentMode) {
+//             ARMode.MARKER_BASED -> {
+//                 processMarkerBased(arSceneView, frame)
+//             }
+//             ARMode.MARKERLESS -> {
+//                 processMarkerlessInference(frame)
+//                 processMarkerlessHitTest(arSceneView, frame)
+//             }
+//         }
+//     }
+
+//     private fun handleModeSwitch() {
+//         modelPool.forEach { model ->
+//             arSceneView.removeChildNode(model)
+//             model.parent = null
+//             model.isVisible = false
+//         }
+
+//         if (previousMode == ARMode.MARKER_BASED) {
+//             augmentedImageMap.values.forEach { it?.destroy() }
+//             augmentedImageMap.clear()
+//         }
+
+//         if (previousMode == ARMode.MARKERLESS) {
+//             markerlessActiveModels.clear()
+//         }
+//     }
+
+//     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
+//         val updatedAugmentedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
+
+//         // val visibleCount = updatedAugmentedImages.count { image ->
+//         //     image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING
+//         // }
+//         // Log.d(TAG, "Frame founded marker: $visibleCount markers")
+
+//         for (image in updatedAugmentedImages) {
+//             // Log.d(TAG, "Marker: ${image.name} | ID: ${image.index} | State: ${image.trackingState} | Method: ${image.trackingMethod}")
+//             when (image.trackingState) {
+//                 TrackingState.TRACKING -> {
+//                     if (!augmentedImageMap.containsKey(image)) {
+//                         // Log.d(TAG, "Found new marker: ${image.name}")
+//                         val imageNode = AugmentedImageNode(arSceneView.engine, image)
+
+//                         val model = getOrCreateModel(MODEL_PATH)
+//                         model.isVisible = true 
+
+//                         imageNode.addChildNode(model)
+//                         arSceneView.addChildNode(imageNode)
+
+//                         augmentedImageMap[image] = imageNode
+//                     }
+
+//                     val node = augmentedImageMap[image]
+//                     if (image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING) {
+//                         node?.isVisible = true
+//                     } else if (image.trackingMethod == AugmentedImage.TrackingMethod.LAST_KNOWN_POSE) {
+//                         node?.isVisible = false
+//                     }
+//                 }
+
+                
+//                 TrackingState.STOPPED -> {
+//                     val node = augmentedImageMap[image]
+//                     if (node != null) {
+//                         arSceneView.removeChildNode(node)
+//                         node.destroy()
+//                         augmentedImageMap.remove(image)
+//                     }
+//                 }
+
+//                 TrackingState.PAUSED -> {
+//                     augmentedImageMap[image]?.isVisible = false
+//                 }
+//             }
+//         }
+//     }
+
+//     // *Run Inference @ 15 FPS
+//     private fun processMarkerlessInference(frame: Frame) {
+//         val currentTime = SystemClock.uptimeMillis()
+//         if (currentTime - lastInferenceTime < INFERENCE_INTERVAL_MS) return
+
+//         lastInferenceTime = currentTime
+
+//         try {
+//             val tensor = frameConverter.convertFrameToTensor(frame)
+
+//             onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
+//                 latestDetections = detections
+//                 onnxOverlayView.updateDetections(latestDetections)
+//             }
+//         } catch (e: Exception) {
+//             Log.e(TAG, "Error converting frame to tensor", e)
+//         }
+//     }
+
+//     // !Maybe use bbox ratio to confirm rotation
+//     // *Hit Test & Update Models @ 20 FPS
+//     private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
+//         val currentTime = SystemClock.uptimeMillis()
+//         if (currentTime - lastHitTestTime < HITTEST_INTERVAL_MS) return
+//         lastHitTestTime = currentTime
+
+//         val detections = latestDetections
+//         if (detections.isEmpty()) {
+//             markerlessActiveModels.forEach { it.isVisible = false }
+//             return
+//         }
+
+//         val claimedModels = mutableSetOf<Node>()
+//         val viewW = arSceneView.width.toFloat()
+//         val viewH = arSceneView.height.toFloat()
+
+//         for (det in detections) {
+//             val bbox = det.boundingBox
+
+//             val cx = bbox.centerX() * viewW
+//             val cy = bbox.centerY() * viewH
+
+//             val validPoses = mutableListOf<Pose>()
+
+//             val centerHits = frame.hitTest(cx, cy)
+//             var centerPose: Pose? = null
+
+//             val validCenterHit = centerHits.firstOrNull { hit ->
+//                 (hit.trackable is com.google.ar.core.Plane || hit.trackable is Point) &&
+//                 !isUpwardSurface(hit.hitPose)
+//             }
+
+//             if (validCenterHit != null) {
+//                 centerPose = validCenterHit.hitPose
+//                 validPoses.add(centerPose)
+//             }
+
+//             // Donut sampling
+//             val radiusX = (bbox.width() * viewW * DONUT_RADIUS_FACTOR) / 2f
+//             val radiusY = (bbox.height() * viewH * DONUT_RADIUS_FACTOR) / 2f
+
+//             for (i in 0 until DONUT_POINTS) {
+//                 val angle = (2 * Math.PI * i) / DONUT_POINTS
+//                 val dx = (cos(angle) * radiusX).toFloat()
+//                 val dy = (sin(angle) * radiusY).toFloat()
+
+//                 val donutHits = frame.hitTest(cx + dx, cy + dy)
+//                 val hit = donutHits.firstOrNull { 
+//                     (it.trackable is com.google.ar.core.Plane || it.trackable is Point) &&
+//                     !isUpwardSurface(it.hitPose)
+//                 }
+
+//                 if (hit != null) {
+//                     validPoses.add(hit.hitPose)
+//                 }
+//             }
+
+//             if (validPoses.isEmpty()) continue
+
+//             // Statistical Outlier Removal
+//             val bestPos = calculateAveragePositionWithOutlierRemoval(validPoses) ?: continue
+
+//             // Calculate Rotation
+//             // Use center pose if available
+//             val refPose = centerPose ?: validPoses.first()
+//             val q = refPose.rotationQuaternion
+//             val targetRot = Quaternion(x = q[0], y = q[1], z = q[2], w = q[3])
+
+//             // Associate Models
+//             val closestModel = markerlessActiveModels
+//                 .filter { !claimedModels.contains(it) }
+//                 .minByOrNull { distance(it.position, bestPos) }
+
+//             val dist = if (closestModel != null) distance(closestModel.position, bestPos) else Float.MAX_VALUE
+
+//             if (closestModel != null && dist < snapThreshold) {
+//                 val model = closestModel
+//                 val dynamicAlpha = calculateDynamicAlpha(model.position, bestPos)
+
+//                 model.position = lerp(model.position, bestPos, dynamicAlpha)
+//                 model.quaternion = slerp(model.quaternion, targetRot, dynamicAlpha / 2)
+//                 model.isVisible = true
+
+//                 claimedModels.add(model)
+//             } else {
+//                 val newModel = getOrCreateModel(MODEL_PATH)
+//                 newModel.position = bestPos
+//                 newModel.quaternion = targetRot
+//                 newModel.isVisible = true
+
+//                 if (newModel.parent == null) {
+//                     arSceneView.addChildNode(newModel)
+//                 }
+//                 if (!markerlessActiveModels.contains(newModel)) {
+//                     markerlessActiveModels.add(newModel)
+//                 }
+//                 claimedModels.add(newModel)
+//             }
+//         }
+
+//         for (model in markerlessActiveModels) {
+//             if (!claimedModels.contains(model)) {
+//                 model.isVisible = false
+//             }
+//         }
+//     }
+
+//     private fun calculateAveragePositionWithOutlierRemoval(poses: List<Pose>): Float3? {
+//         if (poses.isEmpty()) return null
+//         if (poses.size == 1) return Float3(poses[0].tx(), poses[0].ty(), poses[0].tz())
+
+//         // Initial Mean
+//         val avgX = poses.map { it.tx() }.average()
+//         val avgY = poses.map { it.ty() }.average()
+//         val avgZ = poses.map { it.tz() }.average()
+
+//         // Distance from Mean
+//         val distances = poses.map {
+//             val dx = it.tx() - avgX
+//             val dy = it.ty() - avgY
+//             val dz = it.tz() - avgZ
+//             sqrt(dx * dx + dy * dy + dz * dz)
+//         }
+
+//         // Mean Distance and Standard Deviation
+//         val meanDist = distances.average()
+//         val variance = distances.map { (it - meanDist).pow(2) }.average()
+//         val stdDev = sqrt(variance)
+
+//         val threshold = meanDist + (1.5 * stdDev)
+
+//         // Filter Poses within Threshold
+//         val finalPoses = poses.filterIndexed { index, _ ->
+//             distances[index] <= threshold 
+//         }
+
+//         if (finalPoses.isEmpty()) return Float3(avgX.toFloat(), avgY.toFloat(), avgZ.toFloat())
+
+//         // Final Average
+//         return Float3(
+//             finalPoses.map { it.tx() }.average().toFloat(),
+//             finalPoses.map { it.ty() }.average().toFloat(),
+//             finalPoses.map { it.tz() }.average().toFloat()
+//         )
+//     }
+
+//     private fun isUpwardSurface(pose: Pose): Boolean {
+//         val axisY = FloatArray(3)
+//         pose.getTransformedAxis(1, 0f, axisY, 0)
+
+//         // 0.7f-45degrees, 0.866f-30degrees, 0.5f-60degrees
+//         return axisY[1] > 0.7f
+//     }
+
+//     private fun calculateDynamicAlpha(currentPos: Float3, targetPos: Float3): Float {
+//         val dist = distance(currentPos, targetPos)
+//         val t = ((dist - MIN_DIST) / (MAX_DIST - MIN_DIST)).coerceIn(0f, 1f)
+//         return MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * t
+//     }
+
+//     private fun distance(p1: Float3, p2: Float3): Float {
+//         val dx = p1.x - p2.x
+//         val dy = p1.y - p2.y
+//         val dz = p1.z - p2.z
+//         return sqrt(dx * dx + dy * dy + dz * dz)
+//     }
+
+//     private fun distance(pose1: Pose, pose2: Pose): Float {
+//         val dx = pose1.tx() - pose2.tx()
+//         val dy = pose1.ty() - pose2.ty()
+//         val dz = pose1.tz() - pose2.tz()
+//         return sqrt(dx * dx + dy * dy + dz * dz)
+//     }
+
+//     private fun getOrCreateModel(path: String): Node {
+//         val freeModel = modelPool.find { it.parent == null || !it.isVisible }
+
+//         return if (freeModel != null) {
+//             freeModel.isVisible = true
+//             freeModel
+//         } else {
+//             var newModel = modelManager.createModelNode(path)
+
+//             modelPool.add(newModel)
+//             newModel
+//         }
+//     }
+
+//     fun updateNewModel(modelPath: String) {
+//         modelPool.forEach { rootNode ->
+//             modelManager.changeModel(rootNode, modelPath)
+//         }
+//     }
+
+//     fun updateModelSize(sizeInch: Float) {
+//         val sizeCm = sizeInch * 2.54f
+//         snapThreshold = sizeCm / 100.0f
+//         val scaleFactor = sizeCm / 45.72f   // 45.72cm = 18inch
+
+//         modelPool.forEach { rootNode ->
+//             modelManager.changeModelSize(rootNode, scaleFactor)
+//         }
+//     }
+
+//     fun clear() {
+//         modelPool.forEach { it?.destroy() }
+//         modelPool.clear()
+
+//         augmentedImageMap.values.forEach { it?.destroy() }
+//         augmentedImageMap.clear()
+
+//         markerlessActiveModels.clear()
+//     }
+
+//     fun setupMarkerDatabase(session: Session, markerSize: Float = 0.15f) {
+//         CoroutineScope(Dispatchers.IO).launch {
+//             try {
+//                 Log.d(TAG, "⏳ Starting background marker loading...")
+//                 val augmentedImageDatabase = AugmentedImageDatabase(session)
+//                 val assetManager = context.assets
+//                 val markerFolder = "markers"
+//                 val fileNames = assetManager.list(markerFolder) ?: emptyArray()
+
+//                 for (filename in fileNames) {
+//                     if (filename.lowercase().endsWith(".jpg") || filename.lowercase().endsWith(".png")) {
+//                         try {
+//                             assetManager.open("$markerFolder/$filename").use { inputStream ->
+//                                 val bitmap = BitmapFactory.decodeStream(inputStream)
+//                                 val markerName = filename.substringBeforeLast(".")
+
+//                                 augmentedImageDatabase.addImage(markerName, bitmap, markerSize)
+//                                 Log.d(TAG, "Loaded Marker: $markerName ✅")
+//                             }
+//                         } catch (e: Exception) {
+//                             Log.e(TAG, "Failed to load marker: $filename", e)
+//                         }
+//                     }
+//                 }
+
+//                 withContext(Dispatchers.Main) {
+//                     try {
+//                         val config = session.config.apply {
+//                             this.augmentedImageDatabase = augmentedImageDatabase
+//                             updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+//                             focusMode = Config.FocusMode.AUTO
+//                         }
+//                         session.configure(config)
+//                         Log.d(TAG, "Marker Database Configured Successfully!")
+//                     } catch (e: Exception) {
+//                         Log.e(TAG, "Session configuration failed", e)
+//                     }
+//                 }
+//             } catch (e: Exception) {
+//                 Log.e(TAG, "Error in setupMarkerDatabase", e)
+//             }
+//         }
+//     }
+// }

@@ -55,10 +55,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     private fun setupNavButtons() {
-        val statusBarHeight = getStatusBarHeight()
-
         // Back Button
-        val btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
+        btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
             setOnClickListener { onBackClicked?.invoke() }
         }
 
@@ -172,8 +170,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 // Snap to 0, 90, 270 (Ignore 180/Upside down mostly)
                 val newRotation = when {
                     orientation >= 315 || orientation < 45 -> 0 // Portrait
-                    orientation in 45..135 -> 270               // Landscape Right
-                    orientation in 225..315 -> 90               // Landscape Left
+                    orientation in 45..135 -> 90                // Landscape Right
+                    orientation in 225..315 -> 270              // Landscape Left
                     else -> 0
                 }
 
@@ -194,6 +192,9 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
         val backParams = btnBack?.layoutParams as? FrameLayout.LayoutParams ?: return
         val modeParams = btnModeToggle?.layoutParams as? FrameLayout.LayoutParams ?: return
+
+        backParams.setMargins(0, 0, 0, 0)
+        modeParams.setMargins(0, 0, 0, 0)
 
         when (rotation) {
             // Portrait
@@ -236,8 +237,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Rotate All Icons/Buttons smoothly
-        rotateView(btnBack, targetRotation) // Back Button
-        rotateView(btnModeToggle, targetRotation)               // Mode Button
+        rotateView(btnBack, targetRotation)
+        rotateView(btnModeToggle, targetRotation)
         
         // Rotate Control Buttons (Model, Capture, Settings)
         for (i in 0 until (controlsContainer?.childCount ?: 0)) {

@@ -37,8 +37,8 @@ class ModelManager(private val arSceneView: ARSceneView) {
 			backplate.rotation = Float3(90f, 0f, 0f)
 			backplate.position = Float3(0f, halfThickness - 0.005f, 0f)
 
-			rootNode.addChildNode(backplate)
 			rootNode.addChildNode(modelNode)
+			rootNode.addChildNode(backplate)
 		}
 
 		return rootNode
@@ -85,8 +85,8 @@ class ModelManager(private val arSceneView: ARSceneView) {
 			backplate.rotation = Float3(90f, 0f, 0f)
 			backplate.position = Float3(0f, halfThickness - 0.005f, 0f)
 
-            rootNode.addChildNode(backplate)
             rootNode.addChildNode(modelNode)
+            rootNode.addChildNode(backplate)
         }
 	}
 
