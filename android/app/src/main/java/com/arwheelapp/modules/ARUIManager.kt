@@ -1,12 +1,12 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.view.Gravity
-import android.view.View
-import android.view.OrientationEventListener
 import android.graphics.Typeface
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.view.OrientationEventListener
+import android.view.Gravity
+import android.view.View
 import android.widget.LinearLayout
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -26,15 +26,13 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     var onSizeSelected: ((Float) -> Unit)? = null
 
     // UI Elements
+    private var btnBack: AppCompatImageView? = null
     private var btnModeToggle: AppCompatImageView? = null
-    private var navContainer: LinearLayout? = null
     private var controlsContainer: LinearLayout? = null
     private var selectionContainer: LinearLayout? = null
 
     private var currentMode: ARMode = ARMode.MARKERLESS
-    private var currentRotation = 0 // 0, 90, 180, 270
-
-    // Listener for rotation
+    private var currentRotation = 0
     private var orientationListener: OrientationEventListener? = null
 
     // Mock Data
@@ -47,7 +45,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     fun setupInterface() {
         // Setup Containers
-        setupNavPanel()         // Top (Portrait) / Left (Landscape)
+        setupNavButtons()         // Top (Portrait) / Left (Landscape)
         setupDebugPanel()       // Overlay toggle
         setupControlsPanel()    // Bottom (Portrait) / Right (Landscape)
         setupSelectionMenu()    // Popup menu
@@ -56,19 +54,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         setupOrientationListener()
     }
 
-    private fun setupNavPanel() {
-        navContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                topMargin = 60
-                marginStart = 40
-            }
-        }
+    private fun setupNavButtons() {
+        val statusBarHeight = getStatusBarHeight()
 
         // Back Button
         val btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
@@ -80,11 +67,10 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             setOnClickListener { toggleMode() }
         }
 
-        navContainer?.addView(btnBack)
-        navContainer?.addView(createSpacer(30))
-        navContainer?.addView(btnModeToggle)
+        rootLayout.addView(btnBack)
+        rootLayout.addView(btnModeToggle)
 
-        rootLayout.addView(navContainer)
+        updateNavPosition(0)
     }
 
     private fun setupControlsPanel() {
@@ -97,7 +83,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                bottomMargin = 60
+                bottomMargin = 120
             }
         }
 
@@ -189,21 +175,60 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                     orientation in 45..135 -> 270               // Landscape Right
                     orientation in 225..315 -> 90               // Landscape Left
                     else -> 0
-
+                }
 
                 if (newRotation != currentRotation) {
                     currentRotation = newRotation
-                    updateLayoutForRotation(currentRotation)
+                    rotateUIComponents(currentRotation)
+                    updateNavPosition(currentRotation)
                 }
             }
         }
     }
 
-    private fun updateLayoutForRotation(rotation: Int) {
-        val isPortrait = rotation == 0
-        // Rotation for Views (Counter-act device rotation)
-        // Phone rotated 90 (Left) -> Views need -90
-        // Phone rotated 270 (Right) -> Views need 90
+    private fun updateNavPosition(rotation: Int) {
+        val statusBarHeight = getStatusBarHeight()
+        val baseMargin = 40
+        val buttonSize = 120
+        val spacing = 30
+
+        val backParams = btnBack?.layoutParams as? FrameLayout.LayoutParams ?: return
+        val modeParams = btnModeToggle?.layoutParams as? FrameLayout.LayoutParams ?: return
+
+        when (rotation) {
+            // Portrait
+            0 -> {
+                backParams.gravity = Gravity.TOP or Gravity.START
+                backParams.setMargins(baseMargin, statusBarHeight + 20, 0, 0)
+
+                modeParams.gravity = Gravity.TOP or Gravity.END
+                modeParams.setMargins(0, statusBarHeight + 20, baseMargin, 0)
+            }
+
+            // Landscape - Camera Left
+            270 -> {
+                backParams.gravity = Gravity.TOP or Gravity.END
+                modeParams.gravity = Gravity.TOP or Gravity.END
+
+                backParams.setMargins(0, baseMargin, baseMargin, 0)
+                modeParams.setMargins(0, baseMargin + buttonSize + spacing, baseMargin, 0)
+            }
+
+            // Landscape - Camera Right
+            90 -> {
+                backParams.gravity = Gravity.BOTTOM or Gravity.START
+                modeParams.gravity = Gravity.BOTTOM or Gravity.START
+
+                backParams.setMargins(baseMargin, 0, 0, baseMargin)
+                modeParams.setMargins(baseMargin, 0, 0, baseMargin + buttonSize + spacing)
+            }
+        }
+
+        btnBack?.layoutParams = backParams
+        btnModeToggle?.layoutParams = modeParams
+    }
+
+    private fun rotateUIComponents(rotation: Int) {
         val targetRotation = when (rotation) {
             90 -> -90f
             270 -> 90f
@@ -211,8 +236,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Rotate All Icons/Buttons smoothly
-        rotateView(btnModeToggle, targetRotation)
-        rotateView(navContainer?.getChildAt(0), targetRotation)   // Back Button
+        rotateView(btnBack, targetRotation) // Back Button
+        rotateView(btnModeToggle, targetRotation)               // Mode Button
         
         // Rotate Control Buttons (Model, Capture, Settings)
         for (i in 0 until (controlsContainer?.childCount ?: 0)) {
@@ -221,56 +246,18 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             rotateView(button, targetRotation)
         }
 
-        // Controls Container (Bottom)
-        controlsContainer?.apply {
-            val params = layoutParams as FrameLayout.LayoutParams
-
-            if (isPortrait) {
-                // Bar at Bottom
-                orientation = LinearLayout.HORIZONTAL
-                params.width = FrameLayout.LayoutParams.MATCH_PARENT
-                params.height = FrameLayout.LayoutParams.WRAP_CONTENT
-                params.gravity = Gravity.BOTTOM
-                params.bottomMargin = 60
-                params.marginEnd = 0
-
-            } else {
-                // Bar at Right Side
-                orientation = LinearLayout.VERTICAL
-                params.width = FrameLayout.LayoutParams.WRAP_CONTENT
-                params.height = FrameLayout.LayoutParams.MATCH_PARENT
-                params.gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                params.bottomMargin = 0
-                params.marginEnd = 20
-            }
-            layoutParams = params
-
-            for (i in 0 until childCount) {
-                val child = getChildAt(i)
-                val childParams = child.layoutParams as LinearLayout.LayoutParams
-                if (isPortrait) {
-                    childParams.width = 0
-                    childParams.height = LinearLayout.LayoutParams.WRAP_CONTENT
-                    childParams.weight = 1f
-                } else {
-                    childParams.width = LinearLayout.LayoutParams.WRAP_CONTENT
-                    childParams.height = 0
-                    childParams.weight = 1f
+        if (selectionContainer?.visibility == View.VISIBLE) {
+            val scrollView = selectionContainer?.getChildAt(0) as? android.widget.HorizontalScrollView
+            val itemContainer = scrollView?.getChildAt(0) as? LinearLayout
+            if (itemContainer != null) {
+                for (i in 0 until itemContainer.childCount) {
+                    val itemWrapper = itemContainer.getChildAt(i)
+                    if (itemWrapper is TextView) {
+                        rotateView(itemWrapper, targetRotation)
+                    }
                 }
-                child.layoutParams = childParams
             }
         }
-
-        navContainer?.apply {
-            val params = layoutParams as FrameLayout.LayoutParams
-            // ปกติ Nav Bar จะอยู่มุมซ้ายบนเสมอไม่ว่าจะหมุนยังไง แค่หมุน icon เอา
-            // แต่ถ้าอยากย้ายตำแหน่งก็แก้ตรงนี้
-            params.gravity = Gravity.TOP or Gravity.START
-            layoutParams = params
-        }
-
-        // Selection Menu Position
-        selectionContainer?.visibility = View.GONE 
     }
 
     private fun rotateView(view: View?, rotation: Float) {
@@ -279,31 +266,28 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     // --- LifeCycle Methods (Must be called from Activity) ---
 
-    fun onResume() {
-        orientationListener?.enable()
-    }
+    fun onResume() { orientationListener?.enable() }
 
-    fun onPause() {
-        orientationListener?.disable()
-    }
+    fun onPause() { orientationListener?.disable() }
 
     // --- Actions & Helpers (Keep same logic) ---
 
     private fun showModelSelector() {
         toggleSelectionMenu {
-            val isPortrait = currentRotation == 0
-
-            val scrollView = if (isPortrait) android.widget.HorizontalScrollView(context) else android.widget.ScrollView(context)
-
+            val scrollView = android.widget.HorizontalScrollView(context)
             val container = LinearLayout(context).apply { 
-                orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL 
+                orientation = LinearLayout.HORIZONTAL 
                 gravity = Gravity.CENTER
+            }
+
+            val currentTargetRotation = when (currentRotation) {
+                90 -> -90f; 270 -> 90f; else -> 0f
             }
 
             // Simplified: Just use a list that flows based on orientation
             modelList.forEach { modelName ->
                 val item = createChipButton(modelName)
-                item.rotation = if (currentRotation == 90) -90f else if (currentRotation == 270) 90f else 0f
+                item.rotation = currentTargetRotation
                 item.setOnClickListener {
                     onModelSelected?.invoke(modelName)
                     selectionContainer?.visibility = View.GONE
@@ -314,24 +298,24 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             
             scrollView.addView(container)
             selectionContainer?.addView(scrollView)
-            updateSelectionContainerParams()
         }
     }
 
     private fun showSizeSelector() {
         toggleSelectionMenu {
-            val isPortrait = currentRotation == 0
-
-            val scrollView = if (isPortrait) android.widget.HorizontalScrollView(context) else android.widget.ScrollView(context)
-
-            val container = LinearLayout(context).apply { 
-                orientation = if (isPortrait) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL 
+            val scrollView = android.widget.HorizontalScrollView(context)
+            val container = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
+            }
+
+            val currentTargetRotation = when (currentRotation) {
+                90 -> -90f; 270 -> 90f; else -> 0f
             }
 
             sizeList.forEach { size ->
                 val item = createChipButton("$size\"")
-                item.rotation = if (currentRotation == 90) -90f else if (currentRotation == 270) 90f else 0f
+                item.rotation = currentTargetRotation
                 item.setOnClickListener {
                     onSizeSelected?.invoke(size.toFloat())
                     selectionContainer?.visibility = View.GONE
@@ -339,41 +323,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 container.addView(item)
                 container.addView(createSpacer(30))
             }
-
-            val scrollWrapper: View = if (isPortrait) {
-                val hScroll = android.widget.HorizontalScrollView(context)
-                hScroll.addView(container)
-                hScroll
-            } else {
-                val vScroll = android.widget.ScrollView(context)
-                vScroll.addView(container)
-                vScroll
-            }
-            selectionContainer?.addView(scrollWrapper)
-            updateSelectionContainerParams()
-        }
-    }
-
-    private fun updateSelectionContainerParams() {
-        val isPortrait = currentRotation == 0
-        selectionContainer?.apply {
-            val params = layoutParams as FrameLayout.LayoutParams
-            if (isPortrait) {
-                params.width = FrameLayout.LayoutParams.MATCH_PARENT
-                params.height = FrameLayout.LayoutParams.WRAP_CONTENT
-                params.gravity = Gravity.BOTTOM
-                params.bottomMargin = 250
-                params.marginEnd = 0
-                orientation = LinearLayout.HORIZONTAL
-            } else {
-                params.width = FrameLayout.LayoutParams.WRAP_CONTENT
-                params.height = FrameLayout.LayoutParams.MATCH_PARENT
-                params.gravity = Gravity.END
-                params.marginEnd = 250  // Next to the vertical bar
-                params.bottomMargin = 0
-                orientation = LinearLayout.VERTICAL
-            }
-            layoutParams = params
+            scrollView.addView(container)
+            selectionContainer?.addView(scrollView)
         }
     }
 
@@ -408,7 +359,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(30, 30, 30, 30)
             background = createRoundDrawable(Color.parseColor("#66000000"), 100f)
-            layoutParams = LinearLayout.LayoutParams(120, 120)
+            layoutParams = FrameLayout.LayoutParams(120, 120)
         }
     }
 
@@ -469,5 +420,14 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         return View(context).apply {
             layoutParams = LinearLayout.LayoutParams(size, size)
         }
+    }
+
+    private fun getStatusBarHeight(): Int {
+        var result = 0
+        val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        if (resourceId > 0) {
+            result = context.resources.getDimensionPixelSize(resourceId)
+        }
+        return if (result > 0) result else 80 
     }
 }
