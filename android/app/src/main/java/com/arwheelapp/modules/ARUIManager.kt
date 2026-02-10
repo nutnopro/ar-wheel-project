@@ -14,8 +14,9 @@ import android.widget.TextView
 import android.widget.Button
 import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.AppCompatImageView
-import com.arwheelapp.utils.ARMode
 import com.arwheelapp.R
+import com.arwheelapp.utils.ARMode
+import com.arwheelapp.utils.dp
 
 class ARUIManager(private val context: Context, private val rootLayout: FrameLayout, private val overlayView: View) {
     // Callbacks
@@ -36,7 +37,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var orientationListener: OrientationEventListener? = null
 
     // Mock Data
-    private var modelList = listOf("Wheel Type A", "Wheel Type B", "Wheel Type C", "Offroad") // !Should be list of path of models
+    private var modelList = listOf("models/wheel.glb", "models/wheel.glb", "models/wheel.glb", "Offroad") // !Should be list of path of models
     private var sizeList = listOf(15, 16, 17, 18, 19)
 
     fun setModels(models: List<String>) {
@@ -75,13 +76,13 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         controlsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            weightSum = 3f 
+            weightSum = 3f
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                bottomMargin = 120
+                bottomMargin = 30.dp
             }
         }
 
@@ -105,13 +106,32 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         addControlItem(controlsContainer!!, btnSettings)
 
         rootLayout.addView(controlsContainer)
+
+        // controlsContainer?.viewTreeObserver?.addOnGlobalLayoutListener {
+        //     val currentHeight = controlsContainer?.height ?: 0
+        //     val currentWidth = controlsContainer?.width ?: 0
+        //     if (currentHeight > 0) {
+        //         onControlsSizeChanged(currentWidth, currentHeight)
+        //     }
+        // }
     }
+
+    // !!!!!!!!!!!!!! Fix selection menu
+    // private fun onControlsSizeChanged(w: Int, h: Int) {
+    //     if (currentRotation == 0) {
+    //         val selectionParams = selectionContainer?.layoutParams as? FrameLayout.LayoutParams
+    //         if (selectionParams != null) {
+    //             selectionParams.bottomMargin = h + 6.dp
+    //             selectionContainer?.layoutParams = selectionParams
+    //         }
+    //     }
+    // }
 
     private fun addControlItem(parent: LinearLayout, view: View) {
         val wrapper = LinearLayout(context).apply {
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
-                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 1f
             )
@@ -126,14 +146,14 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             gravity = Gravity.CENTER
             setBackgroundColor(Color.parseColor("#AA000000"))
             visibility = View.GONE
-            setPadding(30, 30, 30, 30)
+            setPadding(10.dp, 10.dp, 10.dp, 10.dp)
             
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                bottomMargin = 250
+                bottomMargin = 82.dp
             }
         }
         rootLayout.addView(selectionContainer)
@@ -143,8 +163,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         val debugContainer = LinearLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(-2, -2).apply {
                 gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                marginStart = 20
-                topMargin = 200
+                marginStart = 6.dp
+                topMargin = 66.dp
             }
         }
         val btnDebug = Button(context).apply {
@@ -186,9 +206,9 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     private fun updateNavPosition(rotation: Int) {
         val statusBarHeight = getStatusBarHeight()
-        val baseMargin = 40
-        val buttonSize = 120
-        val spacing = 30
+        val baseMargin = 12.dp
+        val buttonSize = 40.dp
+        val spacing = 10.dp
 
         val backParams = btnBack?.layoutParams as? FrameLayout.LayoutParams ?: return
         val modeParams = btnModeToggle?.layoutParams as? FrameLayout.LayoutParams ?: return
@@ -200,10 +220,10 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             // Portrait
             0 -> {
                 backParams.gravity = Gravity.TOP or Gravity.START
-                backParams.setMargins(baseMargin, statusBarHeight + 20, 0, 0)
-
                 modeParams.gravity = Gravity.TOP or Gravity.END
-                modeParams.setMargins(0, statusBarHeight + 20, baseMargin, 0)
+
+                backParams.setMargins(baseMargin, statusBarHeight + 6.dp, 0, 0)
+                modeParams.setMargins(0, statusBarHeight + 6.dp, baseMargin, 0)
             }
 
             // Landscape - Camera Left
@@ -211,17 +231,17 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 backParams.gravity = Gravity.TOP or Gravity.END
                 modeParams.gravity = Gravity.TOP or Gravity.END
 
-                backParams.setMargins(0, baseMargin, baseMargin, 0)
-                modeParams.setMargins(0, baseMargin + buttonSize + spacing, baseMargin, 0)
+                backParams.setMargins(0, statusBarHeight + 6.dp, baseMargin, 0)
+                modeParams.setMargins(0, statusBarHeight + buttonSize + spacing, baseMargin, 0)
             }
 
             // Landscape - Camera Right
             90 -> {
-                backParams.gravity = Gravity.BOTTOM or Gravity.START
-                modeParams.gravity = Gravity.BOTTOM or Gravity.START
+                backParams.gravity = Gravity.TOP or Gravity.START
+                modeParams.gravity = Gravity.TOP or Gravity.START
 
-                backParams.setMargins(baseMargin, 0, 0, baseMargin)
-                modeParams.setMargins(baseMargin, 0, 0, baseMargin + buttonSize + spacing)
+                backParams.setMargins(baseMargin, statusBarHeight + 6.dp, 0, 0)
+                modeParams.setMargins(baseMargin, statusBarHeight + buttonSize + spacing, 0, 0)
             }
         }
 
@@ -237,8 +257,13 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
 
         // Rotate All Icons/Buttons smoothly
-        rotateView(btnBack, targetRotation)
         rotateView(btnModeToggle, targetRotation)
+        val backRotation = when (rotation) {
+            90 -> 90f
+            270 -> 90f
+            else -> 0f
+        }
+        rotateView(btnBack, backRotation)
         
         // Rotate Control Buttons (Model, Capture, Settings)
         for (i in 0 until (controlsContainer?.childCount ?: 0)) {
@@ -275,7 +300,9 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     private fun showModelSelector() {
         toggleSelectionMenu {
-            val scrollView = android.widget.HorizontalScrollView(context)
+            val scrollView = android.widget.HorizontalScrollView(context).apply {
+                isVerticalScrollBarEnabled = false
+            }
             val container = LinearLayout(context).apply { 
                 orientation = LinearLayout.HORIZONTAL 
                 gravity = Gravity.CENTER
@@ -294,7 +321,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                     selectionContainer?.visibility = View.GONE
                 }
                 container.addView(item)
-                container.addView(createSpacer(30))
+                container.addView(createSpacer(10.dp))
             }
             
             scrollView.addView(container)
@@ -322,7 +349,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                     selectionContainer?.visibility = View.GONE
                 }
                 container.addView(item)
-                container.addView(createSpacer(30))
+                container.addView(createSpacer(10.dp))
             }
             scrollView.addView(container)
             selectionContainer?.addView(scrollView)
@@ -358,9 +385,9 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             setImageResource(iconResId)
             setColorFilter(Color.WHITE)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(30, 30, 30, 30)
+            setPadding(10.dp, 10.dp, 10.dp, 10.dp)
             background = createRoundDrawable(Color.parseColor("#66000000"), 100f)
-            layoutParams = FrameLayout.LayoutParams(120, 120)
+            layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp)
         }
     }
 
@@ -372,17 +399,17 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
             background = createRoundDrawable(Color.parseColor("#99000000"), 30f)
-            layoutParams = LinearLayout.LayoutParams(250, 100)
+            layoutParams = LinearLayout.LayoutParams(66.dp, 66.dp)
 
             // insert Icon on the left
             val drawable = ContextCompat.getDrawable(context, iconResId)
-            drawable?.setBounds(0, 0, 50, 50)
+            drawable?.setBounds(0, 0, 20.dp, 20.dp)
             drawable?.setTint(Color.WHITE)
             
             // (Left, Top, Right, Bottom)
-            setCompoundDrawables(drawable, null, null, null)
-            compoundDrawablePadding = 15
-            setPadding(30, 0, 30, 0)
+            setCompoundDrawables(null, drawable, null, null)
+            compoundDrawablePadding = 6.dp
+            setPadding(3.dp, 6.dp, 3.dp, 6.dp)
         }
     }
 
@@ -394,14 +421,14 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
             background = createRoundDrawable(Color.WHITE, 50f)
-            setPadding(30, 15, 30, 15)
-            layoutParams = LinearLayout.LayoutParams(300, 100)
+            setPadding(10.dp, 5.dp, 10.dp, 5.dp)
+            layoutParams = LinearLayout.LayoutParams(100.dp, 32.dp)
         }
     }
 
     private fun createCaptureButton(): View {
         return View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(200, 200)
+            layoutParams = LinearLayout.LayoutParams(80.dp, 80.dp)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
                 setColor(Color.WHITE)
@@ -429,6 +456,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         if (resourceId > 0) {
             result = context.resources.getDimensionPixelSize(resourceId)
         }
-        return if (result > 0) result else 80 
+        return if (result > 0) result else 26.dp
     }
 }

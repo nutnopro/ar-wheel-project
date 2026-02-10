@@ -34,13 +34,6 @@ class OnnxRuntimeHandler(private val context: Context) {
                 Log.e(TAG, "XNNPACK not supported on this device", e)
             }
 
-            try {
-                val nnapiFlags = EnumSet.of(NNAPIFlags.USE_FP16)
-                addNnapi(nnapiFlags) 
-            } catch (e: Exception) {
-                Log.e(TAG, "NNAPI not supported on this device, falling back to CPU")
-            }
-
             setIntraOpNumThreads(2)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
