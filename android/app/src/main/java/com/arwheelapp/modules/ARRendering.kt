@@ -75,7 +75,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private var snapThreshold = 0.457f
 
     @Volatile
-	private var MODEL_PATH = "models/wheel.glb"     // !!Change to ui
+	private var MODEL_PATH = "models/wheel1.glb"    // !!Change to ui
 
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode) {
         if (previousMode != currentMode) {

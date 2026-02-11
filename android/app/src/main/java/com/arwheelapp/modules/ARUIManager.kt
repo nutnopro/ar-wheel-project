@@ -37,7 +37,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var orientationListener: OrientationEventListener? = null
 
     // Mock Data
-    private var modelList = listOf("models/wheel.glb", "models/wheel.glb", "models/wheel.glb", "Offroad") // !Should be list of path of models
+    private var modelList = listOf("models/wheel1.glb", "models/wheel2.glb", "models/wheel3.glb", "models/wheel4.glb", "models/wheel5.glb") // !Should be list of path of models
     private var sizeList = listOf(15, 16, 17, 18, 19)
 
     fun setModels(models: List<String>) {
