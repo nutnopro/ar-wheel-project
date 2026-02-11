@@ -34,12 +34,12 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     // --- Dynamic FPS Settings ---
     // AI Inference: 5 FPS -> 20 FPS
-    private val MIN_INFERENCE_INTERVAL = 200L // 5 FPS
-    private val MAX_INFERENCE_INTERVAL = 50L  // 20 FPS
+    private val MIN_INFERENCE_INTERVAL = 200L   // 5 FPS
+    private val MAX_INFERENCE_INTERVAL = 50L    // 20 FPS
 
     // HitTest: 10 FPS -> 60 FPS
-    private val MIN_HITTEST_INTERVAL = 100L   // 10 FPS
-    private val MAX_HITTEST_INTERVAL = 16L    // ~60 FPS
+    private val MIN_HITTEST_INTERVAL = 66L      // 15 FPS
+    private val MAX_HITTEST_INTERVAL = 33L      // 30 FPS
 
     private var currentInferenceInterval = MIN_INFERENCE_INTERVAL
     private var currentHitTestInterval = MIN_HITTEST_INTERVAL
@@ -228,6 +228,13 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             val cy = bbox.centerY() * viewH
 
             val validPoses = mutableListOf<Pose>()
+            val validNormals = mutableListOf<Vector3>()
+
+            fun extractNormal(pose: Pose): Vector3 {
+                val zAxis = FloatArray(3)
+                pose.getTransformedAxis(2, 0f, zAxis, 0) 
+                return Vector3(zAxis[0], zAxis[1], zAxis[2])
+            }
 
             val centerHits = frame.hitTest(cx, cy)
             var centerPose: Pose? = null
@@ -240,6 +247,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             if (validCenterHit != null) {
                 centerPose = validCenterHit.hitPose
                 validPoses.add(centerPose)
+                validNormals.add(extractNormal(centerPose))
             }
 
             // Donut sampling
@@ -259,6 +267,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
                 if (hit != null) {
                     validPoses.add(hit.hitPose)
+                    validNormals.add(extractNormal(hit.hitPose))
                 }
             }
 
@@ -268,9 +277,32 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             val bestPos = calculateAveragePositionWithOutlierRemoval(validPoses) ?: continue
 
             // Calculate Rotation
-            val refPose = centerPose ?: validPoses.first()
-            val q = refPose.rotationQuaternion
-            val targetRot = Quaternion(x = q[0], y = q[1], z = q[2], w = q[3])
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            var avgNormal = Vector3(0f, 0f, 0f)
+            validNormals.forEach { normal ->
+                avgNormal = Vector3.add(avgNormal, normal)
+            }
+            
+            avgNormal = avgNormal.normalized()
+
+            if (avgNormal.length() < 0.001f) avgNormal = Vector3(0f, 0f, 1f)
+
+            // บังคับให้ขนานพื้นโลก (ล้อรถไม่ควรเงยหน้า/ก้มหน้า)
+            // ถ้าอยากให้ล้อเอียงตามแก้มยางได้ ให้ Comment บรรทัดนี้ทิ้ง
+            // avgNormal.y = 0f 
+            avgNormal = avgNormal.normalized()
+
+            // สร้าง Rotation จากเวกเตอร์ Normal
+            // LookRotation ปกติจะใช้ (Forward, Up)
+            // แต่สำหรับโมเดลล้อที่แบนๆ เราต้องการให้หน้าล้อ (Z) หันไปตาม Normal
+            val targetRot = Quaternion.lookRotation(avgNormal, Vector3.up())
+
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            // val refPose = centerPose ?: validPoses.first()
+            // val q = refPose.rotationQuaternion
+            // val targetRot = Quaternion(x = q[0], y = q[1], z = q[2], w = q[3])
 
             // Associate Models
             val closestModel = markerlessActiveModels
