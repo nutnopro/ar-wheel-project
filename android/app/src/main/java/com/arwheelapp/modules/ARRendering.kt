@@ -12,12 +12,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import com.google.ar.core.*
-import dev.romainguy.kotlin.math.*
 import kotlin.math.*
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
+import dev.romainguy.kotlin.math.normalize
+import dev.romainguy.kotlin.math.length
+import dev.romainguy.kotlin.math.slerp
+import dev.romainguy.kotlin.math.cross
+import dev.romainguy.kotlin.math.dot
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
 import io.github.sceneview.node.Node
-import io.github.sceneview.math.*
+import io.github.sceneview.math.lerp
+import io.github.sceneview.math.Position
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.collision.MathHelper.lerp
 import java.util.*
 import com.arwheelapp.processor.OnnxRuntimeHandler
@@ -228,20 +236,19 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             val cy = bbox.centerY() * viewH
 
             val validPoses = mutableListOf<Pose>()
-            val validNormals = mutableListOf<Vector3>()
+            val validNormals = mutableListOf<Float3>()
 
-            fun extractNormal(pose: Pose): Vector3 {
+            fun extractNormal(pose: Pose): Float3 {
                 val zAxis = FloatArray(3)
                 pose.getTransformedAxis(2, 0f, zAxis, 0) 
-                return Vector3(zAxis[0], zAxis[1], zAxis[2])
+                return Float3(zAxis[0], zAxis[1], zAxis[2])
             }
 
             val centerHits = frame.hitTest(cx, cy)
             var centerPose: Pose? = null
 
             val validCenterHit = centerHits.firstOrNull { hit ->
-                (hit.trackable is Plane || hit.trackable is Point) &&
-                !isUpwardSurface(hit.hitPose)
+                (hit.trackable is Plane || hit.trackable is Point) && !isUpwardSurface(hit.hitPose)
             }
 
             if (validCenterHit != null) {
@@ -261,8 +268,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
                 val donutHits = frame.hitTest(cx + dx, cy + dy)
                 val hit = donutHits.firstOrNull { 
-                    (it.trackable is Plane || it.trackable is Point) &&
-                    !isUpwardSurface(it.hitPose)
+                    (it.trackable is Plane || it.trackable is Point) && !isUpwardSurface(it.hitPose)
                 }
 
                 if (hit != null) {
@@ -279,24 +285,22 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             // Calculate Rotation
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-            var avgNormal = Vector3(0f, 0f, 0f)
-            validNormals.forEach { normal ->
-                avgNormal = Vector3.add(avgNormal, normal)
-            }
+            var avgNormal = Float3(0f, 0f, 0f)
+            validNormals.forEach { normal -> avgNormal += normal }
             
-            avgNormal = avgNormal.normalized()
+            avgNormal = normalize(avgNormal)
 
-            if (avgNormal.length() < 0.001f) avgNormal = Vector3(0f, 0f, 1f)
+            if (length(avgNormal) < 0.001f) avgNormal = Float3(0f, 0f, 1f)
 
             // บังคับให้ขนานพื้นโลก (ล้อรถไม่ควรเงยหน้า/ก้มหน้า)
             // ถ้าอยากให้ล้อเอียงตามแก้มยางได้ ให้ Comment บรรทัดนี้ทิ้ง
             // avgNormal.y = 0f 
-            avgNormal = avgNormal.normalized()
+            avgNormal = normalize(avgNormal)
 
             // สร้าง Rotation จากเวกเตอร์ Normal
             // LookRotation ปกติจะใช้ (Forward, Up)
             // แต่สำหรับโมเดลล้อที่แบนๆ เราต้องการให้หน้าล้อ (Z) หันไปตาม Normal
-            val targetRot = Quaternion.lookRotation(avgNormal, Vector3.up())
+            val targetRot = lookRotation(forward = avgNormal, up = Float3(0f, 1f, 0f))
 
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -341,6 +345,50 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 model.isVisible = false
             }
         }
+    }
+
+    private fun lookRotation(forward: Float3, up: Float3): Quaternion {
+        val z = normalize(forward)
+        val x = normalize(cross(up, z))
+        val y = cross(z, x)
+
+        // Convert Rotation Matrix to Quaternion
+        val m00 = x.x; val m01 = y.x; val m02 = z.x
+        val m10 = x.y; val m11 = y.y; val m12 = z.y
+        val m20 = x.z; val m21 = y.z; val m22 = z.z
+
+        val tr = m00 + m11 + m22
+        val qw: Float
+        val qx: Float
+        val qy: Float
+        val qz: Float
+
+        if (tr > 0) {
+            val s = sqrt(tr + 1.0f) * 2
+            qw = 0.25f * s
+            qx = (m21 - m12) / s
+            qy = (m02 - m20) / s
+            qz = (m10 - m01) / s
+        } else if ((m00 > m11) && (m00 > m22)) {
+            val s = sqrt(1.0f + m00 - m11 - m22) * 2
+            qw = (m21 - m12) / s
+            qx = 0.25f * s
+            qy = (m01 + m10) / s
+            qz = (m02 + m20) / s
+        } else if (m11 > m22) {
+            val s = sqrt(1.0f + m11 - m00 - m22) * 2
+            qw = (m02 - m20) / s
+            qx = (m01 + m10) / s
+            qy = 0.25f * s
+            qz = (m12 + m21) / s
+        } else {
+            val s = sqrt(1.0f + m22 - m00 - m11) * 2
+            qw = (m10 - m01) / s
+            qx = (m02 + m20) / s
+            qy = (m12 + m21) / s
+            qz = 0.25f * s
+        }
+        return Quaternion(qx, qy, qz, qw)
     }
 
     private fun calculateAveragePositionWithOutlierRemoval(poses: List<Pose>): Float3? {
