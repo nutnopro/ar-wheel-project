@@ -1,12 +1,9 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.widget.Toast
 import android.util.Log
-import android.view.View
 import android.os.SystemClock
 import android.graphics.BitmapFactory
-import android.graphics.PointF
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,19 +37,18 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private val TAG = "ARRendering: "
 
-    // --- Dynamic FPS Settings ---
-    // AI Inference: 5 FPS -> 20 FPS
+    // AI Inference FPS
     private val MIN_INFERENCE_INTERVAL = 200L   // 5 FPS
     private val MAX_INFERENCE_INTERVAL = 50L    // 20 FPS
 
-    // HitTest: 10 FPS -> 60 FPS
+    // HitTest FPS
     private val MIN_HITTEST_INTERVAL = 66L      // 15 FPS
     private val MAX_HITTEST_INTERVAL = 33L      // 30 FPS
 
     private var currentInferenceInterval = MIN_INFERENCE_INTERVAL
     private var currentHitTestInterval = MIN_HITTEST_INTERVAL
 
-    // Variables for Speed Calculation
+    // Camera Speed Calculation Variables
     private var lastCameraPose: Pose? = null
     private var lastSpeedCheckTime = 0L
     private val SPEED_CHECK_INTERVAL = 100L // Check speed every 0.1s
@@ -77,10 +73,10 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val MAX_DIST = 0.3f
 
     private val DONUT_POINTS = 8
-    private val DONUT_RADIUS_FACTOR = 0.64f
+    private val DONUT_RADIUS_FACTOR = 0.60f
 
     @Volatile
-    private var snapThreshold = 0.457f
+    private var snapThreshold = 0.4572f
 
     @Volatile
 	private var MODEL_PATH = "models/wheel1.glb"    // !!Change to ui
@@ -170,11 +166,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                     }
 
                     val node = augmentedImageMap[image]
-                    if (image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING) {
-                        node?.isVisible = true
-                    } else if (image.trackingMethod == AugmentedImage.TrackingMethod.LAST_KNOWN_POSE) {
-                        node?.isVisible = false
-                    }
+                    node?.isVisible = (image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING)
                 }
 
                 TrackingState.STOPPED -> {
@@ -193,7 +185,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
-    // *Run Inference @ Dynamic FPS
+    // *Run Inference @ 5-20 FPS
     private fun processMarkerlessInference(frame: Frame) {
         val currentTime = SystemClock.uptimeMillis()
         if (currentTime - lastInferenceTime < currentInferenceInterval) return
@@ -213,7 +205,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     }
 
     // !Maybe use bbox ratio to confirm rotation
-    // *Hit Test & Update Models @ 20 FPS
+    // *Hit Test & Update Models @ 15-30 FPS
     private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
         val currentTime = SystemClock.uptimeMillis()
         if (currentTime - lastHitTestTime < currentHitTestInterval) return
@@ -229,35 +221,25 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         val viewW = arSceneView.width.toFloat()
         val viewH = arSceneView.height.toFloat()
 
+        val cameraPose = frame.camera.pose
+        val cameraPos = Float3(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
+
+
         for (det in detections) {
             val bbox = det.boundingBox
-
             val cx = bbox.centerX() * viewW
             val cy = bbox.centerY() * viewH
 
-            val validPoses = mutableListOf<Pose>()
-            val validNormals = mutableListOf<Float3>()
-
-            fun extractNormal(pose: Pose): Float3 {
-                val zAxis = FloatArray(3)
-                pose.getTransformedAxis(2, 0f, zAxis, 0) 
-                return Float3(zAxis[0], zAxis[1], zAxis[2])
-            }
+            val collectedPoints = mutableListOf<Float3>()
 
             val centerHits = frame.hitTest(cx, cy)
-            var centerPose: Pose? = null
-
-            val validCenterHit = centerHits.firstOrNull { hit ->
-                (hit.trackable is Plane || hit.trackable is Point) && !isUpwardSurface(hit.hitPose)
+            val centerHit = centerHits.firstOrNull { it.trackable is Plane || it.trackable is Point }
+            if (centerHit != null) {
+                val p = centerHit.hitPose
+                collectedPoints.add(Float3(p.tx(), p.ty(), p.tz()))
             }
 
-            if (validCenterHit != null) {
-                centerPose = validCenterHit.hitPose
-                validPoses.add(centerPose)
-                validNormals.add(extractNormal(centerPose))
-            }
 
-            // Donut sampling
             val radiusX = (bbox.width() * viewW * DONUT_RADIUS_FACTOR) / 2f
             val radiusY = (bbox.height() * viewH * DONUT_RADIUS_FACTOR) / 2f
 
@@ -267,48 +249,21 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 val dy = (sin(angle) * radiusY).toFloat()
 
                 val donutHits = frame.hitTest(cx + dx, cy + dy)
-                val hit = donutHits.firstOrNull { 
-                    (it.trackable is Plane || it.trackable is Point) && !isUpwardSurface(it.hitPose)
-                }
-
+                val hit = donutHits.firstOrNull { it.trackable is Plane || it.trackable is Point }
                 if (hit != null) {
-                    validPoses.add(hit.hitPose)
-                    validNormals.add(extractNormal(hit.hitPose))
+                    val p = hit.hitPose
+                    collectedPoints.add(Float3(p.tx(), p.ty(), p.tz()))
                 }
             }
 
-            if (validPoses.isEmpty() || validPoses.size < 3) continue
+            if (collectedPoints.isEmpty()) continue
 
-            // Statistical Outlier Removal
-            val bestPos = calculateAveragePositionWithOutlierRemoval(validPoses) ?: continue
+            val (bestPos, validPoints) = calculatePositionAndValidPoints(collectedPoints)
 
-            // Calculate Rotation
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            var planeNormal = calculatePlaneNormal(validPoints, bestPos, cameraPos)
 
-            var avgNormal = Float3(0f, 0f, 0f)
-            validNormals.forEach { normal -> avgNormal += normal }
-            
-            avgNormal = normalize(avgNormal)
 
-            if (length(avgNormal) < 0.001f) avgNormal = Float3(0f, 0f, 1f)
-
-            // บังคับให้ขนานพื้นโลก (ล้อรถไม่ควรเงยหน้า/ก้มหน้า)
-            // ถ้าอยากให้ล้อเอียงตามแก้มยางได้ ให้ Comment บรรทัดนี้ทิ้ง
-            // avgNormal.y = 0f 
-            avgNormal = normalize(avgNormal)
-
-            // สร้าง Rotation จากเวกเตอร์ Normal
-            // LookRotation ปกติจะใช้ (Forward, Up)
-            // แต่สำหรับโมเดลล้อที่แบนๆ เราต้องการให้หน้าล้อ (Z) หันไปตาม Normal
-            val targetRot = lookRotation(forward = avgNormal, up = Float3(0f, 1f, 0f))
-
-            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-            // val refPose = centerPose ?: validPoses.first()
-            // val q = refPose.rotationQuaternion
-            // val targetRot = Quaternion(x = q[0], y = q[1], z = q[2], w = q[3])
-
-            // Associate Models
+            val targetRot = lookRotation(forward = planeNormal, up = Float3(0f, 1f, 0f))
             val closestModel = markerlessActiveModels
                 .filter { !claimedModels.contains(it) }
                 .minByOrNull { distance(it.position, bestPos) }
@@ -330,38 +285,98 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 newModel.quaternion = targetRot
                 newModel.isVisible = true
 
-                if (newModel.parent == null) {
-                    arSceneView.addChildNode(newModel)
-                }
-                if (!markerlessActiveModels.contains(newModel)) {
-                    markerlessActiveModels.add(newModel)
-                }
+                if (newModel.parent == null) arSceneView.addChildNode(newModel)
+                if (!markerlessActiveModels.contains(newModel)) markerlessActiveModels.add(newModel)
                 claimedModels.add(newModel)
             }
         }
 
         for (model in markerlessActiveModels) {
-            if (!claimedModels.contains(model)) {
-                model.isVisible = false
-            }
+            if (!claimedModels.contains(model)) model.isVisible = false
         }
     }
 
-    private fun lookRotation(forward: Float3, up: Float3): Quaternion {
-        val z = normalize(forward)
-        val x = normalize(cross(up, z))
-        val y = cross(z, x)
+    private fun calculatePlaneNormal(points: List<Float3>, center: Float3, cameraPos: Float3): Float3 {
+        if (points.size < 3) return normalize(cameraPos - center)
 
-        // Convert Rotation Matrix to Quaternion
-        val m00 = x.x; val m01 = y.x; val m02 = z.x
-        val m10 = x.y; val m11 = y.y; val m12 = z.y
-        val m20 = x.z; val m21 = y.z; val m22 = z.z
+        var accumNormal = Float3(0f, 0f, 0f)
+
+        // ใช้เทคนิค Triangle Fan รอบจุด Center เพื่อหา Normal เฉลี่ย
+        // (สมมติว่า points[0] ใกล้เคียงจุดศูนย์กลาง เพราะเราหา bestPos มาแล้ว)
+        // หรือใช้วิธีวนลูปเทียบกับจุด bestPos
+        for (i in 0 until points.size) {
+            val p1 = points[i]
+            val p2 = points[(i + 1) % points.size] // จุดถัดไป (วนกลับมาจุดแรก)
+
+            // สร้างเวกเตอร์จาก Center ไปยังจุดรอบๆ
+            val v1 = p1 - center
+            val v2 = p2 - center
+
+            // Cross Product เพื่อหา Normal ย่อยของสามเหลี่ยมนี้
+            accumNormal += cross(v1, v2)
+        }
+
+        var finalNormal = normalize(accumNormal)
+
+        // Check Direction: Normal ต้องพุ่งหา Camera (User) เสมอ
+        // ถ้า Dot Product ติดลบ แปลว่ามันพุ่งหนี ให้กลับด้าน
+        val toCamera = normalize(cameraPos - center)
+        if (dot(finalNormal, toCamera) < 0) finalNormal = -finalNormal
+
+        // ป้องกัน NaN
+        if (length(finalNormal).isNaN()) {
+            return Float3(0f, 0f, 1f)
+        }
+
+        return finalNormal
+    }
+
+    // ✅ Updated Helper: คืนค่าทั้งตำแหน่งเฉลี่ย และ List จุดที่ผ่านการกรอง (เพื่อเอาไปทำ Rotation)
+    private fun calculatePositionAndValidPoints(points: List<Float3>): Pair<Float3, List<Float3>> {
+        if (points.isEmpty()) return Pair(Float3(0f,0f,0f), emptyList())
+        if (points.size == 1) return Pair(points[0], points)
+
+        // 1. หาค่าเฉลี่ยเบื้องต้น
+        val avgX = points.map { it.x }.average()
+        val avgY = points.map { it.y }.average()
+        val avgZ = points.map { it.z }.average()
+        val meanPos = Float3(avgX.toFloat(), avgY.toFloat(), avgZ.toFloat())
+
+        // 2. คำนวณระยะห่างจากค่าเฉลี่ย
+        val distances = points.map { distance(it, meanPos) }
+        val meanDist = distances.average()
+        val variance = distances.map { (it - meanDist).pow(2) }.average()
+        val stdDev = sqrt(variance)
+
+        // 3. กรองจุดที่ห่างเกิน Threshold (Outliers)
+        val threshold = meanDist + (1.5 * stdDev)
+        val validPoints = points.filterIndexed { index, _ -> distances[index] <= threshold }
+
+        if (validPoints.isEmpty()) return Pair(meanPos, points) // Fallback
+
+        // 4. คำนวณค่าเฉลี่ยใหม่จากจุดที่ดี
+        val finalAvg = Float3(
+            validPoints.map { it.x }.average().toFloat(),
+            validPoints.map { it.y }.average().toFloat(),
+            validPoints.map { it.z }.average().toFloat()
+        )
+
+        return Pair(finalAvg, validPoints)
+    }
+
+    private fun lookRotation(forward: Float3, up: Float3): Quaternion {
+        val f = normalize(forward)
+        val u = if (abs(dot(f, up)) > 0.99f) Float3(0f, 0f, 1f) else up
+        
+        val r = normalize(cross(u, f)) 
+        val u2 = cross(f, r)           
+
+        val m00 = r.x; val m01 = u2.x; val m02 = f.x
+        val m10 = r.y; val m11 = u2.y; val m12 = f.y
+        val m20 = r.z; val m21 = u2.z; val m22 = f.z
 
         val tr = m00 + m11 + m22
-        val qw: Float
-        val qx: Float
-        val qy: Float
-        val qz: Float
+        var qw: Float; var qx: Float; var qy: Float; var qz: Float
 
         if (tr > 0) {
             val s = sqrt(tr + 1.0f) * 2
@@ -391,53 +406,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         return Quaternion(qx, qy, qz, qw)
     }
 
-    private fun calculateAveragePositionWithOutlierRemoval(poses: List<Pose>): Float3? {
-        if (poses.isEmpty()) return null
-        if (poses.size == 1) return Float3(poses[0].tx(), poses[0].ty(), poses[0].tz())
-
-        // Initial Mean
-        val avgX = poses.map { it.tx() }.average()
-        val avgY = poses.map { it.ty() }.average()
-        val avgZ = poses.map { it.tz() }.average()
-
-        // Distance from Mean
-        val distances = poses.map {
-            val dx = it.tx() - avgX
-            val dy = it.ty() - avgY
-            val dz = it.tz() - avgZ
-            sqrt(dx * dx + dy * dy + dz * dz)
-        }
-
-        // Mean Distance and Standard Deviation
-        val meanDist = distances.average()
-        val variance = distances.map { (it - meanDist).pow(2) }.average()
-        val stdDev = sqrt(variance)
-
-        val threshold = meanDist + (1.5 * stdDev)
-
-        // Filter Poses within Threshold
-        val finalPoses = poses.filterIndexed { index, _ ->
-            distances[index] <= threshold 
-        }
-
-        if (finalPoses.isEmpty()) return Float3(avgX.toFloat(), avgY.toFloat(), avgZ.toFloat())
-
-        // Final Average
-        return Float3(
-            finalPoses.map { it.tx() }.average().toFloat(),
-            finalPoses.map { it.ty() }.average().toFloat(),
-            finalPoses.map { it.tz() }.average().toFloat()
-        )
-    }
-
-    private fun isUpwardSurface(pose: Pose): Boolean {
-        val axisY = FloatArray(3)
-        pose.getTransformedAxis(1, 0f, axisY, 0)
-
-        // 0.7f-45degrees, 0.866f-30degrees, 0.5f-60degrees
-        return axisY[1] > 0.7f
-    }
-
     private fun calculateDynamicAlpha(currentPos: Float3, targetPos: Float3): Float {
         val dist = distance(currentPos, targetPos)
         val t = ((dist - MIN_DIST) / (MAX_DIST - MIN_DIST)).coerceIn(0f, 1f)
@@ -465,8 +433,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             freeModel.isVisible = true
             freeModel
         } else {
-            var newModel = modelManager.createModelNode(modelPath)
-
+            val newModel = modelManager.createModelNode(modelPath)
             modelPool.add(newModel)
             newModel
         }
@@ -483,10 +450,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         val sizeCm = sizeInch * 2.54f
         snapThreshold = sizeCm / 100.0f
         val scaleFactor = sizeCm / 45.72f   // 45.72cm = 18inch
-
-        modelPool.forEach { rootNode ->
-            modelManager.changeModelSize(rootNode, scaleFactor)
-        }
+        modelPool.forEach { modelManager.changeModelSize(it, scaleFactor) }
     }
 
     fun clear() {
@@ -514,7 +478,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                             assetManager.open("$markerFolder/$filename").use { inputStream ->
                                 val bitmap = BitmapFactory.decodeStream(inputStream)
                                 val markerName = filename.substringBeforeLast(".")
-
                                 augmentedImageDatabase.addImage(markerName, bitmap, markerSize)
                                 Log.d(TAG, "Loaded Marker: $markerName ✅")
                             }
