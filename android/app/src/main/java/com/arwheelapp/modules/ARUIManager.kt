@@ -37,7 +37,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private var orientationListener: OrientationEventListener? = null
 
     // Mock Data
-    private var modelList = listOf("models/wheel1.glb", "models/wheel2.glb", "models/wheel3.glb", "models/wheel4.glb", "models/wheel5.glb") // !Should be list of path of models
+    private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5") // !Should be list of path of models
     private var sizeList = listOf(15, 16, 17, 18, 19)
 
     fun setModels(models: List<String>) {
@@ -46,7 +46,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     fun setupInterface() {
         // Setup Containers
-        setupNavButtons()         // Top (Portrait) / Left (Landscape)
+        setupNavButtons()       // Top (Portrait) / Left (Landscape)
         setupDebugPanel()       // Overlay toggle
         setupControlsPanel()    // Bottom (Portrait) / Right (Landscape)
         setupSelectionMenu()    // Popup menu
@@ -153,7 +153,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                bottomMargin = 82.dp
+                bottomMargin = 125.dp
             }
         }
         rootLayout.addView(selectionContainer)
@@ -278,9 +278,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             if (itemContainer != null) {
                 for (i in 0 until itemContainer.childCount) {
                     val itemWrapper = itemContainer.getChildAt(i)
-                    if (itemWrapper is TextView) {
-                        rotateView(itemWrapper, targetRotation)
-                    }
+                    rotateView(itemWrapper, targetRotation)
                 }
             }
         }
@@ -312,9 +310,8 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
                 90 -> -90f; 270 -> 90f; else -> 0f
             }
 
-            // Simplified: Just use a list that flows based on orientation
             modelList.forEach { modelName ->
-                val item = createChipButton(modelName)
+                val item = createModelItem(modelName)
                 item.rotation = currentTargetRotation
                 item.setOnClickListener {
                     onModelSelected?.invoke(modelName)
@@ -342,7 +339,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             }
 
             sizeList.forEach { size ->
-                val item = createChipButton("$size\"")
+                val item = createChipButton("$size Inches")
                 item.rotation = currentTargetRotation
                 item.setOnClickListener {
                     onSizeSelected?.invoke(size.toFloat())
@@ -421,9 +418,46 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             gravity = Gravity.CENTER
             typeface = Typeface.DEFAULT_BOLD
             background = createRoundDrawable(Color.WHITE, 50f)
-            setPadding(10.dp, 5.dp, 10.dp, 5.dp)
-            layoutParams = LinearLayout.LayoutParams(100.dp, 32.dp)
+            setPadding(16.dp, 8.dp, 16.dp, 8.dp)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
+    }
+
+    private fun createModelItem(modelPath: String): View {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(12.dp, 12.dp, 12.dp, 12.dp)
+            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 20f)
+        }
+
+        // !Placeholder ImageView for Model Icon
+        val imageView = ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(50.dp, 50.dp)
+            setImageResource(R.drawable.ic_cube) 
+            setColorFilter(Color.WHITE)
+        }
+
+        val modelName = modelPath
+        val textView = TextView(context).apply {
+            text = modelName
+            setTextColor(Color.WHITE)
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(0, 8.dp, 0, 0)
+        }
+
+        container.addView(imageView)
+        container.addView(textView)
+
+        return container
     }
 
     private fun createCaptureButton(): View {
