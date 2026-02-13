@@ -227,7 +227,6 @@ class ARActivity : ComponentActivity() {
 
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@ARActivity, "Failed to save image", Toast.LENGTH_SHORT).show()
-                // Toast.makeText(this@ARActivity, "Error saving photo: ${e.message}", Toast.LENGTH_SHORT).show()
             }
         } finally {
             fos?.close()

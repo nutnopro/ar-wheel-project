@@ -29,6 +29,7 @@ import com.arwheelapp.processor.OnnxRuntimeHandler
 import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.utils.Detection
 import com.arwheelapp.utils.ARMode
+import com.arwheelapp.utils.ModelLockState
 
 class ARRendering(private val context: Context, private val onnxOverlayView: OnnxOverlayView, private val arSceneView: ARSceneView) {
     private val modelManager = ModelManager(arSceneView)
@@ -36,6 +37,8 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
     private val TAG = "ARRendering: "
+
+    private var previousMode: ARMode? = null
 
     // AI Inference FPS
     private val MIN_INFERENCE_INTERVAL = 200L   // 5 FPS
@@ -45,26 +48,27 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private val MIN_HITTEST_INTERVAL = 66L      // 15 FPS
     private val MAX_HITTEST_INTERVAL = 33L      // 30 FPS
 
+    // Timestamps
+    private var lastInferenceTime = 0L
+    private var lastHitTestTime = 0L
     private var currentInferenceInterval = MIN_INFERENCE_INTERVAL
     private var currentHitTestInterval = MIN_HITTEST_INTERVAL
 
     // Camera Speed Calculation Variables
     private var lastCameraPose: Pose? = null
     private var lastSpeedCheckTime = 0L
-    private val SPEED_CHECK_INTERVAL = 100L // Check speed every 0.1s
-    private val MOVEMENT_THRESHOLD_HIGH = 0.3f // 0.3 meters/second considered "Fast"
-
-    // Timestamps
-    private var previousMode: ARMode? = null
-    private var lastInferenceTime = 0L
-    private var lastHitTestTime = 0L
+    private val SPEED_CHECK_INTERVAL = 100L     // Check speed every 0.1s
+    private val MOVEMENT_THRESHOLD_HIGH = 0.3f  // 0.3 meters/second considered "Fast"
 
     private val modelPool = mutableListOf<Node>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
     private val markerlessActiveModels = mutableListOf<Node>()
 
-    @Volatile
-    private var latestDetections: List<Detection> = emptyList()
+    // Model Lock States for Markerless
+    private val modelLockStates = mutableMapOf<Node, ModelLockState>()
+    private val LOCK_DISTANCE_THRESHOLD = 0.05f
+    private val UNLOCK_DISTANCE_THRESHOLD = 0.20f
+    private val FRAMES_TO_LOCK = 15
 
     // Dynamic lerp
     private val MIN_ALPHA = 0.05f
@@ -74,6 +78,9 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
     private val DONUT_POINTS = 8
     private val DONUT_RADIUS_FACTOR = 0.60f
+
+    @Volatile
+    private var latestDetections: List<Detection> = emptyList()
 
     @Volatile
     private var snapThreshold = 0.4572f
@@ -87,7 +94,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             previousMode = currentMode
         }
 
-        // Calculate Camera Speed to adjust FPS dynamically
         calculateDynamicIntervals(frame)
 
         when (currentMode) {
@@ -116,35 +122,6 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         if (previousMode == ARMode.MARKERLESS) {
             markerlessActiveModels.clear()
         }
-    }
-
-    private fun calculateDynamicIntervals(frame: Frame) {
-        val currentTime = SystemClock.uptimeMillis()
-        if (currentTime - lastSpeedCheckTime < SPEED_CHECK_INTERVAL) return
-
-        val camera = frame.camera
-        val currentPose = camera.pose
-
-        if (lastCameraPose != null) {
-            // Calculate distance moved
-            val distance = distance(currentPose, lastCameraPose!!)
-
-            // Calculate speed (meters per second)
-            val timeDeltaSeconds = (currentTime - lastSpeedCheckTime) / 1000f
-            val speed = if (timeDeltaSeconds > 0) distance / timeDeltaSeconds else 0f
-
-            // Normalize speed to 0.0 - 1.0 range (based on threshold)
-            val speedFactor = (speed / MOVEMENT_THRESHOLD_HIGH).coerceIn(0f, 1f)
-
-            // Linear Interpolation (Lerp) for Intervals
-            currentInferenceInterval = lerp(MIN_INFERENCE_INTERVAL.toFloat(), MAX_INFERENCE_INTERVAL.toFloat(), speedFactor).toLong()
-            currentHitTestInterval = lerp(MIN_HITTEST_INTERVAL.toFloat(), MAX_HITTEST_INTERVAL.toFloat(), speedFactor).toLong()
-
-            // Log.d(TAG, "Speed: $speed m/s | AI Interval: $currentInferenceInterval ms | HitTest Interval: $currentHitTestInterval ms")
-        }
-
-        lastCameraPose = currentPose
-        lastSpeedCheckTime = currentTime
     }
 
     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
@@ -185,6 +162,35 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
     }
 
+    private fun calculateDynamicIntervals(frame: Frame) {
+        val currentTime = SystemClock.uptimeMillis()
+        if (currentTime - lastSpeedCheckTime < SPEED_CHECK_INTERVAL) return
+
+        val camera = frame.camera
+        val currentPose = camera.pose
+
+        if (lastCameraPose != null) {
+            // Calculate distance moved
+            val distance = distance(currentPose, lastCameraPose!!)
+
+            // Calculate speed (meters per second)
+            val timeDeltaSeconds = (currentTime - lastSpeedCheckTime) / 1000f
+            val speed = if (timeDeltaSeconds > 0) distance / timeDeltaSeconds else 0f
+
+            // Normalize speed to 0.0 - 1.0 range (based on threshold)
+            val speedFactor = (speed / MOVEMENT_THRESHOLD_HIGH).coerceIn(0f, 1f)
+
+            // Linear Interpolation (Lerp) for Intervals
+            currentInferenceInterval = lerp(MIN_INFERENCE_INTERVAL.toFloat(), MAX_INFERENCE_INTERVAL.toFloat(), speedFactor).toLong()
+            currentHitTestInterval = lerp(MIN_HITTEST_INTERVAL.toFloat(), MAX_HITTEST_INTERVAL.toFloat(), speedFactor).toLong()
+
+            // Log.d(TAG, "Speed: $speed m/s | AI Interval: $currentInferenceInterval ms | HitTest Interval: $currentHitTestInterval ms")
+        }
+
+        lastCameraPose = currentPose
+        lastSpeedCheckTime = currentTime
+    }
+
     // *Run Inference @ 5-20 FPS
     private fun processMarkerlessInference(frame: Frame) {
         val currentTime = SystemClock.uptimeMillis()
@@ -212,18 +218,20 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         lastHitTestTime = currentTime
 
         val detections = latestDetections
+
         if (detections.isEmpty()) {
-            markerlessActiveModels.forEach { it.isVisible = false }
+            for (model in markerlessActiveModels) {
+                val state = modelLockStates[model]
+                model.isVisible = (state != null && state.isLocked)
+            }
             return
         }
 
         val claimedModels = mutableSetOf<Node>()
         val viewW = arSceneView.width.toFloat()
         val viewH = arSceneView.height.toFloat()
-
         val cameraPose = frame.camera.pose
         val cameraPos = Float3(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
-
 
         for (det in detections) {
             val bbox = det.boundingBox
@@ -239,10 +247,8 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
                 collectedPoints.add(Float3(p.tx(), p.ty(), p.tz()))
             }
 
-
             val radiusX = (bbox.width() * viewW * DONUT_RADIUS_FACTOR) / 2f
             val radiusY = (bbox.height() * viewH * DONUT_RADIUS_FACTOR) / 2f
-
             for (i in 0 until DONUT_POINTS) {
                 val angle = (2 * Math.PI * i) / DONUT_POINTS
                 val dx = (cos(angle) * radiusX).toFloat()
@@ -259,11 +265,12 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             if (collectedPoints.isEmpty()) continue
 
             val (bestPos, validPoints) = calculatePositionAndValidPoints(collectedPoints)
+            val planeNormal = calculatePlaneNormal(validPoints, bestPos, cameraPos)
 
-            var planeNormal = calculatePlaneNormal(validPoints, bestPos, cameraPos)
+            val baseRot = lookRotation(forward = planeNormal, up = Float3(0f, 1f, 0f))
+            val correctionRot = Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), -90f) 
+            val finalRot = baseRot * correctionRot
 
-
-            val targetRot = lookRotation(forward = planeNormal, up = Float3(0f, 1f, 0f))
             val closestModel = markerlessActiveModels
                 .filter { !claimedModels.contains(it) }
                 .minByOrNull { distance(it.position, bestPos) }
@@ -272,17 +279,39 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
 
             if (closestModel != null && dist < snapThreshold) {
                 val model = closestModel
-                val dynamicAlpha = calculateDynamicAlpha(model.position, bestPos)
+                val state = modelLockStates.getOrPut(model) { ModelLockState() }
 
-                model.position = lerp(model.position, bestPos, dynamicAlpha)
-                model.quaternion = slerp(model.quaternion, targetRot, dynamicAlpha / 2)
+                if (state.isLocked) {
+                    val distFromLock = distance(bestPos, model.position)
+                    if (distFromLock > UNLOCK_DISTANCE_THRESHOLD) {
+                        state.isLocked = false
+                        state.stableFrameCount = 0
+                        updateModelTransform(model, bestPos, finalRot)
+                    }
+                } 
+                else {
+                    val distFromLastFrame = distance(bestPos, model.position)
+
+                    if (distFromLastFrame < LOCK_DISTANCE_THRESHOLD) {
+                        state.stableFrameCount++
+                        if (state.stableFrameCount >= FRAMES_TO_LOCK) {
+                            state.isLocked = true
+                        }
+                    } else {
+                        state.stableFrameCount = 0
+                    }
+
+                    updateModelTransform(model, bestPos, finalRot)
+                }
+
                 model.isVisible = true
 
                 claimedModels.add(model)
             } else {
                 val newModel = getOrCreateModel(MODEL_PATH)
+                modelLockStates[newModel] = ModelLockState() 
                 newModel.position = bestPos
-                newModel.quaternion = targetRot
+                newModel.quaternion = finalRot
                 newModel.isVisible = true
 
                 if (newModel.parent == null) arSceneView.addChildNode(newModel)
@@ -292,8 +321,17 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         }
 
         for (model in markerlessActiveModels) {
-            if (!claimedModels.contains(model)) model.isVisible = false
+            if (!claimedModels.contains(model)) {
+                val state = modelLockStates[model]
+                model.isVisible = (state != null && state.isLocked)
+            }
         }
+    }
+
+    private fun updateModelTransform(model: Node, targetPos: Float3, targetRot: Quaternion) {
+        val dynamicAlpha = calculateDynamicAlpha(model.position, targetPos)
+        model.position = lerp(model.position, targetPos, dynamicAlpha)
+        model.quaternion = slerp(model.quaternion, targetRot, dynamicAlpha / 2)
     }
 
     private fun calculatePlaneNormal(points: List<Float3>, center: Float3, cameraPos: Float3): Float3 {
@@ -323,38 +361,30 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         val toCamera = normalize(cameraPos - center)
         if (dot(finalNormal, toCamera) < 0) finalNormal = -finalNormal
 
-        // ป้องกัน NaN
-        if (length(finalNormal).isNaN()) {
-            return Float3(0f, 0f, 1f)
-        }
+        if (length(finalNormal).isNaN()) return Float3(0f, 0f, 1f)
 
         return finalNormal
     }
 
-    // ✅ Updated Helper: คืนค่าทั้งตำแหน่งเฉลี่ย และ List จุดที่ผ่านการกรอง (เพื่อเอาไปทำ Rotation)
     private fun calculatePositionAndValidPoints(points: List<Float3>): Pair<Float3, List<Float3>> {
         if (points.isEmpty()) return Pair(Float3(0f,0f,0f), emptyList())
         if (points.size == 1) return Pair(points[0], points)
 
-        // 1. หาค่าเฉลี่ยเบื้องต้น
         val avgX = points.map { it.x }.average()
         val avgY = points.map { it.y }.average()
         val avgZ = points.map { it.z }.average()
         val meanPos = Float3(avgX.toFloat(), avgY.toFloat(), avgZ.toFloat())
 
-        // 2. คำนวณระยะห่างจากค่าเฉลี่ย
         val distances = points.map { distance(it, meanPos) }
         val meanDist = distances.average()
         val variance = distances.map { (it - meanDist).pow(2) }.average()
         val stdDev = sqrt(variance)
 
-        // 3. กรองจุดที่ห่างเกิน Threshold (Outliers)
         val threshold = meanDist + (1.5 * stdDev)
         val validPoints = points.filterIndexed { index, _ -> distances[index] <= threshold }
 
-        if (validPoints.isEmpty()) return Pair(meanPos, points) // Fallback
+        if (validPoints.isEmpty()) return Pair(meanPos, points)
 
-        // 4. คำนวณค่าเฉลี่ยใหม่จากจุดที่ดี
         val finalAvg = Float3(
             validPoints.map { it.x }.average().toFloat(),
             validPoints.map { it.y }.average().toFloat(),
@@ -367,7 +397,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
     private fun lookRotation(forward: Float3, up: Float3): Quaternion {
         val f = normalize(forward)
         val u = if (abs(dot(f, up)) > 0.99f) Float3(0f, 0f, 1f) else up
-        
+
         val r = normalize(cross(u, f)) 
         val u2 = cross(f, r)           
 
@@ -403,6 +433,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
             qy = (m12 + m21) / s
             qz = 0.25f * s
         }
+
         return Quaternion(qx, qy, qz, qw)
     }
 
@@ -461,6 +492,7 @@ class ARRendering(private val context: Context, private val onnxOverlayView: Onn
         augmentedImageMap.clear()
 
         markerlessActiveModels.clear()
+        modelLockStates.clear()
     }
 
     fun setupMarkerDatabase(session: Session, markerSize: Float = 0.15f) {
