@@ -5,14 +5,15 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.view.View
-import android.util.Log
 import com.arwheelapp.utils.Detection
 
 class OnnxOverlayView(context: Context) : View(context) {
-    private val TAG = "OnnxOverlayView: "
+    companion object {
+        private const val TAG = "OnnxOverlayView"
+        private const val INPUT_SIZE = 320f
+    }
 
     private val detections: MutableList<Detection> = mutableListOf()
-    private val INPUT_SIZE = 320f
 
     private val boxPaint = Paint().apply {
         color = Color.CYAN
@@ -30,13 +31,11 @@ class OnnxOverlayView(context: Context) : View(context) {
     fun updateDetections(newDetections: List<Detection>) {
         detections.clear()
         detections.addAll(newDetections)
-
         postInvalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-
         if (detections.isEmpty()) return
 
         val viewW = width.toFloat()

@@ -1,25 +1,26 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.graphics.RectF
 import android.graphics.BitmapFactory
+import android.graphics.RectF
 import android.os.SystemClock
 import android.util.Log
-import com.google.ar.core.*
 import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.processor.OnnxRuntimeHandler
 import com.arwheelapp.utils.ARMode
 import com.arwheelapp.utils.Detection
 import com.arwheelapp.utils.ModelState
+import com.google.ar.core.*
 import dev.romainguy.kotlin.math.*
+import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.ar.node.AugmentedImageNode
+import io.github.sceneview.collision.MathHelper.lerp
+import io.github.sceneview.node.Node
 import kotlin.math.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import io.github.sceneview.ar.ARSceneView
-import io.github.sceneview.ar.node.AugmentedImageNode
-import io.github.sceneview.node.Node
 
 class ARRendering(
     private val context: Context,
@@ -456,7 +457,8 @@ class ARRendering(
                         assetManager.open("$folder/$filename").use { 
                             val bitmap = BitmapFactory.decodeStream(it)
                             database.addImage(filename.substringBeforeLast("."), bitmap, markerSize)
-                            Log.d(TAG, "Loaded Marker: $filename.substringBeforeLast(".") ✅")
+                            val markerName = filename.substringBeforeLast(".")
+                            Log.d(TAG, "Loaded Marker: $markerName ✅")
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to load marker: $filename", e)

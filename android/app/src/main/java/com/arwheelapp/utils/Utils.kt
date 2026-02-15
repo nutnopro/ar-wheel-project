@@ -1,8 +1,9 @@
 package com.arwheelapp.utils
 
+import android.content.res.Resources
 import android.graphics.RectF
-import dev.romainguy.kotlin.math.Float3
 
+// --- AR Types ---
 enum class ARMode {
     MARKER_BASED,
     MARKERLESS
@@ -18,3 +19,10 @@ data class ModelState(
     var isLocked: Boolean = false,
     var bestAspectRatio: Float = 0f
 )
+
+// --- Extensions ---
+val Int.dp: Int
+    get() = (this * Resources.getSystem().displayMetrics.density).toInt()
+
+val Float.dp: Float
+    get() = (this * Resources.getSystem().displayMetrics.density)

@@ -1,24 +1,28 @@
 package com.arwheelapp.modules
 
 import android.content.Context
-import android.graphics.Typeface
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.view.OrientationEventListener
+import android.graphics.Typeface
 import android.view.Gravity
+import android.view.OrientationEventListener
 import android.view.View
-import android.widget.LinearLayout
+import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Button
-import androidx.core.content.ContextCompat
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.core.content.ContextCompat
 import com.arwheelapp.R
 import com.arwheelapp.utils.ARMode
 import com.arwheelapp.utils.dp
 
-class ARUIManager(private val context: Context, private val rootLayout: FrameLayout, private val overlayView: View) {
+class ARUIManager(
+    private val context: Context, 
+    private val rootLayout: FrameLayout, 
+    private val overlayView: View
+) {
     // Callbacks
     var onModeSelected: ((ARMode) -> Unit)? = null
     var onBackClicked: (() -> Unit)? = null
@@ -38,37 +42,26 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     // Mock Data
     private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5") // !Should be list of path of models
-    private var sizeList = listOf(15, 16, 17, 18, 19)
+    private var sizeList = listOf(14, 15, 16, 17, 18, 19, 20, 21, 22)
 
     fun setModels(models: List<String>) {
         this.modelList = models
     }
 
     fun setupInterface() {
-        // Setup Containers
-        setupNavButtons()       // Top (Portrait) / Left (Landscape)
-        setupDebugPanel()       // Overlay toggle
-        setupControlsPanel()    // Bottom (Portrait) / Right (Landscape)
-        setupSelectionMenu()    // Popup menu
-
-        // Start Orientation Listener
+        setupNavButtons()           // Top (Portrait) / Left (Landscape)
+        setupDebugPanel()           // Overlay toggle
+        setupControlsPanel()        // Bottom (Portrait) / Right (Landscape)
+        setupSelectionMenu()        // Popup menu
         setupOrientationListener()
     }
 
     private fun setupNavButtons() {
-        // Back Button
-        btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
-            setOnClickListener { onBackClicked?.invoke() }
-        }
-
-        // Mode Button
-        btnModeToggle = createIconButton(R.drawable.ic_layers).apply {
-            setOnClickListener { toggleMode() }
-        }
+        btnBack = createIconButton(R.drawable.ic_arrow_back).apply { setOnClickListener { onBackClicked?.invoke() } }
+        btnModeToggle = createIconButton(R.drawable.ic_layers).apply { setOnClickListener { toggleMode() } }
 
         rootLayout.addView(btnBack)
         rootLayout.addView(btnModeToggle)
-
         updateNavPosition(0)
     }
 
@@ -86,46 +79,16 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             }
         }
 
-        // Model Button
-        val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply {
-            setOnClickListener { showModelSelector() }
-        }
-
-        // Capture Button
-        val btnCapture = createCaptureButton().apply {
-            setOnClickListener { onCaptureClicked?.invoke() }
-        }
-
-        // Settings Button
-        val btnSettings = createMenuButton("Size", R.drawable.ic_settings).apply {
-            setOnClickListener { showSizeSelector() }
-        }
+        val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply { setOnClickListener { showModelSelector() } }
+        val btnCapture = createCaptureButton().apply { setOnClickListener { onCaptureClicked?.invoke() } }
+        val btnSettings = createMenuButton("Size", R.drawable.ic_settings).apply { setOnClickListener { showSizeSelector() } }
 
         addControlItem(controlsContainer!!, btnModel)
         addControlItem(controlsContainer!!, btnCapture)
         addControlItem(controlsContainer!!, btnSettings)
 
         rootLayout.addView(controlsContainer)
-
-        // controlsContainer?.viewTreeObserver?.addOnGlobalLayoutListener {
-        //     val currentHeight = controlsContainer?.height ?: 0
-        //     val currentWidth = controlsContainer?.width ?: 0
-        //     if (currentHeight > 0) {
-        //         onControlsSizeChanged(currentWidth, currentHeight)
-        //     }
-        // }
     }
-
-    // !!!!!!!!!!!!!! Fix selection menu
-    // private fun onControlsSizeChanged(w: Int, h: Int) {
-    //     if (currentRotation == 0) {
-    //         val selectionParams = selectionContainer?.layoutParams as? FrameLayout.LayoutParams
-    //         if (selectionParams != null) {
-    //             selectionParams.bottomMargin = h + 6.dp
-    //             selectionContainer?.layoutParams = selectionParams
-    //         }
-    //     }
-    // }
 
     private fun addControlItem(parent: LinearLayout, view: View) {
         val wrapper = LinearLayout(context).apply {
@@ -147,7 +110,6 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
             setBackgroundColor(Color.parseColor("#AA000000"))
             visibility = View.GONE
             setPadding(10.dp, 10.dp, 10.dp, 10.dp)
-            
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -181,13 +143,11 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     // --- Dynamic Orientation Logic ---
-
     private fun setupOrientationListener() {
         orientationListener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
 
-                // Snap to 0, 90, 270 (Ignore 180/Upside down mostly)
                 val newRotation = when {
                     orientation >= 315 || orientation < 45 -> 0 // Portrait
                     orientation in 45..135 -> 90                // Landscape Right
@@ -217,29 +177,21 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         modeParams.setMargins(0, 0, 0, 0)
 
         when (rotation) {
-            // Portrait
             0 -> {
                 backParams.gravity = Gravity.TOP or Gravity.START
                 modeParams.gravity = Gravity.TOP or Gravity.END
-
                 backParams.setMargins(baseMargin, statusBarHeight + 6.dp, 0, 0)
                 modeParams.setMargins(0, statusBarHeight + 6.dp, baseMargin, 0)
             }
-
-            // Landscape - Camera Left
             270 -> {
                 backParams.gravity = Gravity.TOP or Gravity.END
                 modeParams.gravity = Gravity.TOP or Gravity.END
-
                 backParams.setMargins(0, statusBarHeight + 6.dp, baseMargin, 0)
                 modeParams.setMargins(0, statusBarHeight + buttonSize + spacing, baseMargin, 0)
             }
-
-            // Landscape - Camera Right
             90 -> {
                 backParams.gravity = Gravity.TOP or Gravity.START
                 modeParams.gravity = Gravity.TOP or Gravity.START
-
                 backParams.setMargins(baseMargin, statusBarHeight + 6.dp, 0, 0)
                 modeParams.setMargins(baseMargin, statusBarHeight + buttonSize + spacing, 0, 0)
             }
@@ -250,35 +202,23 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     private fun rotateUIComponents(rotation: Int) {
-        val targetRotation = when (rotation) {
-            90 -> -90f
-            270 -> 90f
-            else -> 0f
-        }
+        val targetRotation = when (rotation) { 90 -> -90f; 270 -> 90f; else -> 0f }
+        val backRotation = when (rotation) { 90 -> 90f; 270 -> 90f; else -> 0f }
 
-        // Rotate All Icons/Buttons smoothly
         rotateView(btnModeToggle, targetRotation)
-        val backRotation = when (rotation) {
-            90 -> 90f
-            270 -> 90f
-            else -> 0f
-        }
         rotateView(btnBack, backRotation)
         
-        // Rotate Control Buttons (Model, Capture, Settings)
         for (i in 0 until (controlsContainer?.childCount ?: 0)) {
             val wrapper = controlsContainer?.getChildAt(i) as? LinearLayout
-            val button = wrapper?.getChildAt(0)
-            rotateView(button, targetRotation)
+            rotateView(wrapper?.getChildAt(0), targetRotation)
         }
 
         if (selectionContainer?.visibility == View.VISIBLE) {
             val scrollView = selectionContainer?.getChildAt(0) as? android.widget.HorizontalScrollView
             val itemContainer = scrollView?.getChildAt(0) as? LinearLayout
-            if (itemContainer != null) {
-                for (i in 0 until itemContainer.childCount) {
-                    val itemWrapper = itemContainer.getChildAt(i)
-                    rotateView(itemWrapper, targetRotation)
+            itemContainer?.let {
+                for (i in 0 until it.childCount) {
+                    rotateView(it.getChildAt(i), targetRotation)
                 }
             }
         }
@@ -288,39 +228,31 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         view?.animate()?.rotation(rotation)?.setDuration(300)?.start()
     }
 
-    // --- LifeCycle Methods (Must be called from Activity) ---
-
     fun onResume() { orientationListener?.enable() }
-
     fun onPause() { orientationListener?.disable() }
 
-    // --- Actions & Helpers (Keep same logic) ---
-
+    // --- Actions & Helpers ---
     private fun showModelSelector() {
         toggleSelectionMenu {
-            val scrollView = android.widget.HorizontalScrollView(context).apply {
-                isVerticalScrollBarEnabled = false
-            }
+            val scrollView = android.widget.HorizontalScrollView(context).apply { isVerticalScrollBarEnabled = false }
             val container = LinearLayout(context).apply { 
                 orientation = LinearLayout.HORIZONTAL 
                 gravity = Gravity.CENTER
             }
 
-            val currentTargetRotation = when (currentRotation) {
-                90 -> -90f; 270 -> 90f; else -> 0f
-            }
+            val targetRot = when (currentRotation) { 90 -> -90f; 270 -> 90f; else -> 0f }
 
             modelList.forEach { modelName ->
-                val item = createModelItem(modelName)
-                item.rotation = currentTargetRotation
-                item.setOnClickListener {
-                    onModelSelected?.invoke(modelName)
-                    selectionContainer?.visibility = View.GONE
+                val item = createModelItem(modelName).apply {
+                    rotation = targetRot
+                    setOnClickListener {
+                        onModelSelected?.invoke(modelName)
+                        selectionContainer?.visibility = View.GONE
+                    }
                 }
                 container.addView(item)
                 container.addView(createSpacer(10.dp))
             }
-            
             scrollView.addView(container)
             selectionContainer?.addView(scrollView)
         }
@@ -328,22 +260,21 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
     private fun showSizeSelector() {
         toggleSelectionMenu {
-            val scrollView = android.widget.HorizontalScrollView(context)
+            val scrollView = android.widget.HorizontalScrollView(context).apply { isVerticalScrollBarEnabled = false }
             val container = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
 
-            val currentTargetRotation = when (currentRotation) {
-                90 -> -90f; 270 -> 90f; else -> 0f
-            }
+            val targetRot = when (currentRotation) { 90 -> -90f; 270 -> 90f; else -> 0f }
 
             sizeList.forEach { size ->
-                val item = createChipButton("$size Inches")
-                item.rotation = currentTargetRotation
-                item.setOnClickListener {
-                    onSizeSelected?.invoke(size.toFloat())
-                    selectionContainer?.visibility = View.GONE
+                val item = createChipButton("$size Inches").apply {
+                    rotation = targetRot
+                    setOnClickListener {
+                        onSizeSelected?.invoke(size.toFloat())
+                        selectionContainer?.visibility = View.GONE
+                    }
                 }
                 container.addView(item)
                 container.addView(createSpacer(10.dp))
@@ -354,11 +285,10 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     }
 
     private fun toggleSelectionMenu(populateContent: () -> Unit) {
+        selectionContainer?.removeAllViews()
         if (selectionContainer?.visibility == View.VISIBLE) {
             selectionContainer?.visibility = View.GONE
-            selectionContainer?.removeAllViews()
         } else {
-            selectionContainer?.removeAllViews()
             populateContent()
             selectionContainer?.visibility = View.VISIBLE
         }
@@ -367,97 +297,69 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     private fun toggleMode() {
         currentMode = if (currentMode == ARMode.MARKERLESS) ARMode.MARKER_BASED else ARMode.MARKERLESS
         onModeSelected?.invoke(currentMode)
-        updateModeIcon()
-    }
-
-    private fun updateModeIcon() {
         val iconRes = if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
         btnModeToggle?.setImageResource(iconRes)
     }
 
-    // --- Helper UI Functions ---
-
-    private fun createIconButton(iconResId: Int): AppCompatImageView {
-        return AppCompatImageView(context).apply {
-            setImageResource(iconResId)
-            setColorFilter(Color.WHITE)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(10.dp, 10.dp, 10.dp, 10.dp)
-            background = createRoundDrawable(Color.parseColor("#66000000"), 100f)
-            layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp)
-        }
+    // --- Helper UI Builder Functions ---
+    private fun createIconButton(iconResId: Int) = AppCompatImageView(context).apply {
+        setImageResource(iconResId)
+        setColorFilter(Color.WHITE)
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
+        setPadding(10.dp, 10.dp, 10.dp, 10.dp)
+        background = createRoundDrawable(Color.parseColor("#66000000"), 100f)
+        layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp)
     }
 
-    private fun createMenuButton(label: String, iconResId: Int): TextView {
-        return TextView(context).apply {
-            text = label
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            background = createRoundDrawable(Color.parseColor("#99000000"), 30f)
-            layoutParams = LinearLayout.LayoutParams(66.dp, 66.dp)
+    private fun createMenuButton(label: String, iconResId: Int) = TextView(context).apply {
+        text = label
+        setTextColor(Color.WHITE)
+        textSize = 14f
+        gravity = Gravity.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        background = createRoundDrawable(Color.parseColor("#99000000"), 30f)
+        layoutParams = LinearLayout.LayoutParams(66.dp, 66.dp)
 
-            // insert Icon on the left
-            val drawable = ContextCompat.getDrawable(context, iconResId)
-            drawable?.setBounds(0, 0, 20.dp, 20.dp)
-            drawable?.setTint(Color.WHITE)
-            
-            // (Left, Top, Right, Bottom)
-            setCompoundDrawables(null, drawable, null, null)
-            compoundDrawablePadding = 6.dp
-            setPadding(3.dp, 6.dp, 3.dp, 6.dp)
-        }
+        val drawable = ContextCompat.getDrawable(context, iconResId)
+        drawable?.setBounds(0, 0, 20.dp, 20.dp)
+        drawable?.setTint(Color.WHITE)
+        setCompoundDrawables(null, drawable, null, null)
+        compoundDrawablePadding = 6.dp
+        setPadding(3.dp, 6.dp, 3.dp, 6.dp)
     }
 
-    private fun createChipButton(label: String): TextView {
-        return TextView(context).apply {
-            text = label
-            setTextColor(Color.BLACK)
-            textSize = 14f
-            gravity = Gravity.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            background = createRoundDrawable(Color.WHITE, 50f)
-            setPadding(16.dp, 8.dp, 16.dp, 8.dp)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
+    private fun createChipButton(label: String) = TextView(context).apply {
+        text = label
+        setTextColor(Color.BLACK)
+        textSize = 14f
+        gravity = Gravity.CENTER
+        typeface = Typeface.DEFAULT_BOLD
+        background = createRoundDrawable(Color.WHITE, 50f)
+        setPadding(16.dp, 8.dp, 16.dp, 8.dp)
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
     }
 
-    private fun createModelItem(modelName: String): View {
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(12.dp, 12.dp, 12.dp, 12.dp)
-            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 20f)
-        }
+    private fun createModelItem(modelPath: String) = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        setPadding(12.dp, 12.dp, 12.dp, 12.dp)
+        background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 20f)
 
         // !Placeholder ImageView for Model Icon
-        val imageView = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(60.dp, 60.dp)
-            setImageResource(R.drawable.ic_cube)
+        addView(ImageView(context).apply {
+            layoutParams = LinearLayout.LayoutParams(50.dp, 50.dp)
+            setImageResource(R.drawable.ic_cube) 
             setColorFilter(Color.WHITE)
-        }
+        })
 
-        val modelName = modelName
-        val textView = TextView(context).apply {
-            text = modelName
+        addView(TextView(context).apply {
+            text = modelPath
             setTextColor(Color.WHITE)
             textSize = 12f
             gravity = Gravity.CENTER
             setPadding(0, 8.dp, 0, 0)
-        }
-
-        container.addView(imageView)
-        container.addView(textView)
-
-        return container
+        })
     }
 
     // private fun createModelItem(modelName: String): View {
@@ -513,36 +415,25 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
     //     return container
     // }
 
-    private fun createCaptureButton(): View {
-        return View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(80.dp, 80.dp)
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.WHITE)
-            }
-            isClickable = true
+    private fun createCaptureButton() = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(80.dp, 80.dp)
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.WHITE)
         }
+        isClickable = true
     }
 
-    private fun createRoundDrawable(color: Int, radius: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = radius
-        }
+    private fun createRoundDrawable(color: Int, radius: Float) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = radius
     }
 
-    private fun createSpacer(size: Int): View {
-        return View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(size, size)
-        }
-    }
+    private fun createSpacer(size: Int) = View(context).apply { layoutParams = LinearLayout.LayoutParams(size, size) }
 
     private fun getStatusBarHeight(): Int {
-        var result = 0
         val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        if (resourceId > 0) {
-            result = context.resources.getDimensionPixelSize(resourceId)
-        }
+        val result = if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
         return if (result > 0) result else 26.dp
     }
 }

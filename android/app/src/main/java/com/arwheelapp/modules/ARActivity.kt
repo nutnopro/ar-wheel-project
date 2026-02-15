@@ -1,30 +1,39 @@
 package com.arwheelapp.modules
 
-import android.os.Environment
-import android.os.Bundle
-import android.os.Build
-import android.util.Log
 import android.content.ContentValues
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.Manifest
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
+import android.view.PixelCopy
 import android.widget.FrameLayout
 import android.widget.Toast
-import android.graphics.Bitmap
-import java.io.OutputStream
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.ar.core.CameraConfigFilter
-import com.google.ar.core.CameraConfig
-import com.google.ar.core.Session
-import com.google.ar.core.Config
-import java.util.EnumSet
-import kotlinx.coroutines.*
-import io.github.sceneview.ar.ARSceneView
 import com.arwheelapp.utils.ARMode
+import com.google.ar.core.Config
+import com.google.ar.core.CameraConfig
+import com.google.ar.core.CameraConfigFilter
+import com.google.ar.core.Session
+import io.github.sceneview.ar.ARSceneView
+import java.io.OutputStream
+import java.util.EnumSet
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ARActivity : ComponentActivity() {
+    companion object {
+        private const val TAG = "ARActivity"
+    }
+
     private val arSceneView: ARSceneView by lazy { ARSceneView(this) }
     private val onnxOverlayView: OnnxOverlayView by lazy { OnnxOverlayView(this) }
     private val rootLayout: FrameLayout by lazy { FrameLayout(this) }
@@ -32,21 +41,15 @@ class ARActivity : ComponentActivity() {
     private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlayView, arSceneView) }
     private val uiManager: ARUIManager by lazy { ARUIManager(this, rootLayout, onnxOverlayView) }
 
-    private val TAG = "ARActivity: "
     private var currentMode: ARMode = ARMode.MARKERLESS
 
-    // *Permission Handling
-    private val cameraPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            startARLoop()
-        } else {
-            Toast.makeText(this, "Camera permission is needed for AR", Toast.LENGTH_LONG).show()
-        }
+    // Permission Handling
+    private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+        if (isGranted) startARLoop()
+        else Toast.makeText(this, "Camera permission is needed for AR", Toast.LENGTH_LONG).show()
     }
 
-    // *Lifecycle Methods
+    // Lifecycle Methods
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         initViews()
@@ -63,20 +66,14 @@ class ARActivity : ComponentActivity() {
         uiManager.onPause()
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-    }
-
-    // *Initialization
+    // Initialization
     private fun initViews() {
-        arSceneView.onSessionCreated = { session ->
-            setupARSession(session)
-        }
-
+        arSceneView.onSessionCreated = { setupARSession(it) }
         arSceneView.planeRenderer.isVisible = false
 
-        rootLayout.addView(arSceneView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        rootLayout.addView(onnxOverlayView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        val layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        rootLayout.addView(arSceneView, layoutParams)
+        rootLayout.addView(onnxOverlayView, layoutParams)
 
         uiManager.setupInterface()
         setupUICallbacks()
@@ -85,33 +82,26 @@ class ARActivity : ComponentActivity() {
     }
 
     private fun setupUICallbacks() {
-        uiManager.onBackClicked = {
-            finish()
-        }
+        uiManager.apply {
+            onBackClicked = { finish() }
+            onModeSelected = { currentMode = it }
+            onCaptureClicked = { takePhoto() }
 
-        uiManager.onModeSelected = { mode ->
-            currentMode = mode
-        }
+            onModelSelected = { modelPath ->
+                arRendering.updateNewModel("models/$modelPath.glb")
+                Log.d(TAG, "User selected model: $modelPath")
+            }
 
-        uiManager.onCaptureClicked = {
-            takePhoto()
-        }
-
-        val modelDirectory = "models/"
-        uiManager.onModelSelected = { modelName ->
-            val modelPath = "$modelDirectory$modelName.glb"
-            arRendering.updateNewModel(modelPath)
-        }
-
-        uiManager.onSizeSelected = { sizeInch ->
-            arRendering.updateModelSize(sizeInch) 
+            onSizeSelected = { sizeInch ->
+                arRendering.updateModelSize(sizeInch)
+                Log.d(TAG, "User selected size: $sizeInch")
+            }
         }
     }
 
     private fun setupARSession(session: Session) {
         try {
             configureSessionFor60FPS(session)
-
             val config = Config(session).apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
@@ -131,9 +121,9 @@ class ARActivity : ComponentActivity() {
     }
 
     private fun configureSessionFor60FPS(session: Session) {
-        val filter = CameraConfigFilter(session)
-        filter.targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60)
-
+        val filter = CameraConfigFilter(session).apply {
+            targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60)
+        }
         val validConfigs = session.getSupportedCameraConfigs(filter)
         if (validConfigs.isNotEmpty()) {
             session.cameraConfig = validConfigs[0]
@@ -144,70 +134,42 @@ class ARActivity : ComponentActivity() {
     }
 
     private fun checkPermissionAndStartAR() {
-        val permission = android.Manifest.permission.CAMERA
-
-        when {
-            ContextCompat.checkSelfPermission(this, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED -> {
-                startARLoop()
-            }
-            ActivityCompat.shouldShowRequestPermissionRationale(this, permission) -> {
-                cameraPermissionLauncher.launch(permission)
-            }
-            else -> {
-                cameraPermissionLauncher.launch(permission)
-            }
+        val permission = Manifest.permission.CAMERA
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+            startARLoop()
+        } else {
+            cameraPermissionLauncher.launch(permission)
         }
     }
 
     private fun takePhoto() {
-        val bitmap = android.graphics.Bitmap.createBitmap(
-            arSceneView.width, 
-            arSceneView.height, 
-            Bitmap.Config.ARGB_8888
-        )
-
-        android.view.PixelCopy.request(
-            arSceneView, 
-            bitmap, 
-            { result ->
-                if (result == android.view.PixelCopy.SUCCESS) {
-                    lifecycleScope.launch(Dispatchers.IO) {
-                        saveBitmapToGallery(bitmap)
-                    }
-                } else {
-                    runOnUiThread {
-                        Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }, 
-            android.os.Handler(android.os.Looper.getMainLooper())
-        )
+        val bitmap = Bitmap.createBitmap(arSceneView.width, arSceneView.height, Bitmap.Config.ARGB_8888)
+        PixelCopy.request(arSceneView, bitmap, { result ->
+            if (result == PixelCopy.SUCCESS) {
+                lifecycleScope.launch(Dispatchers.IO) { saveBitmapToGallery(bitmap) }
+            } else {
+                Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
+            }
+        }, android.os.Handler(android.os.Looper.getMainLooper()))
     }
 
     private suspend fun saveBitmapToGallery(bitmap: Bitmap) {
         val filename = "AR_IMG_${System.currentTimeMillis()}.jpg"
-
-        var fos: OutputStream? = null
-        var imageUri: android.net.Uri? = null
-
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AR WHEEL")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/AR WHEEL")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }
 
-        val resolver = contentResolver        
+        val resolver = contentResolver
+        val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
 
         try {
-            imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-
             imageUri?.let { uri ->
-                fos = resolver.openOutputStream(uri)
-                fos?.let { stream ->
+                resolver.openOutputStream(uri)?.use { stream ->
                     bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
                 }
 
@@ -222,19 +184,16 @@ class ARActivity : ComponentActivity() {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Failed to save image", e)
             imageUri?.let { resolver.delete(it, null, null) }
-
             withContext(Dispatchers.Main) {
                 Toast.makeText(this@ARActivity, "Failed to save image", Toast.LENGTH_SHORT).show()
             }
-        } finally {
-            fos?.close()
         }
     }
 
     private fun startARLoop() {
-        arSceneView.onFrame = onFrame@{ _ ->
+        arSceneView.onFrame = onFrame@ { _ ->
             val frame = arSceneView.frame ?: return@onFrame
             arRendering.render(arSceneView, frame, currentMode)
         }
