@@ -13,8 +13,8 @@ data class Detection(
     val confidence: Float
 )
 
-data class ModelLockState(
+data class ModelState(
     var stableFrameCount: Int = 0,
     var isLocked: Boolean = false,
-    var lastLockedPos: Float3? = null
+    var bestAspectRatio: Float = 0f
 )
