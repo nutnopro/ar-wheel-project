@@ -97,14 +97,14 @@ class ARActivity : ComponentActivity() {
             takePhoto()
         }
 
-        uiManager.onModelSelected = { modelPath ->
+        val modelDirectory = "models/"
+        uiManager.onModelSelected = { modelName ->
+            val modelPath = "$modelDirectory$modelName.glb"
             arRendering.updateNewModel(modelPath)
-            Log.d(TAG, "User selected model: $modelPath")
+        }
 
-            uiManager.onSizeSelected = { sizeInch ->
-                arRendering.updateModelSize(sizeInch) 
-                Log.d(TAG, "User selected size: $sizeInch")
-            }
+        uiManager.onSizeSelected = { sizeInch ->
+            arRendering.updateModelSize(sizeInch) 
         }
     }
 
@@ -195,7 +195,7 @@ class ARActivity : ComponentActivity() {
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/AR WHEEL")
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }

@@ -426,7 +426,7 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
         }
     }
 
-    private fun createModelItem(modelPath: String): View {
+    private fun createModelItem(modelName: String): View {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -440,12 +440,12 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
         // !Placeholder ImageView for Model Icon
         val imageView = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(50.dp, 50.dp)
-            setImageResource(R.drawable.ic_cube) 
+            layoutParams = LinearLayout.LayoutParams(60.dp, 60.dp)
+            setImageResource(R.drawable.ic_cube)
             setColorFilter(Color.WHITE)
         }
 
-        val modelName = modelPath
+        val modelName = modelName
         val textView = TextView(context).apply {
             text = modelName
             setTextColor(Color.WHITE)
@@ -459,6 +459,59 @@ class ARUIManager(private val context: Context, private val rootLayout: FrameLay
 
         return container
     }
+
+    // private fun createModelItem(modelName: String): View {
+    //     val container = LinearLayout(context).apply {
+    //         orientation = LinearLayout.VERTICAL
+    //         gravity = Gravity.CENTER
+    //         layoutParams = LinearLayout.LayoutParams(
+    //             LinearLayout.LayoutParams.WRAP_CONTENT,
+    //             LinearLayout.LayoutParams.WRAP_CONTENT
+    //         )
+    //         setPadding(12.dp, 12.dp, 12.dp, 12.dp)
+    //         background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 20f)
+    //     }
+
+    //     val imageView = ImageView(context).apply {
+    //         // ปรับขนาดรูปให้ใหญ่ขึ้นนิดนึง เพื่อให้เห็นลายล้อชัดๆ
+    //         layoutParams = LinearLayout.LayoutParams(60.dp, 60.dp)
+    //         scaleType = ImageView.ScaleType.FIT_CENTER 
+            
+    //         // -----------------------------------------------------
+    //         // ค้นหารูปภาพในโฟลเดอร์ drawable ที่ชื่อตรงกับ modelName
+    //         // เช่น ถ้า modelName คือ "wheel1" มันจะหาไฟล์ wheel1.png/jpg
+    //         // -----------------------------------------------------
+    //         val resourceId = context.resources.getIdentifier(
+    //             modelName.lowercase(), // บังคับตัวเล็กให้ตรงกับกฎของ drawable
+    //             "drawable",
+    //             context.packageName
+    //         )
+
+    //         if (resourceId != 0) {
+    //             // ถ้ารูปมีอยู่จริง โหลดมาแสดงเลย และไม่ต้องใส่สีทับ (clearColorFilter)
+    //             setImageResource(resourceId)
+    //             clearColorFilter()
+    //         } else {
+    //             // ถ้ายังไม่ได้ใส่รูปล้อนั้นๆ ไว้ ให้ใช้ไอคอนกล่องเป็น Placeholder
+    //             setImageResource(R.drawable.ic_cube)
+    //             setColorFilter(Color.WHITE)
+    //         }
+    //     }
+
+    //     val textView = TextView(context).apply {
+    //         // ทำให้ตัวอักษรตัวแรกพิมพ์ใหญ่ เช่น wheel1 -> Wheel1
+    //         text = modelName.replaceFirstChar { it.uppercase() } 
+    //         setTextColor(Color.WHITE)
+    //         textSize = 12f
+    //         gravity = Gravity.CENTER
+    //         setPadding(0, 8.dp, 0, 0)
+    //     }
+
+    //     container.addView(imageView)
+    //     container.addView(textView)
+
+    //     return container
+    // }
 
     private fun createCaptureButton(): View {
         return View(context).apply {
