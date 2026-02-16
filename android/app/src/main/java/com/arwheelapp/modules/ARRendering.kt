@@ -25,7 +25,8 @@ import kotlinx.coroutines.withContext
 class ARRendering(
     private val context: Context,
     private val onnxOverlayView: OnnxOverlayView,
-    private val arSceneView: ARSceneView
+    private val arSceneView: ARSceneView,
+    private val coroutineScope: CoroutineScope
 ) {
     companion object {
         private const val TAG = "ARRendering"
@@ -401,13 +402,6 @@ class ARRendering(
         return MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * t
     }
 
-    // private fun distance(p1: Float3, p2: Float3): Float {
-    //     val dx = p1.x - p2.x
-    //     val dy = p1.y - p2.y
-    //     val dz = p1.z - p2.z
-    //     return sqrt(dx * dx + dy * dy + dz * dz)
-    // }
-    //!!!!!!!!!!!!!!!!!
     private fun distance(p1: Float3, p2: Float3) = length(p1 - p2)
     private fun distance(pose1: Pose, pose2: Pose) = sqrt(
         (pose1.tx() - pose2.tx()).pow(2) + 
@@ -420,12 +414,12 @@ class ARRendering(
     // ==========================================
     private fun getOrCreateModel(path: String): Node {
         return modelPool.find { it.parent == null || !it.isVisible }?.apply { isVisible = true }
-            ?: modelManager.createNewModel(path).also { modelPool.add(it) }
+            ?: modelManager.createNewModel(path, coroutineScope).also { modelPool.add(it) }
     }
 
     fun updateNewModel(path: String) {
         modelPath = path
-        modelPool.forEach { modelManager.changeModel(it, path) }
+        modelPool.forEach { modelManager.changeModel(it, path, coroutineScope) }
     }
 
     fun updateModelSize(sizeInch: Float) {

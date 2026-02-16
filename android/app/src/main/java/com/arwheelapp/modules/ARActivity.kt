@@ -38,7 +38,7 @@ class ARActivity : ComponentActivity() {
     private val onnxOverlayView: OnnxOverlayView by lazy { OnnxOverlayView(this) }
     private val rootLayout: FrameLayout by lazy { FrameLayout(this) }
 
-    private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlayView, arSceneView) }
+    private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlayView, arSceneView, lifecycleScope) }
     private val uiManager: ARUIManager by lazy { ARUIManager(this, rootLayout, onnxOverlayView) }
 
     private var currentMode: ARMode = ARMode.MARKERLESS
