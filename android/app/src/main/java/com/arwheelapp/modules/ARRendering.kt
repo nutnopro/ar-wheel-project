@@ -105,9 +105,10 @@ class ARRendering(
             augmentedImageMap.values.forEach { it?.destroy() }
             augmentedImageMap.clear()
         }
-
+        
         if (previousMode == ARMode.MARKERLESS) {
             markerlessActiveModels.clear()
+            onnxOverlayView.clear()
         }
     }
 
@@ -211,7 +212,7 @@ class ARRendering(
 
             if (!isAngleValid(currentAspectRatio, planeNormal, bestPos, cameraPos)) continue
 
-            val finalRot = lookRotation(forward = planeNormal, up = Float3(0f, 1f, 0f)) * Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), -90f)
+            val finalRot = lookRotation(forward = planeNormal, up = Float3(0f, 1f, 0f))
 
             val closestModel = markerlessActiveModels
                 .asSequence()
@@ -322,9 +323,8 @@ class ARRendering(
     // ==========================================
     private fun updateModelTransform(model: Node, targetPos: Float3, targetRot: Quaternion) {
         val dynamicAlpha = calculateDynamicAlpha(model.position, targetPos)
-        // model.position = dev.romainguy.kotlin.math.mix(model.position, targetPos, dynamicAlpha)
         model.position = mix(model.position, targetPos, dynamicAlpha)
-        model.quaternion = slerp(model.quaternion, targetRot, dynamicAlpha / 2)
+        model.quaternion = slerp(model.quaternion, targetRot, dynamicAlpha)
     }
 
     private fun calculatePlaneNormal(points: List<Float3>, center: Float3, cameraPos: Float3): Float3 {
@@ -436,6 +436,7 @@ class ARRendering(
         augmentedImageMap.clear()
         markerlessActiveModels.clear()
         modelStates.clear()
+        onnxOverlayView.clear()
     }
 
     fun setupMarkerDatabase(session: Session, markerSize: Float = 0.15f) {

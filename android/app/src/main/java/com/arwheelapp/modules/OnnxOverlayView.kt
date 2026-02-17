@@ -57,4 +57,9 @@ class OnnxOverlayView(context: Context) : View(context) {
             canvas.drawText("${(det.confidence * 100).toInt()}%", left, top - 10, textPaint)
         }
     }
+
+    fun clear() {
+        detections.clear()
+        invalidate()
+    }
 }
