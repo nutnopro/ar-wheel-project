@@ -6,7 +6,11 @@ import android.graphics.RectF
 // --- AR Types ---
 enum class ARMode {
     MARKER_BASED,
-    MARKERLESS
+    MARKERLESS;
+
+    companion object {
+        val DEFAULT = MARKERLESS
+    }
 }
 
 data class Detection(

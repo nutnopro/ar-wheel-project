@@ -7,7 +7,6 @@ import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
 import java.lang.Float.max
 import kotlinx.coroutines.*
-import android.util.Log
 
 class ModelManager(private val arSceneView: ARSceneView) {
     private val modelLoader by lazy { ModelLoader(arSceneView.engine, arSceneView.context) }
@@ -34,8 +33,6 @@ class ModelManager(private val arSceneView: ARSceneView) {
         val diameter = max(box.halfExtent[0] * 2.0f, box.halfExtent[1] * 2.0f)
         val halfThickness =  box.halfExtent[2]
         val thickness = halfThickness * 2.0f
-        Log.d("ModelManager", "diameter: ${diameter}, thickness: ${thickness}, halfThickness: ${halfThickness}")
-        // * True Front
         // ? wheel1 -> X: 0.45720005, Y: 0.45719996, Z: 0.15214129
         // ? wheel1 -> diameter: 0.45720005, thickness: 0.15214129, halfThickness: 0.076070644
 

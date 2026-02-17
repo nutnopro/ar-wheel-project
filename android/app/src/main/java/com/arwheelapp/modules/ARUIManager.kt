@@ -36,7 +36,7 @@ class ARUIManager(
     private var controlsContainer: LinearLayout? = null
     private var selectionContainer: LinearLayout? = null
 
-    private var currentMode: ARMode = ARMode.MARKERLESS
+    private var currentMode: ARMode = ARMode.DEFAULT
     private var currentRotation = 0
     private var orientationListener: OrientationEventListener? = null
 
@@ -58,7 +58,9 @@ class ARUIManager(
 
     private fun setupNavButtons() {
         btnBack = createIconButton(R.drawable.ic_arrow_back).apply { setOnClickListener { onBackClicked?.invoke() } }
-        btnModeToggle = createIconButton(R.drawable.ic_layers).apply { setOnClickListener { toggleMode() } }
+        btnModeToggle = createIconButton(
+            if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
+        ).apply { setOnClickListener { toggleMode() } }
 
         rootLayout.addView(btnBack)
         rootLayout.addView(btnModeToggle)

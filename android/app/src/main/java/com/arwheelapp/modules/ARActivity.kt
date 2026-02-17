@@ -41,7 +41,7 @@ class ARActivity : ComponentActivity() {
     private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlayView, arSceneView, lifecycleScope) }
     private val uiManager: ARUIManager by lazy { ARUIManager(this, rootLayout, onnxOverlayView) }
 
-    private var currentMode: ARMode = ARMode.MARKERLESS
+    private var currentMode: ARMode = ARMode.DEFAULT
 
     // Permission Handling
     private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
