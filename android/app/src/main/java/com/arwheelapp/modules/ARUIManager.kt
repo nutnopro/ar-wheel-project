@@ -2,11 +2,12 @@ package com.arwheelapp.modules
 
 import android.content.Context
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.OrientationEventListener
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -14,66 +15,97 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.widget.AppCompatImageView
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.LinearSnapHelper
+import androidx.recyclerview.widget.RecyclerView
 import com.arwheelapp.R
 import com.arwheelapp.utils.ARMode
 import com.arwheelapp.utils.dp
 
 class ARUIManager(
-    private val context: Context, 
-    private val rootLayout: FrameLayout, 
+    private val context: Context,
+    private val rootLayout: FrameLayout,
     private val overlayView: View
 ) {
-    // Callbacks
+    // --- Callbacks ---
     var onModeSelected: ((ARMode) -> Unit)? = null
     var onBackClicked: (() -> Unit)? = null
     var onCaptureClicked: (() -> Unit)? = null
     var onModelSelected: ((String) -> Unit)? = null
     var onSizeSelected: ((Float) -> Unit)? = null
 
-    // UI Elements
+    // --- UI Elements ---
     private var btnBack: AppCompatImageView? = null
     private var btnModeToggle: AppCompatImageView? = null
     private var controlsContainer: LinearLayout? = null
-    private var selectionContainer: LinearLayout? = null
+    private var selectionContainer: FrameLayout? = null
+    private var tvSelectionTitle: TextView? = null
 
+    // --- State & Data ---
     private var currentMode: ARMode = ARMode.DEFAULT
     private var currentRotation = 0
     private var orientationListener: OrientationEventListener? = null
 
-    // Mock Data
-    private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5") // !Should be list of path of models
+    // Mock Data (Should be replaced with dynamic model paths/sizes later)
+    private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5")
     private var sizeList = listOf(14, 15, 16, 17, 18, 19, 20, 21, 22)
 
     fun setModels(models: List<String>) {
         this.modelList = models
     }
 
+    // ==========================================
+    // Lifecycle & Setup
+    // ==========================================
+
+    // Initializes all UI components and listeners.
     fun setupInterface() {
-        setupNavButtons()           // Top (Portrait) / Left (Landscape)
-        setupDebugPanel()           // Overlay toggle
-        setupControlsPanel()        // Bottom (Portrait) / Right (Landscape)
-        setupSelectionMenu()        // Popup menu
+        setupNavButtons()
+        setupDebugPanel()
+        setupControlsPanel()
+        setupSelectionOverlay()
         setupOrientationListener()
     }
 
+    fun onResume() = orientationListener?.enable()
+    fun onPause() = orientationListener?.disable()
+
+    // ==========================================
+    // UI Layout Setups
+    // ==========================================
+
+    // Sets up static top-left (Back) and top-right (Toggle Mode) navigation buttons.
     private fun setupNavButtons() {
-        btnBack = createIconButton(R.drawable.ic_arrow_back).apply { setOnClickListener { onBackClicked?.invoke() } }
-        btnModeToggle = createIconButton(
-            if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
-        ).apply { setOnClickListener { toggleMode() } }
+        val statusBarHeight = getStatusBarHeight()
+        val margin = 16.dp
+
+        btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
+            layoutParams = FrameLayout.LayoutParams(44.dp, 44.dp).apply {
+                gravity = Gravity.TOP or Gravity.START
+                setMargins(margin, statusBarHeight + 8.dp, 0, 0)
+            }
+            setOnClickListener { onBackClicked?.invoke() }
+        }
+
+        btnModeToggle = createIconButton(R.drawable.ic_layers).apply {
+            layoutParams = FrameLayout.LayoutParams(44.dp, 44.dp).apply {
+                gravity = Gravity.TOP or Gravity.END
+                setMargins(0, statusBarHeight + 8.dp, margin, 0)
+            }
+            setOnClickListener { toggleMode() }
+        }
 
         rootLayout.addView(btnBack)
         rootLayout.addView(btnModeToggle)
-        updateNavPosition(0)
     }
 
+    // Sets up the bottom control panel containing Model, Capture, and Size buttons.
     private fun setupControlsPanel() {
         controlsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            weightSum = 3f
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT, 
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
@@ -83,347 +115,224 @@ class ARUIManager(
 
         val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply { setOnClickListener { showModelSelector() } }
         val btnCapture = createCaptureButton().apply { setOnClickListener { onCaptureClicked?.invoke() } }
-        val btnSettings = createMenuButton("Size", R.drawable.ic_settings).apply { setOnClickListener { showSizeSelector() } }
+        val btnSize = createMenuButton("Size", R.drawable.ic_settings).apply { setOnClickListener { showSizeSelector() } }
 
         addControlItem(controlsContainer!!, btnModel)
         addControlItem(controlsContainer!!, btnCapture)
-        addControlItem(controlsContainer!!, btnSettings)
+        addControlItem(controlsContainer!!, btnSize)
 
         rootLayout.addView(controlsContainer)
     }
 
-    private fun addControlItem(parent: LinearLayout, view: View) {
-        val wrapper = LinearLayout(context).apply {
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-            addView(view)
-        }
-        parent.addView(wrapper)
-    }
-
-    private fun setupSelectionMenu() {
-        selectionContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setBackgroundColor(Color.parseColor("#AA000000"))
+    // Prepares the hidden overlay container for the selection menu (RecyclerView).
+    private fun setupSelectionOverlay() {
+        selectionContainer = FrameLayout(context).apply {
             visibility = View.GONE
-            setPadding(10.dp, 10.dp, 10.dp, 10.dp)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
-                bottomMargin = 125.dp
+                bottomMargin = 130.dp
             }
         }
+
+        // Floating title above the RecyclerView
+        tvSelectionTitle = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setShadowLayer(2f, 0f, 2f, Color.BLACK)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, 
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP
+                topMargin = (-40).dp
+            }
+        }
+
+        selectionContainer?.addView(tvSelectionTitle)
         rootLayout.addView(selectionContainer)
     }
 
     private fun setupDebugPanel() {
-        val debugContainer = LinearLayout(context).apply {
-            layoutParams = FrameLayout.LayoutParams(-2, -2).apply {
-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                marginStart = 6.dp
-                topMargin = 66.dp
-            }
-        }
         val btnDebug = Button(context).apply {
             text = "DEBUG"
-            textSize = 10f
-            background = createRoundDrawable(Color.parseColor("#80000000"), 20f)
+            textSize = 9f
             setTextColor(Color.WHITE)
-            setOnClickListener {
-                overlayView.visibility = if (overlayView.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            background = createRoundDrawable(Color.parseColor("#80000000"), 15.dp.toFloat())
+            layoutParams = FrameLayout.LayoutParams(60.dp, 30.dp).apply {
+                gravity = Gravity.CENTER_VERTICAL or Gravity.START
+                marginStart = 8.dp
+            }
+            setOnClickListener { 
+                overlayView.visibility = if (overlayView.visibility == View.VISIBLE) View.GONE else View.VISIBLE 
             }
         }
-        debugContainer.addView(btnDebug)
-        rootLayout.addView(debugContainer)
+        rootLayout.addView(btnDebug)
     }
 
-    // --- Dynamic Orientation Logic ---
+    // ==========================================
+    // Menu Logic
+    // ==========================================
+
+    private fun showModelSelector() {
+        updateSelectionMenu(modelList, isModel = true)
+    }
+
+    private fun showSizeSelector() {
+        updateSelectionMenu(sizeList.map { it.toString() }, isModel = false)
+    }
+
+    // Populates and displays the snap-to-center selection menu.
+    private fun updateSelectionMenu(data: List<String>, isModel: Boolean) {
+        selectionContainer?.removeAllViews()
+        selectionContainer?.addView(tvSelectionTitle)
+        selectionContainer?.visibility = View.VISIBLE
+
+        val recyclerView = RecyclerView(context).apply {
+            tag = "RECYCLER"
+            layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
+            adapter = SelectionAdapter(data, isModel, currentRotation)
+            clipToPadding = false
+
+            // Add padding so the first and last items can reach the exact center
+            val padding = (context.resources.displayMetrics.widthPixels / 2) - 40.dp
+            setPadding(padding, 0, padding, 0)
+        }
+
+        // SnapHelper forces the RecyclerView to stop exactly on an item (Center snapping)
+        val snapHelper = LinearSnapHelper()
+        snapHelper.attachToRecyclerView(recyclerView)
+
+        // Detect which item is in the center when scrolling stops
+        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
+                if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+                    val centerView = snapHelper.findSnapView(rv.layoutManager)
+                    val pos = centerView?.let { rv.getChildAdapterPosition(it) } ?: -1
+
+                    if (pos != -1) {
+                        val selectedValue = data[pos]
+
+                        // Update floating title
+                        tvSelectionTitle?.text = if (isModel) selectedValue.uppercase() else "SIZE: $selectedValue\""
+
+                        // Trigger corresponding callbacks
+                        if (isModel) onModelSelected?.invoke(selectedValue)
+                        else onSizeSelected?.invoke(selectedValue.toFloat())
+                    }
+                }
+            }
+        })
+
+        selectionContainer?.addView(recyclerView)
+        tvSelectionTitle?.text = if (isModel) data.first().uppercase() else "SIZE: ${data.first()}\""
+    }
+
+    private fun toggleMode() {
+        currentMode = if (currentMode == ARMode.MARKERLESS) ARMode.MARKER_BASED else ARMode.MARKERLESS
+        onModeSelected?.invoke(currentMode)
+        btnModeToggle?.setImageResource(if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers)
+    }
+
+    // ==========================================
+    // Orientation Logic
+    // ==========================================
+
     private fun setupOrientationListener() {
         orientationListener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
 
                 val newRotation = when {
-                    orientation >= 315 || orientation < 45 -> 0 // Portrait
-                    orientation in 45..135 -> 90                // Landscape Right
-                    orientation in 225..315 -> 270              // Landscape Left
+                    orientation >= 315 || orientation < 45 -> 0
+                    orientation in 45..135 -> 90
+                    orientation in 225..315 -> 270
                     else -> 0
                 }
 
                 if (newRotation != currentRotation) {
                     currentRotation = newRotation
-                    rotateUIComponents(currentRotation)
-                    updateNavPosition(currentRotation)
+                    rotateIconsOnly(currentRotation)
                 }
             }
         }
     }
 
-    private fun updateNavPosition(rotation: Int) {
-        val statusBarHeight = getStatusBarHeight()
-        val baseMargin = 12.dp
-        val buttonSize = 40.dp
-        val spacing = 10.dp
+    // Smoothly rotates UI icons (Back, Mode, Bottom Panel, Menu Items) based on device orientation
+    private fun rotateIconsOnly(rotation: Int) {
+        val targetRot = when (rotation) { 
+            90 -> -90f 
+            270 -> 90f 
+            else -> 0f 
+        }
 
-        val backParams = btnBack?.layoutParams as? FrameLayout.LayoutParams ?: return
-        val modeParams = btnModeToggle?.layoutParams as? FrameLayout.LayoutParams ?: return
+        btnBack?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
+        btnModeToggle?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
 
-        backParams.setMargins(0, 0, 0, 0)
-        modeParams.setMargins(0, 0, 0, 0)
-
-        when (rotation) {
-            0 -> {
-                backParams.gravity = Gravity.TOP or Gravity.START
-                modeParams.gravity = Gravity.TOP or Gravity.END
-                backParams.setMargins(baseMargin, statusBarHeight + 6.dp, 0, 0)
-                modeParams.setMargins(0, statusBarHeight + 6.dp, baseMargin, 0)
-            }
-            270 -> {
-                backParams.gravity = Gravity.TOP or Gravity.END
-                modeParams.gravity = Gravity.TOP or Gravity.END
-                backParams.setMargins(0, statusBarHeight + 6.dp, baseMargin, 0)
-                modeParams.setMargins(0, statusBarHeight + buttonSize + spacing, baseMargin, 0)
-            }
-            90 -> {
-                backParams.gravity = Gravity.TOP or Gravity.START
-                modeParams.gravity = Gravity.TOP or Gravity.START
-                backParams.setMargins(baseMargin, statusBarHeight + 6.dp, 0, 0)
-                modeParams.setMargins(baseMargin, statusBarHeight + buttonSize + spacing, 0, 0)
+        controlsContainer?.let {
+            for (i in 0 until it.childCount) {
+                val wrapper = it.getChildAt(i) as? ViewGroup
+                wrapper?.getChildAt(0)?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
             }
         }
 
-        btnBack?.layoutParams = backParams
-        btnModeToggle?.layoutParams = modeParams
-    }
-
-    private fun rotateUIComponents(rotation: Int) {
-        val targetRotation = when (rotation) { 90 -> -90f; 270 -> 90f; else -> 0f }
-        val backRotation = when (rotation) { 90 -> 90f; 270 -> 90f; else -> 0f }
-
-        rotateView(btnModeToggle, targetRotation)
-        rotateView(btnBack, backRotation)
-        
-        for (i in 0 until (controlsContainer?.childCount ?: 0)) {
-            val wrapper = controlsContainer?.getChildAt(i) as? LinearLayout
-            rotateView(wrapper?.getChildAt(0), targetRotation)
-        }
-
-        if (selectionContainer?.visibility == View.VISIBLE) {
-            val scrollView = selectionContainer?.getChildAt(0) as? android.widget.HorizontalScrollView
-            val itemContainer = scrollView?.getChildAt(0) as? LinearLayout
-            itemContainer?.let {
-                for (i in 0 until it.childCount) {
-                    rotateView(it.getChildAt(i), targetRotation)
-                }
-            }
+        // Notify adapter to re-bind items so they appear rotated correctly in the selection menu
+        selectionContainer?.let { 
+            val rv = it.findViewWithTag<RecyclerView>("RECYCLER")
+            rv?.adapter?.notifyDataSetChanged()
         }
     }
 
-    private fun rotateView(view: View?, rotation: Float) {
-        view?.animate()?.rotation(rotation)?.setDuration(300)?.start()
-    }
+    // ==========================================
+    // View Builders & Helpers
+    // ==========================================
 
-    fun onResume() { orientationListener?.enable() }
-    fun onPause() { orientationListener?.disable() }
-
-    // --- Actions & Helpers ---
-    private fun showModelSelector() {
-        toggleSelectionMenu {
-            val scrollView = android.widget.HorizontalScrollView(context).apply { isVerticalScrollBarEnabled = false }
-            val container = LinearLayout(context).apply { 
-                orientation = LinearLayout.HORIZONTAL 
-                gravity = Gravity.CENTER
-            }
-
-            val targetRot = when (currentRotation) { 90 -> -90f; 270 -> 90f; else -> 0f }
-
-            modelList.forEach { modelName ->
-                val item = createModelItem(modelName).apply {
-                    rotation = targetRot
-                    setOnClickListener {
-                        onModelSelected?.invoke(modelName)
-                        selectionContainer?.visibility = View.GONE
-                    }
-                }
-                container.addView(item)
-                container.addView(createSpacer(10.dp))
-            }
-            scrollView.addView(container)
-            selectionContainer?.addView(scrollView)
+    private fun addControlItem(parent: LinearLayout, view: View) {
+        val wrapper = LinearLayout(context).apply {
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(view)
         }
+        parent.addView(wrapper)
     }
 
-    private fun showSizeSelector() {
-        toggleSelectionMenu {
-            val scrollView = android.widget.HorizontalScrollView(context).apply { isVerticalScrollBarEnabled = false }
-            val container = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
-            }
-
-            val targetRot = when (currentRotation) { 90 -> -90f; 270 -> 90f; else -> 0f }
-
-            sizeList.forEach { size ->
-                val item = createChipButton("$size Inches").apply {
-                    rotation = targetRot
-                    setOnClickListener {
-                        onSizeSelected?.invoke(size.toFloat())
-                        selectionContainer?.visibility = View.GONE
-                    }
-                }
-                container.addView(item)
-                container.addView(createSpacer(10.dp))
-            }
-            scrollView.addView(container)
-            selectionContainer?.addView(scrollView)
-        }
-    }
-
-    private fun toggleSelectionMenu(populateContent: () -> Unit) {
-        selectionContainer?.removeAllViews()
-        if (selectionContainer?.visibility == View.VISIBLE) {
-            selectionContainer?.visibility = View.GONE
-        } else {
-            populateContent()
-            selectionContainer?.visibility = View.VISIBLE
-        }
-    }
-
-    private fun toggleMode() {
-        currentMode = if (currentMode == ARMode.MARKERLESS) ARMode.MARKER_BASED else ARMode.MARKERLESS
-        onModeSelected?.invoke(currentMode)
-        val iconRes = if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
-        btnModeToggle?.setImageResource(iconRes)
-    }
-
-    // --- Helper UI Builder Functions ---
     private fun createIconButton(iconResId: Int) = AppCompatImageView(context).apply {
         setImageResource(iconResId)
         setColorFilter(Color.WHITE)
-        scaleType = ImageView.ScaleType.CENTER_INSIDE
-        setPadding(10.dp, 10.dp, 10.dp, 10.dp)
         background = createRoundDrawable(Color.parseColor("#66000000"), 100f)
-        layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp)
+        setPadding(10.dp, 10.dp, 10.dp, 10.dp)
     }
 
     private fun createMenuButton(label: String, iconResId: Int) = TextView(context).apply {
         text = label
         setTextColor(Color.WHITE)
-        textSize = 14f
+        textSize = 12f
         gravity = Gravity.CENTER
         typeface = Typeface.DEFAULT_BOLD
-        background = createRoundDrawable(Color.parseColor("#99000000"), 30f)
-        layoutParams = LinearLayout.LayoutParams(66.dp, 66.dp)
+        background = createRoundDrawable(Color.parseColor("#99000000"), 20.dp.toFloat())
+        layoutParams = LinearLayout.LayoutParams(64.dp, 64.dp)
 
-        val drawable = ContextCompat.getDrawable(context, iconResId)
-        drawable?.setBounds(0, 0, 20.dp, 20.dp)
-        drawable?.setTint(Color.WHITE)
+        val drawable = ContextCompat.getDrawable(context, iconResId)?.apply { 
+            setBounds(0, 0, 22.dp, 22.dp)
+            setTint(Color.WHITE)
+        }
+
         setCompoundDrawables(null, drawable, null, null)
-        compoundDrawablePadding = 6.dp
-        setPadding(3.dp, 6.dp, 3.dp, 6.dp)
+        compoundDrawablePadding = 4.dp
+        setPadding(0, 8.dp, 0, 8.dp)
     }
-
-    private fun createChipButton(label: String) = TextView(context).apply {
-        text = label
-        setTextColor(Color.BLACK)
-        textSize = 14f
-        gravity = Gravity.CENTER
-        typeface = Typeface.DEFAULT_BOLD
-        background = createRoundDrawable(Color.WHITE, 50f)
-        setPadding(16.dp, 8.dp, 16.dp, 8.dp)
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-    }
-
-    private fun createModelItem(modelPath: String) = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        setPadding(12.dp, 12.dp, 12.dp, 12.dp)
-        background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 20f)
-
-        // !Placeholder ImageView for Model Icon
-        addView(ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(50.dp, 50.dp)
-            setImageResource(R.drawable.ic_cube) 
-            setColorFilter(Color.WHITE)
-        })
-
-        addView(TextView(context).apply {
-            text = modelPath
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setPadding(0, 8.dp, 0, 0)
-        })
-    }
-
-    // private fun createModelItem(modelName: String): View {
-    //     val container = LinearLayout(context).apply {
-    //         orientation = LinearLayout.VERTICAL
-    //         gravity = Gravity.CENTER
-    //         layoutParams = LinearLayout.LayoutParams(
-    //             LinearLayout.LayoutParams.WRAP_CONTENT,
-    //             LinearLayout.LayoutParams.WRAP_CONTENT
-    //         )
-    //         setPadding(12.dp, 12.dp, 12.dp, 12.dp)
-    //         background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 20f)
-    //     }
-
-    //     val imageView = ImageView(context).apply {
-    //         // ปรับขนาดรูปให้ใหญ่ขึ้นนิดนึง เพื่อให้เห็นลายล้อชัดๆ
-    //         layoutParams = LinearLayout.LayoutParams(60.dp, 60.dp)
-    //         scaleType = ImageView.ScaleType.FIT_CENTER 
-            
-    //         // -----------------------------------------------------
-    //         // ค้นหารูปภาพในโฟลเดอร์ drawable ที่ชื่อตรงกับ modelName
-    //         // เช่น ถ้า modelName คือ "wheel1" มันจะหาไฟล์ wheel1.png/jpg
-    //         // -----------------------------------------------------
-    //         val resourceId = context.resources.getIdentifier(
-    //             modelName.lowercase(), // บังคับตัวเล็กให้ตรงกับกฎของ drawable
-    //             "drawable",
-    //             context.packageName
-    //         )
-
-    //         if (resourceId != 0) {
-    //             // ถ้ารูปมีอยู่จริง โหลดมาแสดงเลย และไม่ต้องใส่สีทับ (clearColorFilter)
-    //             setImageResource(resourceId)
-    //             clearColorFilter()
-    //         } else {
-    //             // ถ้ายังไม่ได้ใส่รูปล้อนั้นๆ ไว้ ให้ใช้ไอคอนกล่องเป็น Placeholder
-    //             setImageResource(R.drawable.ic_cube)
-    //             setColorFilter(Color.WHITE)
-    //         }
-    //     }
-
-    //     val textView = TextView(context).apply {
-    //         // ทำให้ตัวอักษรตัวแรกพิมพ์ใหญ่ เช่น wheel1 -> Wheel1
-    //         text = modelName.replaceFirstChar { it.uppercase() } 
-    //         setTextColor(Color.WHITE)
-    //         textSize = 12f
-    //         gravity = Gravity.CENTER
-    //         setPadding(0, 8.dp, 0, 0)
-    //     }
-
-    //     container.addView(imageView)
-    //     container.addView(textView)
-
-    //     return container
-    // }
 
     private fun createCaptureButton() = View(context).apply {
-        layoutParams = LinearLayout.LayoutParams(80.dp, 80.dp)
+        layoutParams = LinearLayout.LayoutParams(72.dp, 72.dp)
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(Color.WHITE)
+            setStroke(4.dp, Color.parseColor("#DDDDDD"))
         }
-        isClickable = true
     }
 
     private fun createRoundDrawable(color: Int, radius: Float) = GradientDrawable().apply {
@@ -431,11 +340,54 @@ class ARUIManager(
         cornerRadius = radius
     }
 
-    private fun createSpacer(size: Int) = View(context).apply { layoutParams = LinearLayout.LayoutParams(size, size) }
-
     private fun getStatusBarHeight(): Int {
-        val resourceId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
-        val result = if (resourceId > 0) context.resources.getDimensionPixelSize(resourceId) else 0
-        return if (result > 0) result else 26.dp
+        val id = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        return if (id > 0) context.resources.getDimensionPixelSize(id) else 24.dp
+    }
+
+    // ==========================================
+    // Adapter
+    // ==========================================
+
+    // Custom adapter for handling Model / Size items inside the RecyclerView.
+    private inner class SelectionAdapter(
+        val items: List<String>, 
+        val isModel: Boolean, 
+        val rotation: Int
+    ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+            val view = if (isModel) createModelIconView() else createSizeCircleView()
+            return object : RecyclerView.ViewHolder(view) {}
+        }
+
+        override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+            // Ensure newly scrolled items are drawn with the correct device rotation
+            val rot = when (rotation) { 
+                90 -> -90f 
+                270 -> 90f 
+                else -> 0f 
+            }
+            holder.itemView.animate().rotation(rot).setDuration(0).start()
+        }
+
+        override fun getItemCount() = items.size
+
+        private fun createModelIconView() = ImageView(context).apply {
+            layoutParams = ViewGroup.MarginLayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
+            setImageResource(R.drawable.ic_cube)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            setPadding(15.dp, 15.dp, 15.dp, 15.dp)
+            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 40.dp.toFloat())
+        }
+
+        private fun createSizeCircleView() = TextView(context).apply {
+            layoutParams = ViewGroup.MarginLayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 40.dp.toFloat())
+            text = items[0] // Mock default text, technically not needed since snap updates the main title
+        }
     }
 }

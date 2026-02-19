@@ -2,6 +2,9 @@ package com.arwheelapp.utils
 
 import android.content.res.Resources
 import android.graphics.RectF
+import com.google.ar.core.Anchor
+import dev.romainguy.kotlin.math.Float3
+import dev.romainguy.kotlin.math.Quaternion
 
 // --- AR Types ---
 enum class ARMode {
@@ -19,9 +22,13 @@ data class Detection(
 )
 
 data class ModelState(
-    var stableFrameCount: Int = 0,
     var isLocked: Boolean = false,
-    var bestAspectRatio: Float = 0f
+    var stableFrameCount: Int = 0,
+    var lastDetectionTime: Long = 0L,
+    var bestRatioError: Float = Float.MAX_VALUE,
+    var bestPos: Float3 = Float3(0f, 0f, 0f),
+    var bestRot: Quaternion = Quaternion(),
+    var anchor: Anchor? = null
 )
 
 // --- Extensions ---

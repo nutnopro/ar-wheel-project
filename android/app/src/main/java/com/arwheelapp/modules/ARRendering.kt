@@ -30,7 +30,7 @@ class ARRendering(
 ) {
     companion object {
         private const val TAG = "ARRendering"
-        
+
         // Interval & Speed Constants
         private const val MIN_INFERENCE_INTERVAL = 200L     // 5 FPS
         private const val MAX_INFERENCE_INTERVAL = 50L      // 20 FPS
@@ -39,20 +39,26 @@ class ARRendering(
         private const val SPEED_CHECK_INTERVAL = 100L       // Check speed every 0.1s
         private const val MOVEMENT_THRESHOLD_HIGH = 0.3f    // 0.3 m/s considered "Fast"
 
-        // Markerless Locking Constants
+        // Locking Constants
         private const val LOCK_DISTANCE_THRESHOLD = 0.05f
-        private const val UNLOCK_DISTANCE_THRESHOLD = 0.20f
+        private const val UNLOCK_DISTANCE_THRESHOLD = 0.05f
         private const val FRAMES_TO_LOCK = 15
         private const val DONUT_POINTS = 8
-        private const val DONUT_RADIUS = 0.70f
-        private const val ANGLE_TOLERANCE_DEG = 25f
-        private const val RATIO_TOLERANCE = 0.01f
+        private const val DONUT_RADIUS = 0.75f
 
         // Dynamic Lerp Constants
-        private const val MIN_ALPHA = 0.05f
+        private const val MIN_ALPHA = 0.04f
         private const val MAX_ALPHA = 0.6f
         private const val MIN_DIST = 0.02f
         private const val MAX_DIST = 0.3f
+
+        // Flow Constants
+        private const val FREEZE_DISTANCE = 0.01f           // 1 cm (stop if move less than this)
+        private const val MIN_DEPTH_SANITY = 0.2f           // min depth 20 cm (prevent hits on screen)
+        private const val MAX_DEPTH_SANITY = 4.0f           // max depth 4 m (prevent hits too far)
+        private const val HIDE_TIMEOUT_MS = 500L            // 0.5 sec
+        private const val CAMERA_IDLE_THRESHOLD = 0.02f     // camera barely moves if less than 2 cm
+        private const val RATIO_ERROR_THRESHOLD = 0.15f     // 15% (0.85 - 1.15) bbox ratio for anchor
     }
 
     private val modelManager = ModelManager(arSceneView)
@@ -105,8 +111,9 @@ class ARRendering(
             augmentedImageMap.values.forEach { it?.destroy() }
             augmentedImageMap.clear()
         }
-        
+
         if (previousMode == ARMode.MARKERLESS) {
+            modelStates.values.forEach { it.anchor?.detach() }
             markerlessActiveModels.clear()
             onnxOverlayView.clear()
         }
@@ -188,47 +195,92 @@ class ARRendering(
         if (currentTime - lastHitTestTime < currentHitTestInterval) return
         lastHitTestTime = currentTime
 
-        val detections = latestDetections
+        val detections = latestDetections 
+        val cameraPose = frame.camera.pose
+        val cameraPos = Float3(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
+
         if (detections.isEmpty()) {
-            hideUnlockedModels(emptySet())
+            hideUnlockedModels(emptySet(), currentTime, cameraPos)
             return
         }
 
         val claimedModels = mutableSetOf<Node>()
         val viewW = arSceneView.width.toFloat()
         val viewH = arSceneView.height.toFloat()
-        val cameraPos = frame.camera.pose.let { Float3(it.tx(), it.ty(), it.tz()) }
 
         for (det in detections) {
-            val hitPoints = collectHitPoints(frame, det.boundingBox, viewW, viewH)
+            val bbox = det.boundingBox
+
+            val hitPoints = collectHitPoints(frame, bbox, viewW, viewH)
             if (hitPoints.isEmpty()) continue
 
-            val (bestPos, validPoints) = calculatePositionAndValidPoints(hitPoints)
-            val planeNormal = calculatePlaneNormal(validPoints, bestPos, cameraPos)
+            val (calculatedPos, validPoints) = calculatePositionAndValidPoints(hitPoints)
+            val distToCamera = distance(cameraPos, calculatedPos)
+            if (distToCamera < MIN_DEPTH_SANITY || distToCamera > MAX_DEPTH_SANITY) {
+                continue 
+            }
 
-            val bboxW = det.boundingBox.width() * viewW
-            val bboxH = det.boundingBox.height() * viewH
-            val currentAspectRatio = (min(bboxW, bboxH) / max(bboxW, bboxH)).toFloat()
-
-            if (!isAngleValid(currentAspectRatio, planeNormal, bestPos, cameraPos)) continue
-
-            val finalRot = lookRotation(forward = planeNormal, up = Float3(0f, 1f, 0f))
+            val planeNormal = calculatePlaneNormal(validPoints, calculatedPos, cameraPos)
+            val calculatedRot = lookRotation(forward = Float3(0f, -1f, 0f), up = planeNormal)
+            val minDistanceAllowed = snapThreshold * 1.2f
 
             val closestModel = markerlessActiveModels
                 .asSequence()
                 .filter { it !in claimedModels }
-                .minByOrNull { distance(it.position, bestPos) }
+                .minByOrNull { distance(it.position, calculatedPos) }
 
-            if (closestModel != null && distance(closestModel.position, bestPos) < snapThreshold) {
-                processModelLocking(closestModel, bestPos, finalRot, currentAspectRatio)
-                claimedModels.add(closestModel)
+            val targetModel = if (closestModel != null && distance(closestModel.position, calculatedPos) < minDistanceAllowed) {
+                closestModel
             } else {
-                val newModel = createAndSetupNewModel(bestPos, finalRot, currentAspectRatio)
-                claimedModels.add(newModel)
+                getAvailableMarkerlessModel(claimedModels)
+            }
+
+            claimedModels.add(targetModel)
+            targetModel.isVisible = true
+
+            val state = modelStates.getOrPut(targetModel) { ModelState() }
+            state.lastDetectionTime = currentTime
+
+            val bboxWidth = bbox.width() * viewW
+            val bboxHeight = bbox.height() * viewH
+            val aspectRatio = bboxWidth / bboxHeight
+            val ratioError = abs(1.0f - aspectRatio)
+
+            if (ratioError < state.bestRatioError) {
+                state.bestRatioError = ratioError
+                state.bestPos = calculatedPos
+                state.bestRot = calculatedRot
+
+                if (ratioError <= RATIO_ERROR_THRESHOLD) {
+                    state.anchor?.detach()
+                    val poseToAnchor = Pose(
+                        floatArrayOf(calculatedPos.x, calculatedPos.y, calculatedPos.z),
+                        floatArrayOf(calculatedRot.x, calculatedRot.y, calculatedRot.z, calculatedRot.w)
+                    )
+                    state.anchor = arSceneView.session?.createAnchor(poseToAnchor)
+                }
+            }
+
+            var renderPos = calculatedPos
+            var renderRot = calculatedRot
+
+            if (state.anchor != null && state.anchor?.trackingState == TrackingState.TRACKING) {
+                val p = state.anchor!!.pose
+                renderPos = Float3(p.tx(), p.ty(), p.tz())
+                renderRot = state.bestRot 
+            } else if (state.bestRatioError < Float.MAX_VALUE) { 
+                renderPos = state.bestPos
+                renderRot = state.bestRot
+            }
+
+            val distDiff = distance(targetModel.position, renderPos)
+            if (distDiff > FREEZE_DISTANCE) {
+                updateModelTransform(targetModel, renderPos, renderRot)
+            } else {
+                // do nothing
             }
         }
-
-        hideUnlockedModels(claimedModels)
+        hideUnlockedModels(claimedModels, currentTime, cameraPos)
     }
 
     private fun collectHitPoints(frame: Frame, bbox: RectF, viewW: Float, viewH: Float): List<Float3> {
@@ -248,7 +300,6 @@ class ARRendering(
             val angle = (2 * Math.PI * i) / DONUT_POINTS
             val dx = (cos(angle) * radiusX).toFloat()
             val dy = (sin(angle) * radiusY).toFloat()
-
             frame.hitTest(cx + dx, cy + dy).firstOrNull { it.trackable is Plane || it.trackable is Point }?.let {
                 points.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz()))
             }
@@ -256,64 +307,23 @@ class ARRendering(
         return points
     }
 
-    private fun isAngleValid(aspectRatio: Float, normal: Float3, pos: Float3, camPos: Float3): Boolean {
-        val expectedAngleDeg = Math.toDegrees(acos(aspectRatio.toDouble())).toFloat()
-        val toCamera = normalize(camPos - pos)
-        val dotNormal = dot(normal, toCamera).toDouble().coerceIn(-1.0, 1.0)
-        val actualAngleDeg = Math.toDegrees(acos(abs(dotNormal))).toFloat()
-        return abs(expectedAngleDeg - actualAngleDeg) <= ANGLE_TOLERANCE_DEG
-    }
+	private fun hideUnlockedModels(claimedModels: Set<Node>, currentTime: Long, currentCameraPos: Float3) {
+        val isCameraIdle = lastCameraPose?.let { prevPose ->
+            val prevCameraPos = Float3(prevPose.tx(), prevPose.ty(), prevPose.tz())
+            distance(currentCameraPos, prevCameraPos) < CAMERA_IDLE_THRESHOLD
+        } ?: false
 
-    private fun processModelLocking(model: Node, bestPos: Float3, finalRot: Quaternion, currentRatio: Float) {
-        val state = modelStates.getOrPut(model) { ModelState() }
-        val bestRatio = state.bestAspectRatio
-
-        val (targetPos, targetRot) = if (currentRatio >= bestRatio - RATIO_TOLERANCE) {
-            if (currentRatio > bestRatio) state.bestAspectRatio = currentRatio
-            bestPos to finalRot
-        } else {
-            model.position to model.quaternion
-        }
-
-        val distFromTarget = distance(targetPos, model.position)
-
-        if (state.isLocked) {
-            if (distFromTarget > UNLOCK_DISTANCE_THRESHOLD) {
-                state.isLocked = false
-                state.stableFrameCount = 0
-                updateModelTransform(model, targetPos, targetRot)
-            }
-        } else {
-            if (distFromTarget < LOCK_DISTANCE_THRESHOLD) {
-                state.stableFrameCount++
-                if (state.stableFrameCount >= FRAMES_TO_LOCK) state.isLocked = true
-            } else {
-                state.stableFrameCount = 0
-            }
-            updateModelTransform(model, targetPos, targetRot)
-        }
-        model.isVisible = true
-    }
-
-    private fun createAndSetupNewModel(pos: Float3, rot: Quaternion, ratio: Float): Node {
-        val newModel = getOrCreateModel(modelPath)
-        modelStates[newModel] = ModelState().apply { bestAspectRatio = ratio }
-        
-        newModel.apply {
-            position = pos
-            quaternion = rot
-            isVisible = true
-            if (parent == null) arSceneView.addChildNode(this)
-        }
-
-        if (!markerlessActiveModels.contains(newModel)) markerlessActiveModels.add(newModel)
-        return newModel
-    }
-
-    private fun hideUnlockedModels(claimedModels: Set<Node>) {
         for (model in markerlessActiveModels) {
             if (model !in claimedModels) {
-                model.isVisible = (modelStates[model]?.isLocked == true)
+                val state = modelStates[model] ?: continue
+                val timeSinceLastDet = currentTime - state.lastDetectionTime
+
+                if (timeSinceLastDet > HIDE_TIMEOUT_MS && !isCameraIdle) {
+                    model.isVisible = false
+                    state.bestRatioError = Float.MAX_VALUE
+                    state.anchor?.detach()
+                    state.anchor = null
+                }
             }
         }
     }
@@ -374,9 +384,9 @@ class ARRendering(
         val f = normalize(forward)
         val u = if (abs(dot(f, up)) > 0.99f) Float3(0f, 0f, 1f) else up
         val r = normalize(cross(u, f)) 
-        val u2 = cross(f, r)           
-
+        val u2 = cross(f, r)
         val tr = r.x + u2.y + f.z
+
         return when {
             tr > 0 -> {
                 val s = sqrt(tr + 1.0f) * 2
@@ -417,6 +427,20 @@ class ARRendering(
             ?: modelManager.createNewModel(path, coroutineScope).also { modelPool.add(it) }
     }
 
+    private fun getAvailableMarkerlessModel(claimedModels: Set<Node>): Node {
+        val freeModel = markerlessActiveModels.find { it !in claimedModels }
+        if (freeModel != null) {
+            return freeModel
+        }
+
+        val newModel = modelManager.createNewModel(modelPath, coroutineScope)
+        arSceneView.addChildNode(newModel)
+
+        markerlessActiveModels.add(newModel)
+        modelStates[newModel] = ModelState()
+        return newModel
+    }
+
     fun updateNewModel(path: String) {
         modelPath = path
         modelPool.forEach { modelManager.changeModel(it, path, coroutineScope) }
@@ -434,6 +458,7 @@ class ARRendering(
         modelPool.clear()
         augmentedImageMap.values.forEach { it.destroy() }
         augmentedImageMap.clear()
+        modelStates.values.forEach { it.anchor?.detach() }
         markerlessActiveModels.clear()
         modelStates.clear()
         onnxOverlayView.clear()

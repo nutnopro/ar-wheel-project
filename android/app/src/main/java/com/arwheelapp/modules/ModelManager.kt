@@ -33,8 +33,8 @@ class ModelManager(private val arSceneView: ARSceneView) {
         val diameter = max(box.halfExtent[0] * 2.0f, box.halfExtent[1] * 2.0f)
         val halfThickness =  box.halfExtent[2]
         val thickness = halfThickness * 2.0f
-        // ? wheel1 -> X: 0.45720005, Y: 0.45719996, Z: 0.15214129
-        // ? wheel1 -> diameter: 0.45720005, thickness: 0.15214129, halfThickness: 0.076070644
+        // ? exmaple -> X: 0.45720005, Y: 0.45719996, Z: 0.15214129
+        // ? exmaple -> diameter: 0.45720005, thickness: 0.15214129, halfThickness: 0.076070644
 
         wheelNode.position = Float3(0f, -halfThickness, 0f)
         wheelNode.rotation = Float3(-90f, 0f, 0f)

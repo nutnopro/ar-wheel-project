@@ -122,7 +122,6 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-    // implementation("com.facebook.react:flipper-integration:0.73.11")
 
     if (hermesEnabled.toBoolean()) {
         implementation("com.facebook.react:hermes-android")
@@ -130,17 +129,19 @@ dependencies {
         implementation jscFlavor
     }
 
-    // Native Modules
+    // Android Core & UI
+    implementation("androidx.core:core-ktx:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+
+    // AR & 3D
     implementation("com.google.ar:core:1.48.0")
     implementation("dev.romainguy:kotlin-math:1.6.0")
     implementation("io.github.sceneview:arsceneview:2.3.0")
-    implementation("io.github.sceneview:sceneview:2.3.0")
-    // implementation("com.microsoft.onnxruntime:onnxruntime-mobile:1.18.0")
+
+    // AI & Processor
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
-    implementation("androidx.core:core-ktx:1.13.0")
-    implementation("androidx.multidex:multidex:2.0.1")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }

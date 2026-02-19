@@ -7,6 +7,8 @@ import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
 import android.view.PixelCopy
@@ -14,7 +16,7 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.app.ActivityCompat
+// import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.arwheelapp.utils.ARMode
@@ -23,7 +25,7 @@ import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Session
 import io.github.sceneview.ar.ARSceneView
-import java.io.OutputStream
+// import java.io.OutputStream
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -102,7 +104,7 @@ class ARActivity : ComponentActivity() {
     private fun setupARSession(session: Session) {
         try {
             configureSessionFor60FPS(session)
-            val config = Config(session).apply {
+            session.configure(session.config.apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
@@ -112,8 +114,8 @@ class ARActivity : ComponentActivity() {
                 if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
                     depthMode = Config.DepthMode.AUTOMATIC
                 }
-            }
-            session.configure(config)
+            })
+
             arRendering.setupMarkerDatabase(session)
         } catch (e: Exception) {
             Log.e(TAG, "Error configuring AR Session", e)
@@ -146,15 +148,19 @@ class ARActivity : ComponentActivity() {
         val bitmap = Bitmap.createBitmap(arSceneView.width, arSceneView.height, Bitmap.Config.ARGB_8888)
         PixelCopy.request(arSceneView, bitmap, { result ->
             if (result == PixelCopy.SUCCESS) {
-                lifecycleScope.launch(Dispatchers.IO) { saveBitmapToGallery(bitmap) }
+                lifecycleScope.launch {
+                    val isSuccess = saveBitmapToGallery(bitmap)
+                    val msg = if (isSuccess) "Saved image to gallery" else "Failed to save image"
+                    Toast.makeText(this@ARActivity, msg, Toast.LENGTH_SHORT).show()
+                }
             } else {
                 Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
             }
-        }, android.os.Handler(android.os.Looper.getMainLooper()))
+        }, Handler(Looper.getMainLooper()))
     }
 
-    private suspend fun saveBitmapToGallery(bitmap: Bitmap) {
-        val filename = "AR_IMG_${System.currentTimeMillis()}.jpg"
+    private suspend fun saveBitmapToGallery(bitmap: Bitmap): Boolean = withContext(Dispatchers.IO) {
+        val filename = "AR_WHEEL_${System.currentTimeMillis()}.jpg"
         val contentValues = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
@@ -165,37 +171,31 @@ class ARActivity : ComponentActivity() {
         }
 
         val resolver = contentResolver
-        val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues) ?: return@withContext false
 
-        try {
-            imageUri?.let { uri ->
-                resolver.openOutputStream(uri)?.use { stream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    contentValues.clear()
-                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(uri, contentValues, null, null)
-                }
-
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@ARActivity, "Saved image to gallery", Toast.LENGTH_LONG).show()
-                }
+        return@withContext try {
+            resolver.openOutputStream(imageUri)?.use { stream ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
             }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                contentValues.clear()
+                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                resolver.update(imageUri, contentValues, null, null)
+            }
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save image", e)
-            imageUri?.let { resolver.delete(it, null, null) }
-            withContext(Dispatchers.Main) {
-                Toast.makeText(this@ARActivity, "Failed to save image", Toast.LENGTH_SHORT).show()
-            }
+            resolver.delete(imageUri, null, null)
+            false
         }
     }
 
     private fun startARLoop() {
-        arSceneView.onFrame = onFrame@ { _ ->
-            val frame = arSceneView.frame ?: return@onFrame
-            arRendering.render(arSceneView, frame, currentMode)
+        arSceneView.onFrame = { _ ->
+            arSceneView.frame?.let { frame ->
+                arRendering.render(arSceneView, frame, currentMode)
+            }
         }
     }
 }
