@@ -40,11 +40,15 @@ class ARUIManager(
     private var controlsContainer: LinearLayout? = null
     private var selectionContainer: FrameLayout? = null
     private var tvSelectionTitle: TextView? = null
+    private var selectionRecyclerView: RecyclerView? = null
 
     // --- State & Data ---
     private var currentMode: ARMode = ARMode.DEFAULT
     private var currentRotation = 0
     private var orientationListener: OrientationEventListener? = null
+
+    // --- Menu Status ---
+    private var currentOpenMenu: String? = null
 
     // Mock Data (Should be replaced with dynamic model paths/sizes later)
     private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5")
@@ -57,8 +61,6 @@ class ARUIManager(
     // ==========================================
     // Lifecycle & Setup
     // ==========================================
-
-    // Initializes all UI components and listeners.
     fun setupInterface() {
         setupNavButtons()
         setupDebugPanel()
@@ -73,8 +75,6 @@ class ARUIManager(
     // ==========================================
     // UI Layout Setups
     // ==========================================
-
-    // Sets up static top-left (Back) and top-right (Toggle Mode) navigation buttons.
     private fun setupNavButtons() {
         val statusBarHeight = getStatusBarHeight()
         val margin = 16.dp
@@ -99,13 +99,12 @@ class ARUIManager(
         rootLayout.addView(btnModeToggle)
     }
 
-    // Sets up the bottom control panel containing Model, Capture, and Size buttons.
     private fun setupControlsPanel() {
         controlsContainer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, 
+                FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.BOTTOM
@@ -113,9 +112,9 @@ class ARUIManager(
             }
         }
 
-        val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply { setOnClickListener { showModelSelector() } }
+        val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply { setOnClickListener { toggleMenu("MODEL") } }
         val btnCapture = createCaptureButton().apply { setOnClickListener { onCaptureClicked?.invoke() } }
-        val btnSize = createMenuButton("Size", R.drawable.ic_settings).apply { setOnClickListener { showSizeSelector() } }
+        val btnSize = createMenuButton("Size", R.drawable.ic_settings).apply { setOnClickListener { toggleMenu("SIZE") } }
 
         addControlItem(controlsContainer!!, btnModel)
         addControlItem(controlsContainer!!, btnCapture)
@@ -124,20 +123,20 @@ class ARUIManager(
         rootLayout.addView(controlsContainer)
     }
 
-    // Prepares the hidden overlay container for the selection menu (RecyclerView).
     private fun setupSelectionOverlay() {
         selectionContainer = FrameLayout(context).apply {
             visibility = View.GONE
+            setBackgroundColor(Color.parseColor("#01000000"))
+            setOnClickListener { closeSelectionMenu() }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
+                160.dp
             ).apply {
                 gravity = Gravity.BOTTOM
-                bottomMargin = 130.dp
+                bottomMargin = 100.dp
             }
         }
 
-        // Floating title above the RecyclerView
         tvSelectionTitle = TextView(context).apply {
             setTextColor(Color.WHITE)
             textSize = 18f
@@ -145,11 +144,11 @@ class ARUIManager(
             gravity = Gravity.CENTER
             setShadowLayer(2f, 0f, 2f, Color.BLACK)
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, 
+                FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 gravity = Gravity.TOP
-                topMargin = (-40).dp
+                topMargin = 10.dp
             }
         }
 
@@ -167,8 +166,8 @@ class ARUIManager(
                 gravity = Gravity.CENTER_VERTICAL or Gravity.START
                 marginStart = 8.dp
             }
-            setOnClickListener { 
-                overlayView.visibility = if (overlayView.visibility == View.VISIBLE) View.GONE else View.VISIBLE 
+            setOnClickListener {
+                overlayView.visibility = if (overlayView.visibility == View.VISIBLE) View.GONE else View.VISIBLE
             }
         }
         rootLayout.addView(btnDebug)
@@ -177,6 +176,19 @@ class ARUIManager(
     // ==========================================
     // Menu Logic
     // ==========================================
+    private fun toggleMenu(menu: String) {
+        if (currentOpenMenu == menu) {
+            closeSelectionMenu()
+        } else {
+            currentOpenMenu = menu
+            if (menu == "MODEL") showModelSelector() else showSizeSelector()
+        }
+    }
+
+    private fun closeSelectionMenu() {
+        selectionContainer?.visibility = View.GONE
+        currentOpenMenu = null
+    }
 
     private fun showModelSelector() {
         updateSelectionMenu(modelList, isModel = true)
@@ -186,29 +198,34 @@ class ARUIManager(
         updateSelectionMenu(sizeList.map { it.toString() }, isModel = false)
     }
 
-    // Populates and displays the snap-to-center selection menu.
     private fun updateSelectionMenu(data: List<String>, isModel: Boolean) {
-        selectionContainer?.removeAllViews()
-        selectionContainer?.addView(tvSelectionTitle)
+        selectionRecyclerView?.let { selectionContainer?.removeView(it) }
         selectionContainer?.visibility = View.VISIBLE
 
-        val recyclerView = RecyclerView(context).apply {
+        tvSelectionTitle?.visibility = if (isModel) View.VISIBLE else View.GONE
+
+        selectionRecyclerView = RecyclerView(context).apply {
             tag = "RECYCLER"
             layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
-            adapter = SelectionAdapter(data, isModel, currentRotation)
+            adapter = SelectionAdapter(data, isModel)
             clipToPadding = false
 
-            // Add padding so the first and last items can reach the exact center
-            val padding = (context.resources.displayMetrics.widthPixels / 2) - 40.dp
+            val itemTotalWidthPx = 100.dp
+            val padding = (context.resources.displayMetrics.widthPixels / 2) - (itemTotalWidthPx / 2)
             setPadding(padding, 0, padding, 0)
+
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                100.dp
+            ).apply {
+                gravity = Gravity.BOTTOM
+            }
         }
 
-        // SnapHelper forces the RecyclerView to stop exactly on an item (Center snapping)
         val snapHelper = LinearSnapHelper()
-        snapHelper.attachToRecyclerView(recyclerView)
+        snapHelper.attachToRecyclerView(selectionRecyclerView)
 
-        // Detect which item is in the center when scrolling stops
-        recyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        selectionRecyclerView?.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
                     val centerView = snapHelper.findSnapView(rv.layoutManager)
@@ -217,19 +234,21 @@ class ARUIManager(
                     if (pos != -1) {
                         val selectedValue = data[pos]
 
-                        // Update floating title
-                        tvSelectionTitle?.text = if (isModel) selectedValue.uppercase() else "SIZE: $selectedValue\""
-
-                        // Trigger corresponding callbacks
-                        if (isModel) onModelSelected?.invoke(selectedValue)
-                        else onSizeSelected?.invoke(selectedValue.toFloat())
+                        if (isModel) {
+                            tvSelectionTitle?.text = selectedValue.uppercase()
+                            onModelSelected?.invoke(selectedValue)
+                        } else {
+                            onSizeSelected?.invoke(selectedValue.toFloat())
+                        }
                     }
                 }
             }
         })
 
-        selectionContainer?.addView(recyclerView)
-        tvSelectionTitle?.text = if (isModel) data.first().uppercase() else "SIZE: ${data.first()}\""
+        selectionContainer?.addView(selectionRecyclerView)
+        if (isModel) {
+            tvSelectionTitle?.text = data.first().uppercase()
+        }
     }
 
     private fun toggleMode() {
@@ -241,7 +260,6 @@ class ARUIManager(
     // ==========================================
     // Orientation Logic
     // ==========================================
-
     private fun setupOrientationListener() {
         orientationListener = object : OrientationEventListener(context) {
             override fun onOrientationChanged(orientation: Int) {
@@ -262,15 +280,14 @@ class ARUIManager(
         }
     }
 
-    // Smoothly rotates UI icons (Back, Mode, Bottom Panel, Menu Items) based on device orientation
     private fun rotateIconsOnly(rotation: Int) {
-        val targetRot = when (rotation) { 
-            90 -> -90f 
-            270 -> 90f 
-            else -> 0f 
+        val targetRot = when (rotation) {
+            90 -> 90f
+            270 -> -90f
+            else -> 0f
         }
 
-        btnBack?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
+        btnBack?.animate()?.rotation(if (targetRot == 90f) -90f else targetRot)?.setDuration(300)?.start()
         btnModeToggle?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
 
         controlsContainer?.let {
@@ -280,17 +297,16 @@ class ARUIManager(
             }
         }
 
-        // Notify adapter to re-bind items so they appear rotated correctly in the selection menu
-        selectionContainer?.let { 
-            val rv = it.findViewWithTag<RecyclerView>("RECYCLER")
-            rv?.adapter?.notifyDataSetChanged()
+        selectionRecyclerView?.let { rv ->
+            for (i in 0 until rv.childCount) {
+                rv.getChildAt(i)?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
+            }
         }
     }
 
     // ==========================================
     // View Builders & Helpers
     // ==========================================
-
     private fun addControlItem(parent: LinearLayout, view: View) {
         val wrapper = LinearLayout(context).apply {
             gravity = Gravity.CENTER
@@ -316,7 +332,7 @@ class ARUIManager(
         background = createRoundDrawable(Color.parseColor("#99000000"), 20.dp.toFloat())
         layoutParams = LinearLayout.LayoutParams(64.dp, 64.dp)
 
-        val drawable = ContextCompat.getDrawable(context, iconResId)?.apply { 
+        val drawable = ContextCompat.getDrawable(context, iconResId)?.apply {
             setBounds(0, 0, 22.dp, 22.dp)
             setTint(Color.WHITE)
         }
@@ -338,6 +354,13 @@ class ARUIManager(
     private fun createRoundDrawable(color: Int, radius: Float) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = radius
+        setStroke(2.dp, Color.parseColor("#80FFFFFF"))
+    }
+
+    private fun createCircleDrawable(color: Int) = GradientDrawable().apply {
+        shape = GradientDrawable.OVAL
+        setColor(color)
+        setStroke(2.dp, Color.parseColor("#80FFFFFF"))
     }
 
     private fun getStatusBarHeight(): Int {
@@ -348,12 +371,9 @@ class ARUIManager(
     // ==========================================
     // Adapter
     // ==========================================
-
-    // Custom adapter for handling Model / Size items inside the RecyclerView.
     private inner class SelectionAdapter(
-        val items: List<String>, 
-        val isModel: Boolean, 
-        val rotation: Int
+        private val items: List<String>,
+        private val isModel: Boolean
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             val view = if (isModel) createModelIconView() else createSizeCircleView()
@@ -361,13 +381,16 @@ class ARUIManager(
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-            // Ensure newly scrolled items are drawn with the correct device rotation
-            val rot = when (rotation) { 
-                90 -> -90f 
-                270 -> 90f 
-                else -> 0f 
+            if (!isModel) {
+                (holder.itemView as TextView).text = items[position]
             }
-            holder.itemView.animate().rotation(rot).setDuration(0).start()
+
+            val rot = when (currentRotation) {
+                90 -> 90f
+                270 -> -90f
+                else -> 0f
+            }
+            holder.itemView.rotation = rot
         }
 
         override fun getItemCount() = items.size
@@ -377,7 +400,7 @@ class ARUIManager(
             setImageResource(R.drawable.ic_cube)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setPadding(15.dp, 15.dp, 15.dp, 15.dp)
-            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 40.dp.toFloat())
+            background = createRoundDrawable(Color.parseColor("#66000000"), 16.dp.toFloat())
         }
 
         private fun createSizeCircleView() = TextView(context).apply {
@@ -386,8 +409,7 @@ class ARUIManager(
             setTextColor(Color.WHITE)
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 40.dp.toFloat())
-            text = items[0] // Mock default text, technically not needed since snap updates the main title
+            background = createCircleDrawable(Color.parseColor("#66000000"))
         }
     }
 }

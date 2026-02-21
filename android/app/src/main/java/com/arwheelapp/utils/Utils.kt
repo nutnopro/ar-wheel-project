@@ -22,13 +22,13 @@ data class Detection(
 )
 
 data class ModelState(
-    var isLocked: Boolean = false,
-    var stableFrameCount: Int = 0,
     var lastDetectionTime: Long = 0L,
     var bestRatioError: Float = Float.MAX_VALUE,
     var bestPos: Float3 = Float3(0f, 0f, 0f),
     var bestRot: Quaternion = Quaternion(),
-    var anchor: Anchor? = null
+    var anchor: Anchor? = null,
+    var lastStablePos: Float3? = null,
+    var consecutiveStableFrames: Int = 0
 )
 
 // --- Extensions ---

@@ -40,11 +40,11 @@ class ARRendering(
         private const val MOVEMENT_THRESHOLD_HIGH = 0.3f    // 0.3 m/s considered "Fast"
 
         // Locking Constants
-        private const val LOCK_DISTANCE_THRESHOLD = 0.05f
+        private const val LOCK_DISTANCE_THRESHOLD = 0.02f
         private const val UNLOCK_DISTANCE_THRESHOLD = 0.05f
         private const val FRAMES_TO_LOCK = 15
         private const val DONUT_POINTS = 8
-        private const val DONUT_RADIUS = 0.75f
+        private const val DONUT_RADIUS = 0.70f
 
         // Dynamic Lerp Constants
         private const val MIN_ALPHA = 0.04f
@@ -55,10 +55,12 @@ class ARRendering(
         // Flow Constants
         private const val FREEZE_DISTANCE = 0.01f           // 1 cm (stop if move less than this)
         private const val MIN_DEPTH_SANITY = 0.2f           // min depth 20 cm (prevent hits on screen)
-        private const val MAX_DEPTH_SANITY = 4.0f           // max depth 4 m (prevent hits too far)
-        private const val HIDE_TIMEOUT_MS = 500L            // 0.5 sec
+        private const val MAX_DEPTH_SANITY = 10.0f           // max depth 4 m (prevent hits too far)
+        private const val HIDE_TIMEOUT_MS = 250L            // 0.25 sec
         private const val CAMERA_IDLE_THRESHOLD = 0.02f     // camera barely moves if less than 2 cm
-        private const val RATIO_ERROR_THRESHOLD = 0.15f     // 15% (0.85 - 1.15) bbox ratio for anchor
+        private const val RATIO_ERROR_THRESHOLD = 0.10f     // 10% (0.90 - 1.10) bbox ratio for anchor
+        private const val STABILITY_THRESHOLD = 0.02f       // 2 cm
+        private const val REQUIRED_STABLE_FRAMES = 8        // must stable for 8 frame
     }
 
     private val modelManager = ModelManager(arSceneView)
@@ -216,13 +218,11 @@ class ARRendering(
 
             val (calculatedPos, validPoints) = calculatePositionAndValidPoints(hitPoints)
             val distToCamera = distance(cameraPos, calculatedPos)
-            if (distToCamera < MIN_DEPTH_SANITY || distToCamera > MAX_DEPTH_SANITY) {
-                continue 
-            }
+            if (distToCamera < MIN_DEPTH_SANITY || distToCamera > MAX_DEPTH_SANITY) continue 
 
             val planeNormal = calculatePlaneNormal(validPoints, calculatedPos, cameraPos)
             val calculatedRot = lookRotation(forward = Float3(0f, -1f, 0f), up = planeNormal)
-            val minDistanceAllowed = snapThreshold * 1.2f
+            val minDistanceAllowed = snapThreshold * 1.1f
 
             val closestModel = markerlessActiveModels
                 .asSequence()
@@ -246,28 +246,42 @@ class ARRendering(
             val aspectRatio = bboxWidth / bboxHeight
             val ratioError = abs(1.0f - aspectRatio)
 
-            if (ratioError < state.bestRatioError) {
-                state.bestRatioError = ratioError
-                state.bestPos = calculatedPos
-                state.bestRot = calculatedRot
+            val isStable = state.lastStablePos?.let { lastPos ->
+                distance(lastPos, calculatedPos) < STABILITY_THRESHOLD
+            } ?: false
 
-                if (ratioError <= RATIO_ERROR_THRESHOLD) {
+            if (isStable) {
+                state.consecutiveStableFrames++
+            } else {
+                state.consecutiveStableFrames = 0
+            }
+
+            state.lastStablePos = calculatedPos
+            if (ratioError <= RATIO_ERROR_THRESHOLD && state.consecutiveStableFrames >= REQUIRED_STABLE_FRAMES) {
+                if (ratioError < state.bestRatioError) {
+                    state.bestRatioError = ratioError
+                    state.bestPos = calculatedPos
+                    state.bestRot = calculatedRot
+
                     state.anchor?.detach()
                     val poseToAnchor = Pose(
                         floatArrayOf(calculatedPos.x, calculatedPos.y, calculatedPos.z),
                         floatArrayOf(calculatedRot.x, calculatedRot.y, calculatedRot.z, calculatedRot.w)
                     )
                     state.anchor = arSceneView.session?.createAnchor(poseToAnchor)
+                    // Reset stability counter after locking to prevent constant re-anchoring if not needed
+                    // state.consecutiveStableFrames = 0 
                 }
             }
 
             var renderPos = calculatedPos
             var renderRot = calculatedRot
 
+            // Viewpoint compensation
             if (state.anchor != null && state.anchor?.trackingState == TrackingState.TRACKING) {
                 val p = state.anchor!!.pose
                 renderPos = Float3(p.tx(), p.ty(), p.tz())
-                renderRot = state.bestRot 
+                renderRot = state.bestRot
             } else if (state.bestRatioError < Float.MAX_VALUE) { 
                 renderPos = state.bestPos
                 renderRot = state.bestRot
@@ -276,8 +290,6 @@ class ARRendering(
             val distDiff = distance(targetModel.position, renderPos)
             if (distDiff > FREEZE_DISTANCE) {
                 updateModelTransform(targetModel, renderPos, renderRot)
-            } else {
-                // do nothing
             }
         }
         hideUnlockedModels(claimedModels, currentTime, cameraPos)
