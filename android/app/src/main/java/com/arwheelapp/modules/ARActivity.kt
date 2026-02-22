@@ -28,6 +28,7 @@ import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.opencv.android.OpenCVLoader
 
 class ARActivity : ComponentActivity() {
     companion object {
@@ -52,6 +53,14 @@ class ARActivity : ComponentActivity() {
     // Lifecycle Methods
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        if (OpenCVLoader.initLocal()) {
+            Log.i(TAG, "OpenCV loaded successfully!")
+        } else {
+            Log.e(TAG, "OpenCV initialization failed!")
+            Toast.makeText(this, "Failed to load computer vision module", Toast.LENGTH_LONG).show()
+        }
+
         initViews()
     }
 
