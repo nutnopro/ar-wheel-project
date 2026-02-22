@@ -282,12 +282,12 @@ class ARUIManager(
 
     private fun rotateIconsOnly(rotation: Int) {
         val targetRot = when (rotation) {
-            90 -> 90f
-            270 -> -90f
+            90 -> -90f
+            270 -> 90f
             else -> 0f
         }
 
-        btnBack?.animate()?.rotation(if (targetRot == 90f) -90f else targetRot)?.setDuration(300)?.start()
+        btnBack?.animate()?.rotation(if (targetRot == -90f) 90f else targetRot)?.setDuration(300)?.start()
         btnModeToggle?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
 
         controlsContainer?.let {
@@ -297,6 +297,7 @@ class ARUIManager(
             }
         }
 
+        // ! สลับค่า targetRot
         selectionRecyclerView?.let { rv ->
             for (i in 0 until rv.childCount) {
                 rv.getChildAt(i)?.animate()?.rotation(targetRot)?.setDuration(300)?.start()

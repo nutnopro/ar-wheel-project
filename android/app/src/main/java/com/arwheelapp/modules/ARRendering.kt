@@ -34,15 +34,10 @@ class ARRendering(
         // Interval & Speed Constants
         private const val MIN_INFERENCE_INTERVAL = 200L     // 5 FPS
         private const val MAX_INFERENCE_INTERVAL = 50L      // 20 FPS
-        private const val MIN_HITTEST_INTERVAL = 66L        // 15 FPS
-        private const val MAX_HITTEST_INTERVAL = 33L        // 30 FPS
         private const val SPEED_CHECK_INTERVAL = 100L       // Check speed every 0.1s
         private const val MOVEMENT_THRESHOLD_HIGH = 0.3f    // 0.3 m/s considered "Fast"
 
-        // Locking Constants
-        private const val LOCK_DISTANCE_THRESHOLD = 0.02f
-        private const val UNLOCK_DISTANCE_THRESHOLD = 0.05f
-        private const val FRAMES_TO_LOCK = 15
+        // Hittest Constants
         private const val DONUT_POINTS = 8
         private const val DONUT_RADIUS = 0.70f
 
@@ -56,10 +51,10 @@ class ARRendering(
         private const val FREEZE_DISTANCE = 0.01f           // 1 cm (stop if move less than this)
         private const val MIN_DEPTH_SANITY = 0.2f           // min depth 20 cm (prevent hits on screen)
         private const val MAX_DEPTH_SANITY = 10.0f           // max depth 4 m (prevent hits too far)
-        private const val HIDE_TIMEOUT_MS = 250L            // 0.25 sec
+        private const val HIDE_TIMEOUT_MS = 1000L            // 0.25 sec
         private const val CAMERA_IDLE_THRESHOLD = 0.02f     // camera barely moves if less than 2 cm
         private const val RATIO_ERROR_THRESHOLD = 0.10f     // 10% (0.90 - 1.10) bbox ratio for anchor
-        private const val STABILITY_THRESHOLD = 0.02f       // 2 cm
+        private const val STABILITY_THRESHOLD = 0.03f       // 2 cm
         private const val REQUIRED_STABLE_FRAMES = 8        // must stable for 8 frame
     }
 
@@ -71,10 +66,7 @@ class ARRendering(
     private var lastCameraPose: Pose? = null
     private var lastSpeedCheckTime = 0L
     private var lastInferenceTime = 0L
-    private var lastHitTestTime = 0L
-
     private var currentInferenceInterval = MIN_INFERENCE_INTERVAL
-    private var currentHitTestInterval = MIN_HITTEST_INTERVAL
 
     private val modelPool = mutableListOf<Node>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
@@ -82,6 +74,8 @@ class ARRendering(
     private val modelStates = mutableMapOf<Node, ModelState>()
 
     @Volatile private var latestDetections: List<Detection> = emptyList()
+    @Volatile private var isNewDetectionAvailable = false
+
     @Volatile private var snapThreshold = 0.4572f
     @Volatile private var modelPath = "models/wheel1.glb"   // !!Change to UI
 
@@ -169,7 +163,6 @@ class ARRendering(
             val speedFactor = (speed / MOVEMENT_THRESHOLD_HIGH).coerceIn(0f, 1f)
 
             currentInferenceInterval = lerp(MIN_INFERENCE_INTERVAL.toFloat(), MAX_INFERENCE_INTERVAL.toFloat(), speedFactor).toLong()
-            currentHitTestInterval = lerp(MIN_HITTEST_INTERVAL.toFloat(), MAX_HITTEST_INTERVAL.toFloat(), speedFactor).toLong()
         }
 
         lastCameraPose = currentPose
@@ -185,6 +178,7 @@ class ARRendering(
             val tensor = frameConverter.convertFrameToTensor(frame)
             onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
                 latestDetections = detections
+                isNewDetectionAvailable = true
                 onnxOverlayView.updateDetections(latestDetections)
             }
         } catch (e: Exception) {
@@ -193,13 +187,13 @@ class ARRendering(
     }
 
     private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
-        val currentTime = SystemClock.uptimeMillis()
-        if (currentTime - lastHitTestTime < currentHitTestInterval) return
-        lastHitTestTime = currentTime
+        if (!isNewDetectionAvailable) return
+        isNewDetectionAvailable = false
 
         val detections = latestDetections 
         val cameraPose = frame.camera.pose
         val cameraPos = Float3(cameraPose.tx(), cameraPose.ty(), cameraPose.tz())
+        val currentTime = SystemClock.uptimeMillis()
 
         if (detections.isEmpty()) {
             hideUnlockedModels(emptySet(), currentTime, cameraPos)
@@ -216,13 +210,14 @@ class ARRendering(
             val hitPoints = collectHitPoints(frame, bbox, viewW, viewH)
             if (hitPoints.isEmpty()) continue
 
-            val (calculatedPos, validPoints) = calculatePositionAndValidPoints(hitPoints)
+            val (calculatedPos, validPoints) = calculatePositionAndValidPoints(hitPoints, cameraPos)
+
             val distToCamera = distance(cameraPos, calculatedPos)
             if (distToCamera < MIN_DEPTH_SANITY || distToCamera > MAX_DEPTH_SANITY) continue 
 
             val planeNormal = calculatePlaneNormal(validPoints, calculatedPos, cameraPos)
             val calculatedRot = lookRotation(forward = Float3(0f, -1f, 0f), up = planeNormal)
-            val minDistanceAllowed = snapThreshold * 1.1f
+            val minDistanceAllowed = snapThreshold * 2.5f
 
             val closestModel = markerlessActiveModels
                 .asSequence()
@@ -240,6 +235,12 @@ class ARRendering(
 
             val state = modelStates.getOrPut(targetModel) { ModelState() }
             state.lastDetectionTime = currentTime
+
+            if (state.anchor != null && state.anchor?.trackingState == TrackingState.TRACKING) {
+                val p = state.anchor!!.pose
+                updateModelTransform(targetModel, Float3(p.tx(), p.ty(), p.tz()), state.bestRot)
+                continue
+            }
 
             val bboxWidth = bbox.width() * viewW
             val bboxHeight = bbox.height() * viewH
@@ -274,18 +275,8 @@ class ARRendering(
                 }
             }
 
-            var renderPos = calculatedPos
-            var renderRot = calculatedRot
-
-            // Viewpoint compensation
-            if (state.anchor != null && state.anchor?.trackingState == TrackingState.TRACKING) {
-                val p = state.anchor!!.pose
-                renderPos = Float3(p.tx(), p.ty(), p.tz())
-                renderRot = state.bestRot
-            } else if (state.bestRatioError < Float.MAX_VALUE) { 
-                renderPos = state.bestPos
-                renderRot = state.bestRot
-            }
+            val renderPos = if (state.bestRatioError < Float.MAX_VALUE) state.bestPos else calculatedPos
+            val renderRot = if (state.bestRatioError < Float.MAX_VALUE) state.bestRot else calculatedRot
 
             val distDiff = distance(targetModel.position, renderPos)
             if (distDiff > FREEZE_DISTANCE) {
@@ -366,30 +357,20 @@ class ARRendering(
         return if (length(finalNormal).isNaN()) Float3(0f, 0f, 1f) else finalNormal
     }
 
-    private fun calculatePositionAndValidPoints(points: List<Float3>): Pair<Float3, List<Float3>> {
+    private fun calculatePositionAndValidPoints(points: List<Float3>, cameraPos: Float3): Pair<Float3, List<Float3>> {
         if (points.size <= 1) return Pair(points.firstOrNull() ?: Float3(0f,0f,0f), points)
 
-        val meanPos = Float3(
-            points.map { it.x }.average().toFloat(),
-            points.map { it.y }.average().toFloat(),
-            points.map { it.z }.average().toFloat()
-        )
-
-        val distances = points.map { distance(it, meanPos) }
-        val meanDist = distances.average()
-        val stdDev = sqrt(distances.map { (it - meanDist).pow(2) }.average())
-        val threshold = meanDist + (1.5 * stdDev)
-
-        val validPoints = points.filterIndexed { index, _ -> distances[index] <= threshold }
-        if (validPoints.isEmpty()) return Pair(meanPos, points)
+        val sortedPoints = points.sortedBy { distance(it, cameraPos) }
+        val takeCount = max(1, sortedPoints.size / 2)
+        val closestPoints = sortedPoints.take(takeCount)
 
         val finalAvg = Float3(
-            validPoints.map { it.x }.average().toFloat(),
-            validPoints.map { it.y }.average().toFloat(),
-            validPoints.map { it.z }.average().toFloat()
+            closestPoints.map { it.x }.average().toFloat(),
+            closestPoints.map { it.y }.average().toFloat(),
+            closestPoints.map { it.z }.average().toFloat()
         )
 
-        return Pair(finalAvg, validPoints)
+        return Pair(finalAvg, closestPoints)
     }
 
     private fun lookRotation(forward: Float3, up: Float3): Quaternion {
@@ -461,7 +442,7 @@ class ARRendering(
     fun updateModelSize(sizeInch: Float) {
         val sizeCm = sizeInch * 2.54f
         snapThreshold = sizeCm / 100.0f
-        val scaleFactor = sizeCm / 45.72f   // 45.72cm = 18inch
+        val scaleFactor = sizeCm / 45.72f
         modelPool.forEach { modelManager.changeModelSize(it, scaleFactor) }
     }
 
