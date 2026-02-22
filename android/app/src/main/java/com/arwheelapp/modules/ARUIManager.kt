@@ -297,7 +297,6 @@ class ARUIManager(
             }
         }
 
-        // ! สลับค่า targetRot
         selectionRecyclerView?.let { rv ->
             for (i in 0 until rv.childCount) {
                 rv.getChildAt(i)?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
@@ -387,8 +386,8 @@ class ARUIManager(
             }
 
             val rot = when (currentRotation) {
-                90 -> 90f
-                270 -> -90f
+                90 -> -90f
+                270 -> 90f
                 else -> 0f
             }
             holder.itemView.rotation = rot
