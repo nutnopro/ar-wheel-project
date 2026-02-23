@@ -21,12 +21,27 @@ data class Detection(
     val confidence: Float
 )
 
+data class TrackedPose(
+    val pos: Float3,
+    val rot: Quaternion,
+    val circularity: Float
+)
+
+data class RefinedResult(
+    val cx: Float, val cy: Float,
+    val width: Float, val height: Float,
+    val angle: Float,
+    val circularity: Float,
+    val isFound: Boolean
+)
+
 data class ModelState(
+    var anchor: Anchor? = null,
     var lastDetectionTime: Long = 0L,
-    var bestRatioError: Float = Float.MAX_VALUE,
+    var detectionHits: Int = 0,
+    val poseHistory: MutableList<TrackedPose> = mutableListOf(),
     var bestPos: Float3 = Float3(0f, 0f, 0f),
     var bestRot: Quaternion = Quaternion(),
-    var anchor: Anchor? = null,
     var lastStablePos: Float3? = null,
     var consecutiveStableFrames: Int = 0
 )

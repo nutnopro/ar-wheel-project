@@ -201,7 +201,7 @@ class ARActivity : ComponentActivity() {
     private fun startARLoop() {
         arSceneView.onFrame = { _ ->
             arSceneView.frame?.let { frame ->
-                arRendering.render(arSceneView, frame, currentMode)
+                arRendering.render(arSceneView, frame, currentMode, deviceRotation)
             }
         }
     }

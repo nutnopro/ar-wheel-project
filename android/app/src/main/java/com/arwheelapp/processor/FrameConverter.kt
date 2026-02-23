@@ -19,7 +19,7 @@ class FrameConverter {
     private val yuvStream = ByteArrayOutputStream()
 
     // ARCore Frame -> FloatArray Tensor
-    fun convertFrameToTensor(frame: Frame): FloatArray {
+    fun convertFrameToTensor(frame: Frame, deviceRotation: Int): FloatArray {
         val image = try {
             frame.acquireCameraImage()
         } catch (e: Exception) {
@@ -41,7 +41,10 @@ class FrameConverter {
                 resizedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
             }
 
-            processBitmap(rawBitmap, 90f, resizedBitmap!!)
+            val baseRotation = 90
+            val finalRotation = (baseRotation - deviceRotation + 360) % 360
+
+            processBitmap(rawBitmap, finalRotation.toFloat(), resizedBitmap!!)
             rawBitmap.recycle()
 
             return bitmapToFloatArray(resizedBitmap!!)
