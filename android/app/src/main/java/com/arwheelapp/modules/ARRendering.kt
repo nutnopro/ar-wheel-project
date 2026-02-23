@@ -39,24 +39,29 @@ class ARRendering(
     companion object {
         private const val TAG = "ARRendering"
 
-        // Dynamic Interval Constants
-        private const val BASE_FAST_INTERVAL = 40L  // ~25 FPS (ตอนโมเดลโดดหรือยังไม่นิ่ง)
-        private const val BASE_SLOW_INTERVAL = 250L // ~4 FPS (ประหยัดแบตตอนโมเดลนิ่งแล้ว)
-        private const val JUMP_THRESHOLD = 0.05f    // ถ้าขยับเกิน 5cm ถือว่าหลุดความนิ่ง (โดด)
-        private const val PROCESS_BUFFER_MS = 15L   // เผื่อเวลาให้ CPU พักหายใจ 15ms
+        // --- Dynamic Inference ---
+        private const val BASE_FAST_INTERVAL = 40L      // ~25 FPS when moving
+        private const val BASE_SLOW_INTERVAL = 250L     // ~4 FPS when idle (saves battery)
+        private const val JUMP_THRESHOLD = 0.05f        // 5cm movement triggers fast mode
+        private const val PROCESS_BUFFER_MS = 15L
 
+        // --- HitTest & Depth ---
         private const val BBOX_PADDING = 0.15f
         private const val HITTEST_POINTS = 4
-        private const val DEPTH_OUTLIER_THRESHOLD = 0.10f
+        private const val DEPTH_OUTLIER_THRESHOLD = 0.10f   // Discard points drifting > 10cm
 
+        // --- Filtering & Stability ---
+        private const val MAX_HISTORY_FRAMES = 15       // History window for BBox count
+        private const val QUICK_OVERRIDE_FRAMES = 5
+        private const val HISTORY_MAX_POSES = 8         // Keep 8 best poses to find the "roundest"
+        private const val OUTLIER_ANGLE_DEG = 25f       // Filter sudden rotations
+        private const val OUTLIER_POS_DIST = 0.4f       // Filter sudden position jumps
+
+        // --- Dynamic Positioning ---
         private const val MIN_DIST = 0.02f
         private const val MAX_DIST = 0.3f
-
-        private const val MAX_HISTORY_FRAMES = 15
-        private const val QUICK_OVERRIDE_FRAMES = 5
-        private const val HISTORY_MAX_POSES = 8
-        private const val OUTLIER_ANGLE_DEG = 25f
-        private const val OUTLIER_POS_DIST = 0.4f
+        private const val MIN_ALPHA = 0.04f
+        private const val MAX_ALPHA = 0.6f
     }
 
     private val modelManager = ModelManager(arSceneView)
@@ -64,6 +69,7 @@ class ARRendering(
     private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
 
     private var previousMode: ARMode? = null
+
     private var lastInferenceTime = 0L
     private var targetInferenceInterval = BASE_FAST_INTERVAL
     private var currentInferenceInterval = BASE_FAST_INTERVAL
@@ -74,21 +80,20 @@ class ARRendering(
     private val markerlessActiveModels = mutableListOf<Node>()
     private val modelStates = mutableMapOf<Node, ModelState>()
 
+    private var yPlaneBytes: ByteArray? = null
+    private val bboxCountHistory = mutableListOf<Int>()
+
     @Volatile private var latestDetections: List<Detection> = emptyList()
     @Volatile private var isNewDetectionAvailable = false
 
     @Volatile private var snapThreshold = 0.4572f
     @Volatile private var modelPath = "models/wheel1.glb"   // !!Change to UI
 
-    private var yPlaneBytes: ByteArray? = null
-    private val bboxCountHistory = mutableListOf<Int>()
-
     fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode, deviceRotation: Int) {
         if (previousMode != currentMode) {
             handleModeSwitch()
             previousMode = currentMode
         }
-
         when (currentMode) {
             ARMode.MARKER_BASED -> processMarkerBased(arSceneView, frame)
             ARMode.MARKERLESS -> {
@@ -104,12 +109,10 @@ class ARRendering(
             model.parent = null
             model.isVisible = false
         }
-
         if (previousMode == ARMode.MARKER_BASED) {
             augmentedImageMap.values.forEach { it?.destroy() }
             augmentedImageMap.clear()
         }
-
         if (previousMode == ARMode.MARKERLESS) {
             modelStates.values.forEach { it.anchor?.detach() }
             markerlessActiveModels.clear()
@@ -123,7 +126,6 @@ class ARRendering(
     // ==========================================
     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
         val updatedImages = frame.getUpdatedTrackables(AugmentedImage::class.java)
-
         for (image in updatedImages) {
             when (image.trackingState) {
                 TrackingState.TRACKING -> {
@@ -136,9 +138,7 @@ class ARRendering(
                     }
                     imageNode.isVisible = (image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING)
                 }
-
                 TrackingState.STOPPED -> augmentedImageMap.remove(image)?.let { arSceneView.removeChildNode(it); it.destroy() }
-
                 TrackingState.PAUSED -> augmentedImageMap[image]?.isVisible = false
             }
         }
@@ -148,12 +148,11 @@ class ARRendering(
         val currentTime = SystemClock.uptimeMillis()
         if (currentTime - lastInferenceTime < currentInferenceInterval) return
         lastInferenceTime = currentTime
-
         try {
             val tensor = frameConverter.convertFrameToTensor(frame, deviceRotation)
             val startTime = SystemClock.uptimeMillis()
             onnxRuntimeHandler.runOnnxInferenceAsync(tensor) { detections ->
-                latestInferenceDurationMs = SystemClock.uptimeMillis() - startTime // คำนวณเวลาที่ใช้ไป
+                latestInferenceDurationMs = SystemClock.uptimeMillis() - startTime
                 latestDetections = detections
                 isNewDetectionAvailable = true
                 onnxOverlayView.updateDetections(latestDetections)
@@ -163,6 +162,7 @@ class ARRendering(
         }
     }
 
+    // Determine stable object count using Histogram/Mode
     private fun getTargetBBoxCount(): Int {
         if (bboxCountHistory.isEmpty()) return 0
         if (bboxCountHistory.size >= QUICK_OVERRIDE_FRAMES) {
@@ -189,10 +189,9 @@ class ARRendering(
             filteredDetections = latestDetections.sortedByDescending { it.confidence }.take(targetModelCount)
         }
 
-        val claimedModels = mutableSetOf<Node>()
         val viewW = arSceneView.width.toFloat()
         val viewH = arSceneView.height.toFloat()
-
+        val claimedModels = mutableSetOf<Node>()
         if (filteredDetections.isEmpty()) {
             hideUnlockedModels(claimedModels, hitTestStartTime)
             return
@@ -200,13 +199,11 @@ class ARRendering(
 
         val currentFrameMat: Mat? = getGrayscaleMatFromFrame(frame, deviceRotation)
         var maxPosShift = 0f
-
         try {
             for (det in filteredDetections) {
                 val bbox = det.boundingBox
 
                 val cvResult = refineCenterWithOpenCV(currentFrameMat, bbox, viewW, viewH)
-
                 val hitPoints = collectHitPoints(frame, cvResult, bbox, viewW, viewH)
                 if (hitPoints.isEmpty()) continue
 
@@ -218,7 +215,6 @@ class ARRendering(
                 val calculatedPos = Float3(sumX / validPoints.size.toFloat(), sumY / validPoints.size.toFloat(), sumZ / validPoints.size.toFloat())
                 val planeNormal = calculatePlaneNormal(validPoints, calculatedPos, cameraPos)
                 val baseRot = lookRotation(forward = Float3(0f, -1f, 0f), up = planeNormal)
-
                 val calculatedRot = if (cvResult.isFound) {
                     val zRot = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), cvResult.angle)
                     baseRot * zRot
@@ -227,19 +223,16 @@ class ARRendering(
                 val closestModel = markerlessActiveModels.asSequence()
                     .filter { it !in claimedModels }
                     .minByOrNull { distance(it.position, calculatedPos) }
-
                 val targetModel = if (closestModel != null && distance(closestModel.position, calculatedPos) < snapThreshold * 1.2f) {
                     closestModel
                 } else {
                     getAvailableMarkerlessModel(claimedModels)
                 }
-
                 claimedModels.add(targetModel)
 
                 val state = modelStates.getOrPut(targetModel) { ModelState() }
                 state.lastDetectionTime = hitTestStartTime
                 state.detectionHits++
-
                 if (state.detectionHits >= 3) targetModel.isVisible = true
 
                 val shift = state.lastStablePos?.let { distance(it, calculatedPos) } ?: Float.MAX_VALUE
@@ -249,7 +242,6 @@ class ARRendering(
                 val angleDiff = if (state.poseHistory.isNotEmpty()) angleBetweenQuaternions(state.bestRot, calculatedRot) else 0f
                 val posDiff = if (state.poseHistory.isNotEmpty()) distance(state.bestPos, calculatedPos) else 0f
                 val isOutlier = state.poseHistory.isNotEmpty() && (angleDiff > OUTLIER_ANGLE_DEG || posDiff > OUTLIER_POS_DIST)
-
                 if (!isOutlier) {
                     state.poseHistory.add(TrackedPose(calculatedPos, calculatedRot, cvResult.circularity))
                     state.poseHistory.sortByDescending { it.circularity }
@@ -267,7 +259,6 @@ class ARRendering(
 
                 val renderPos = if (state.poseHistory.isNotEmpty()) calculatedPos else calculatedPos
                 val renderRot = state.bestRot
-
                 val alpha = calculateDynamicAlpha(targetModel.position, renderPos)
                 targetModel.position = mix(targetModel.position, renderPos, alpha)
                 targetModel.quaternion = slerp(targetModel.quaternion, renderRot, alpha)
@@ -297,13 +288,11 @@ class ARRendering(
 
         var croppedMat: Mat? = null
         var edges: Mat? = null
-
         try {
             val matW = fullMat.cols()
             val matH = fullMat.rows()
             val padX = bbox.width() * BBOX_PADDING
             val padY = bbox.height() * BBOX_PADDING
-
             val left = max(0f, (bbox.left - padX) * matW).toInt()
             val top = max(0f, (bbox.top - padY) * matH).toInt()
             val right = min(matW.toFloat(), (bbox.right + padX) * matW).toInt()
@@ -323,25 +312,20 @@ class ARRendering(
 
             val contours = ArrayList<MatOfPoint>()
             Imgproc.findContours(edges, contours, Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE)
-
             var bestEllipse: RotatedRect? = null
             var maxCircularity = 0f
-
             for (contour in contours) {
                 if (contour.toArray().size >= 5) {
                     val points2f = MatOfPoint2f(*contour.toArray())
                     val ellipse = Imgproc.fitEllipse(points2f)
-
                     if (ellipse.size.width > cropW * 0.95 || ellipse.size.height > cropH * 0.95) continue
                     val circ = (min(ellipse.size.width, ellipse.size.height) / max(ellipse.size.width, ellipse.size.height)).toFloat()
-                    
                     if (circ > 0.4f && circ > maxCircularity) {
                         maxCircularity = circ
                         bestEllipse = ellipse
                     }
                 }
             }
-
             if (bestEllipse != null) {
                 val absCx = left + bestEllipse.center.x
                 val absCy = top + bestEllipse.center.y
@@ -349,7 +333,7 @@ class ARRendering(
                 val finalCy = (absCy / matH.toFloat()) * viewH
                 val finalW = (bestEllipse.size.width / matW.toFloat()) * viewW
                 val finalH = (bestEllipse.size.height / matH.toFloat()) * viewH
-                return RefinedResult(finalCx, finalCy, finalW.toFloat(), finalH.toFloat(), bestEllipse.angle.toFloat(), maxCircularity, true)
+                return RefinedResult(finalCx.toFloat(), finalCy.toFloat(), finalW.toFloat(), finalH.toFloat(), bestEllipse.angle.toFloat(), maxCircularity, true)
             }
         } catch (e: Exception) {
             Log.e(TAG, "OpenCV Error", e)
@@ -365,22 +349,16 @@ class ARRendering(
     // ==========================================
     private fun collectHitPoints(frame: Frame, cvRes: RefinedResult, bbox: RectF, viewW: Float, viewH: Float): List<Float3> {
         val points = mutableListOf<Float3>()
-
-        // Center Hit
         frame.hitTest(cvRes.cx, cvRes.cy).firstOrNull { it.trackable is Plane || it.trackable is Point }?.let {
             points.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz()))
         }
-
-        // Donut Hits
         val hitRadiusW = if (cvRes.isFound) cvRes.width / 2f else (bbox.width() * viewW * 0.7f) / 2f
         val hitRadiusH = if (cvRes.isFound) cvRes.height / 2f else (bbox.height() * viewH * 0.7f) / 2f
-        val angleRad = Math.toRadians(cvRes.angle.toDouble())
-
+        val angleRad = Math.toRadians(cvRes.angle.toDouble()).toFloat()
         for (i in 0 until HITTEST_POINTS) {
-            val t = (2 * Math.PI * i) / HITTEST_POINTS
-            val dx = (hitRadiusW * cos(t) * cos(angleRad) - hitRadiusH * sin(t) * sin(angleRad)).toFloat()
-            val dy = (hitRadiusW * cos(t) * sin(angleRad) + hitRadiusH * sin(t) * cos(angleRad)).toFloat()
-
+            val t = (2f * Math.PI.toFloat() * i) / HITTEST_POINTS
+            val dx = hitRadiusW * cos(t) * cos(angleRad) - hitRadiusH * sin(t) * sin(angleRad)
+            val dy = hitRadiusW * cos(t) * sin(angleRad) + hitRadiusH * sin(t) * cos(angleRad)
             frame.hitTest(cvRes.cx + dx, cvRes.cy + dy).firstOrNull { it.trackable is Plane || it.trackable is Point }?.let {
                 points.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz()))
             }
@@ -393,7 +371,6 @@ class ARRendering(
 
         val depths = points.map { distance(it, cameraPos) }.sorted()
         val medianDepth = depths[depths.size / 2]
-
         return points.filter { abs(distance(it, cameraPos) - medianDepth) < DEPTH_OUTLIER_THRESHOLD }
     }
 
@@ -406,11 +383,9 @@ class ARRendering(
             val p2 = points[(i + 1) % points.size]
             accumNormal += cross(p1 - center, p2 - center)
         }
-
         var finalNormal = normalize(accumNormal)
         val toCamera = normalize(cameraPos - center)
         if (dot(finalNormal, toCamera) < 0) finalNormal = -finalNormal
-
         return if (length(finalNormal).isNaN()) Float3(0f, 0f, 1f) else finalNormal
     }
 
@@ -420,7 +395,6 @@ class ARRendering(
         val r = normalize(cross(u, f)) 
         val u2 = cross(f, r)
         val tr = r.x + u2.y + f.z
-
         return when {
             tr > 0 -> {
                 val s = sqrt(tr + 1.0f) * 2
@@ -453,9 +427,9 @@ class ARRendering(
 
     private fun distance(p1: Float3, p2: Float3) = length(p1 - p2)
     private fun distance(pose1: Pose, pose2: Pose) = sqrt(
-        (pose1.tx() - pose2.tx()).pow(2) + 
-        (pose1.ty() - pose2.ty()).pow(2) + 
-        (pose1.tz() - pose2.tz()).pow(2)
+        (pose1.tx() - pose2.tx()).pow(2f) + 
+        (pose1.ty() - pose2.ty()).pow(2f) + 
+        (pose1.tz() - pose2.tz()).pow(2f)
     )
 
     private fun hideUnlockedModels(claimedModels: Set<Node>, currentTime: Long) {
@@ -484,11 +458,9 @@ class ARRendering(
             val height = image.height
             val yRowStride = image.planes[0].rowStride
             val mat = Mat(height, width, CvType.CV_8UC1)
-
             val requiredSize = if (yRowStride == width) width * height else width
             if (yPlaneBytes == null || yPlaneBytes!!.size != requiredSize) yPlaneBytes = ByteArray(requiredSize)
             val bytes = yPlaneBytes!!
-
             if (yRowStride == width) {
                 yPlane.get(bytes); mat.put(0, 0, bytes)
             } else {
@@ -504,7 +476,6 @@ class ARRendering(
                 270 -> Core.ROTATE_90_COUNTERCLOCKWISE
                 else -> -1
             }
-
             if (rotateCode != -1) {
                 val rotatedMat = Mat()
                 Core.rotate(mat, rotatedMat, rotateCode)
@@ -565,7 +536,6 @@ class ARRendering(
                 Log.d(TAG, "⏳ Starting background marker loading...")
                 val database = AugmentedImageDatabase(session)
                 val assetManager = context.assets
-
                 assetManager.list("markers")?.filter { it.endsWith(".jpg", true) || it.endsWith(".png", true) }?.forEach { filename ->
                     try {
                         assetManager.open("markers/$filename").use { 
@@ -578,7 +548,6 @@ class ARRendering(
                         Log.e(TAG, "Failed to load marker: $filename", e)
                     }
                 }
-
                 withContext(Dispatchers.Main) {
                     session.configure(session.config.apply {
                         augmentedImageDatabase = database

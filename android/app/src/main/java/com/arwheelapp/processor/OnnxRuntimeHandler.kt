@@ -31,7 +31,6 @@ class OnnxRuntimeHandler(private val context: Context) {
     // Load model .onnx from assets
     private fun createSession(): OrtSession {
         val modelFile = File(context.filesDir, MODEL_PATH)
-
         val options = OrtSession.SessionOptions().apply {
             try {
                 addConfigEntry("session.use_xnnpack", "1")
@@ -41,7 +40,6 @@ class OnnxRuntimeHandler(private val context: Context) {
             setIntraOpNumThreads(2)
             setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
         }
-
         if (!modelFile.exists()) {
             context.assets.open(MODEL_PATH).use { input ->
                 FileOutputStream(modelFile).use { output ->
@@ -49,7 +47,6 @@ class OnnxRuntimeHandler(private val context: Context) {
                 }
             }
         }
-
         return env.createSession(modelFile.absolutePath, options)
     }
 
@@ -57,7 +54,6 @@ class OnnxRuntimeHandler(private val context: Context) {
     fun runOnnxInferenceAsync(tensor: FloatArray, callback: (List<Detection>) -> Unit) {
         inferenceScope.launch {
             val shape = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
-
             val inputTensor = try {
                 OnnxTensor.createTensor(env, FloatBuffer.wrap(tensor), shape)
             } catch (e: Exception) {
@@ -65,7 +61,6 @@ class OnnxRuntimeHandler(private val context: Context) {
                 withContext(Dispatchers.Main) { callback(emptyList()) }
                 return@launch
             }
-
             try {
                 session.run(mapOf("images" to inputTensor)).use { result ->
                     val output = result[0].value
@@ -83,22 +78,19 @@ class OnnxRuntimeHandler(private val context: Context) {
     // Parse output for [1, 300, 6] format
     private fun parseOutput(output: Array<*>): List<Detection> {
         val detections = mutableListOf<Detection>()
-
         try {
-            val batchData = output as Array<Array<FloatArray>> // shape -> [1][300][6]
-            val boxes = batchData[0] // extract first batch -> [300][6]
+            val batchData = output as Array<Array<FloatArray>>  // shape -> [1][300][6]
+            val boxes = batchData[0]    // extract first batch -> [300][6]
 
             // boxInfo have 6 values: [x1, y1, x2, y2, score, class_id]
             for (boxInfo in boxes) {
                 val score = boxInfo[4]
-
                 if (score > CONFIDENCE_THRESHOLD) {
                     // Normalize coordinates (0.0 - 1.0) to fit the overlay view
                     val left = (boxInfo[0] / INPUT_SIZE).coerceIn(0f, 1f)
                     val top = (boxInfo[1] / INPUT_SIZE).coerceIn(0f, 1f)
                     val right = (boxInfo[2] / INPUT_SIZE).coerceIn(0f, 1f)
                     val bottom = (boxInfo[3] / INPUT_SIZE).coerceIn(0f, 1f)
-
                     val rect = RectF(left, top, right, bottom)
                     if (rect.width() > 0 && rect.height() > 0) {
                         detections.add(Detection(boundingBox = rect, confidence = score))
@@ -106,9 +98,8 @@ class OnnxRuntimeHandler(private val context: Context) {
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing output: ${e.message}")
+            Log.e(TAG, "Error parsing output", e)
         }
-
         return detections
     }
 

@@ -13,10 +13,8 @@ class ModelManager(private val arSceneView: ARSceneView) {
 
     fun createNewModel(modelPath: String, scope: CoroutineScope): Node {
         val rootNode = Node(arSceneView.engine).apply { isVisible = false }
-
         scope.launch {
             val modelInstance = modelLoader.createModelInstance(modelPath)
-
             withContext(Dispatchers.Main) {
                 modelInstance?.let {
                     setupWheelSystem(rootNode, ModelNode(modelInstance = it))
@@ -24,7 +22,6 @@ class ModelManager(private val arSceneView: ARSceneView) {
                 }
             }
         }
-
         return rootNode
     }
 
@@ -35,7 +32,7 @@ class ModelManager(private val arSceneView: ARSceneView) {
         val thickness = halfThickness * 2.0f
         // ? exmaple -> X: 0.45720005, Y: 0.45719996, Z: 0.15214129
         // ? exmaple -> diameter: 0.45720005, thickness: 0.15214129, halfThickness: 0.076070644
-
+        // ? axis-> front of model facing toward +Y axis, UP -> +Z, Right -> +X
         wheelNode.position = Float3(0f, -halfThickness, 0f)
         wheelNode.rotation = Float3(-90f, 0f, 0f)
 
@@ -44,7 +41,6 @@ class ModelManager(private val arSceneView: ARSceneView) {
             backplate.rotation = Float3(-90f, 0f, 0f)
             rootNode.addChildNode(backplate)
         }
-
         rootNode.addChildNode(wheelNode)
     }
 
@@ -61,7 +57,6 @@ class ModelManager(private val arSceneView: ARSceneView) {
             withContext(Dispatchers.Main) {
                 rootNode.childNodes.forEach { it.destroy() }
                 rootNode.clearChildNodes()
-
                 modelInstance?.let {
                     setupWheelSystem(rootNode, ModelNode(modelInstance = it))
                 }

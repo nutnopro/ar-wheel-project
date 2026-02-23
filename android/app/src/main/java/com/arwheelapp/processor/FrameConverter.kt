@@ -30,10 +30,7 @@ class FrameConverter {
             val width = image.width
             val height = image.height
             val requiredSize = width * height * 3 / 2
-
-            if (nv21Buffer == null || nv21Buffer!!.size != requiredSize) {
-                nv21Buffer = ByteArray(requiredSize)
-            }
+            if (nv21Buffer == null || nv21Buffer!!.size != requiredSize) nv21Buffer = ByteArray(requiredSize)
 
             val rawBitmap = yuvToBitmap(image, nv21Buffer!!)
 
@@ -41,9 +38,7 @@ class FrameConverter {
                 resizedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
             }
 
-            val baseRotation = 90
-            val finalRotation = (baseRotation - deviceRotation + 360) % 360
-
+            val finalRotation = (90 - deviceRotation + 360) % 360
             processBitmap(rawBitmap, finalRotation.toFloat(), resizedBitmap!!)
             rawBitmap.recycle()
 
@@ -59,11 +54,9 @@ class FrameConverter {
     private fun yuvToBitmap(image: Image, outNv21: ByteArray): Bitmap {
         val width = image.width
         val height = image.height
-
         val yBuffer = image.planes[0].buffer.apply { rewind() }
         val uBuffer = image.planes[1].buffer.apply { rewind() }
         val vBuffer = image.planes[2].buffer.apply { rewind() }
-
         val yRowStride = image.planes[0].rowStride
         if (yRowStride == width) {
             yBuffer.get(outNv21, 0, width * height)
@@ -78,7 +71,6 @@ class FrameConverter {
         val vPixelStride = image.planes[2].pixelStride
         val uRowStride = image.planes[1].rowStride
         val uPixelStride = image.planes[1].pixelStride
-
         var pos = width * height
         for (row in 0 until height / 2) {
             for (col in 0 until width / 2) {
@@ -90,7 +82,6 @@ class FrameConverter {
         yuvStream.reset()
         val yuvImage = YuvImage(outNv21, ImageFormat.NV21, width, height, null)
         yuvImage.compressToJpeg(Rect(0, 0, width, height), 90, yuvStream)
-
         val bytes = yuvStream.toByteArray()
         return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
     }
@@ -98,25 +89,20 @@ class FrameConverter {
     private fun processBitmap(source: Bitmap, rotateDegrees: Float, destBitmap: Bitmap) {
         val canvas = Canvas(destBitmap)
         canvas.drawColor(Color.BLACK) 
-
         matrix.reset()
         val scale = INPUT_SIZE.toFloat() / maxOf(source.width, source.height)
-
         matrix.postTranslate(-source.width / 2f, -source.height / 2f)
         matrix.postRotate(rotateDegrees)
         matrix.postScale(scale, scale)
         matrix.postTranslate(INPUT_SIZE / 2f, INPUT_SIZE / 2f)
-
         canvas.drawBitmap(source, matrix, paint)
     }
 
     private fun bitmapToFloatArray(bitmap: Bitmap): FloatArray {
         val intValues = IntArray(INPUT_SIZE * INPUT_SIZE)
         bitmap.getPixels(intValues, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
-
         val floatArray = FloatArray(3 * INPUT_SIZE * INPUT_SIZE)
         val channelSize = INPUT_SIZE * INPUT_SIZE
-
         for (i in 0 until channelSize) {
             val v = intValues[i]
             floatArray[i] = ((v shr 16 and 0xFF) / 255.0f)

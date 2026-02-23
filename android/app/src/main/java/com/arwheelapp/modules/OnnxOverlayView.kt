@@ -40,19 +40,15 @@ class OnnxOverlayView(context: Context) : View(context) {
 
         val viewW = width.toFloat()
         val viewH = height.toFloat()
-
         val scale = maxOf(viewW, viewH) / INPUT_SIZE
         val offsetX = (viewW - (INPUT_SIZE * scale)) / 2
         val offsetY = (viewH - (INPUT_SIZE * scale)) / 2
-
         detections.forEach { det ->
             val bbox = det.boundingBox
-
             val left = (bbox.left * INPUT_SIZE * scale) + offsetX
             val top = (bbox.top * INPUT_SIZE * scale) + offsetY
             val right = (bbox.right * INPUT_SIZE * scale) + offsetX
             val bottom = (bbox.bottom * INPUT_SIZE * scale) + offsetY
-
             canvas.drawRect(left, top, right, bottom, boxPaint)
             canvas.drawText("${(det.confidence * 100).toInt()}%", left, top - 10, textPaint)
         }

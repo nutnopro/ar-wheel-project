@@ -78,7 +78,6 @@ class ARUIManager(
     private fun setupNavButtons() {
         val statusBarHeight = getStatusBarHeight()
         val margin = 16.dp
-
         btnBack = createIconButton(R.drawable.ic_arrow_back).apply {
             layoutParams = FrameLayout.LayoutParams(44.dp, 44.dp).apply {
                 gravity = Gravity.TOP or Gravity.START
@@ -86,7 +85,6 @@ class ARUIManager(
             }
             setOnClickListener { onBackClicked?.invoke() }
         }
-
         btnModeToggle = createIconButton(R.drawable.ic_layers).apply {
             layoutParams = FrameLayout.LayoutParams(44.dp, 44.dp).apply {
                 gravity = Gravity.TOP or Gravity.END
@@ -94,7 +92,6 @@ class ARUIManager(
             }
             setOnClickListener { toggleMode() }
         }
-
         rootLayout.addView(btnBack)
         rootLayout.addView(btnModeToggle)
     }
@@ -111,15 +108,12 @@ class ARUIManager(
                 bottomMargin = 30.dp
             }
         }
-
         val btnModel = createMenuButton("Model", R.drawable.ic_cube).apply { setOnClickListener { toggleMenu("MODEL") } }
         val btnCapture = createCaptureButton().apply { setOnClickListener { onCaptureClicked?.invoke() } }
         val btnSize = createMenuButton("Size", R.drawable.ic_settings).apply { setOnClickListener { toggleMenu("SIZE") } }
-
         addControlItem(controlsContainer!!, btnModel)
         addControlItem(controlsContainer!!, btnCapture)
         addControlItem(controlsContainer!!, btnSize)
-
         rootLayout.addView(controlsContainer)
     }
 
@@ -136,7 +130,6 @@ class ARUIManager(
                 bottomMargin = 100.dp
             }
         }
-
         tvSelectionTitle = TextView(context).apply {
             setTextColor(Color.WHITE)
             textSize = 18f
@@ -151,7 +144,6 @@ class ARUIManager(
                 topMargin = 10.dp
             }
         }
-
         selectionContainer?.addView(tvSelectionTitle)
         rootLayout.addView(selectionContainer)
     }
@@ -201,19 +193,15 @@ class ARUIManager(
     private fun updateSelectionMenu(data: List<String>, isModel: Boolean) {
         selectionRecyclerView?.let { selectionContainer?.removeView(it) }
         selectionContainer?.visibility = View.VISIBLE
-
         tvSelectionTitle?.visibility = if (isModel) View.VISIBLE else View.GONE
-
         selectionRecyclerView = RecyclerView(context).apply {
             tag = "RECYCLER"
             layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
             adapter = SelectionAdapter(data, isModel)
             clipToPadding = false
-
             val itemTotalWidthPx = 100.dp
             val padding = (context.resources.displayMetrics.widthPixels / 2) - (itemTotalWidthPx / 2)
             setPadding(padding, 0, padding, 0)
-
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 100.dp
@@ -224,16 +212,13 @@ class ARUIManager(
 
         val snapHelper = LinearSnapHelper()
         snapHelper.attachToRecyclerView(selectionRecyclerView)
-
         selectionRecyclerView?.addOnScrollListener(object : RecyclerView.OnScrollListener() {
             override fun onScrollStateChanged(rv: RecyclerView, newState: Int) {
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
                     val centerView = snapHelper.findSnapView(rv.layoutManager)
                     val pos = centerView?.let { rv.getChildAdapterPosition(it) } ?: -1
-
                     if (pos != -1) {
                         val selectedValue = data[pos]
-
                         if (isModel) {
                             tvSelectionTitle?.text = selectedValue.uppercase()
                             onModelSelected?.invoke(selectedValue)
@@ -271,7 +256,6 @@ class ARUIManager(
                     orientation in 225..315 -> 270
                     else -> 0
                 }
-
                 if (newRotation != currentRotation) {
                     currentRotation = newRotation
                     rotateIconsOnly(currentRotation)
@@ -286,17 +270,14 @@ class ARUIManager(
             270 -> 90f
             else -> 0f
         }
-
         btnBack?.animate()?.rotation(if (targetRot == -90f) 90f else targetRot)?.setDuration(300)?.start()
         btnModeToggle?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
-
         controlsContainer?.let {
             for (i in 0 until it.childCount) {
                 val wrapper = it.getChildAt(i) as? ViewGroup
                 wrapper?.getChildAt(0)?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
             }
         }
-
         selectionRecyclerView?.let { rv ->
             for (i in 0 until rv.childCount) {
                 rv.getChildAt(i)?.animate()?.rotation(targetRot)?.setDuration(300)?.start()
@@ -331,12 +312,10 @@ class ARUIManager(
         typeface = Typeface.DEFAULT_BOLD
         background = createRoundDrawable(Color.parseColor("#99000000"), 20.dp.toFloat())
         layoutParams = LinearLayout.LayoutParams(64.dp, 64.dp)
-
         val drawable = ContextCompat.getDrawable(context, iconResId)?.apply {
             setBounds(0, 0, 22.dp, 22.dp)
             setTint(Color.WHITE)
         }
-
         setCompoundDrawables(null, drawable, null, null)
         compoundDrawablePadding = 4.dp
         setPadding(0, 8.dp, 0, 8.dp)
@@ -384,7 +363,6 @@ class ARUIManager(
             if (!isModel) {
                 (holder.itemView as TextView).text = items[position]
             }
-
             val rot = when (currentRotation) {
                 90 -> -90f
                 270 -> 90f
