@@ -99,7 +99,7 @@ class ARActivity : ComponentActivity() {
 
     private fun setupARSession(session: Session) {
         try {
-            configureSessionFor60FPS(session)
+            configureCameraSession(session)
             session.configure(session.config.apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
@@ -116,8 +116,11 @@ class ARActivity : ComponentActivity() {
         }
     }
 
-    private fun configureSessionFor60FPS(session: Session) {
-        val filter = CameraConfigFilter(session).apply { targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60) }
+    private fun configureCameraSession(session: Session) {
+        val filter = CameraConfigFilter(session).apply {
+            targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60)
+            depthSensorUsage = EnumSet.of(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)
+        }
         val validConfigs = session.getSupportedCameraConfigs(filter)
         if (validConfigs.isNotEmpty()) {
             session.cameraConfig = validConfigs[0]
@@ -183,13 +186,7 @@ class ARActivity : ComponentActivity() {
     private fun startARLoop() {
         arSceneView.onFrame = { _ ->
             arSceneView.frame?.let { frame ->
-                val rotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display?.rotation ?: 0 else windowManager.defaultDisplay.rotation
-                val deviceRotation = when (rotation) {
-                    Surface.ROTATION_90 -> 90
-                    Surface.ROTATION_180 -> 180
-                    Surface.ROTATION_270 -> 270
-                    else -> 0
-                }
+                val deviceRotation = uiManager.currentRotation
                 arRendering.render(arSceneView, frame, currentMode, deviceRotation)
             }
         }

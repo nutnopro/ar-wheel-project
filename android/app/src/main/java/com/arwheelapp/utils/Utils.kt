@@ -15,11 +15,22 @@ enum class ARMode {
         val DEFAULT = MARKERLESS
     }
 }
-// Raw AI Detection Result
 
 data class Detection(
     val boundingBox: RectF,
     val confidence: Float
+)
+
+class FrameYData(
+    val bytes: ByteArray,
+    val width: Int,
+    val height: Int,
+    val rowStride: Int
+)
+
+data class ProcessedDetection(
+    val detection: Detection,
+    val cvResult: RefinedResult
 )
 
 // Stored Pose with Circularity Score for Ranking
@@ -48,7 +59,9 @@ data class ModelState(
     val poseHistory: MutableList<TrackedPose> = mutableListOf(),
     var bestPos: Float3 = Float3(0f, 0f, 0f),
     var bestRot: Quaternion = Quaternion(),
-    var lastStablePos: Float3? = null
+    var lastStablePos: Float3? = null,
+    var driftFrames: Int = 0,
+    var stableFrames: Int = 0
 )
 
 // --- Extensions ---

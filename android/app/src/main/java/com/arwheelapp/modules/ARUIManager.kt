@@ -44,7 +44,8 @@ class ARUIManager(
 
     // --- State & Data ---
     private var currentMode: ARMode = ARMode.DEFAULT
-    private var currentRotation = 0
+    var currentRotation = 0
+        private set
     private var orientationListener: OrientationEventListener? = null
 
     // --- Menu Status ---
@@ -253,6 +254,7 @@ class ARUIManager(
                 val newRotation = when {
                     orientation >= 315 || orientation < 45 -> 0
                     orientation in 45..135 -> 90
+                    orientation in 135..225 -> 180
                     orientation in 225..315 -> 270
                     else -> 0
                 }

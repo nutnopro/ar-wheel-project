@@ -14,7 +14,7 @@ class FrameConverter {
 
     private var nv21Buffer: ByteArray? = null
     private var resizedBitmap: Bitmap? = null
-    private val matrix = Matrix() 
+    private val matrix = Matrix()
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
     private val yuvStream = ByteArrayOutputStream()
 
@@ -38,7 +38,13 @@ class FrameConverter {
                 resizedBitmap = Bitmap.createBitmap(INPUT_SIZE, INPUT_SIZE, Bitmap.Config.ARGB_8888)
             }
 
-            val finalRotation = (90 - deviceRotation + 360) % 360
+            val finalRotation = when (deviceRotation) {
+                0 -> 90
+                90 -> 180
+                180 -> 270
+                270 -> 0
+                else -> 90
+            }
             processBitmap(rawBitmap, finalRotation.toFloat(), resizedBitmap!!)
             rawBitmap.recycle()
 
