@@ -6,7 +6,9 @@ import com.google.ar.core.Anchor
 import dev.romainguy.kotlin.math.Float3
 import dev.romainguy.kotlin.math.Quaternion
 
+// ──────────────────────────────────────────────
 // AR Operation Modes
+// ──────────────────────────────────────────────
 enum class ARMode {
     MARKER_BASED,
     MARKERLESS;
@@ -16,6 +18,9 @@ enum class ARMode {
     }
 }
 
+// ──────────────────────────────────────────────
+// Detection & CV data
+// ──────────────────────────────────────────────
 data class Detection(
     val boundingBox: RectF,
     val confidence: Float
@@ -33,38 +38,48 @@ data class ProcessedDetection(
     val cvResult: RefinedResult
 )
 
-// Stored Pose with Circularity Score for Ranking
-data class TrackedPose(
+// Result from OpenCV ellipse fitting
+data class RefinedResult(
+    val cx: Float,          // refined center X in screen pixels
+    val cy: Float,          // refined center Y in screen pixels
+    val width: Float,       // ellipse major axis in screen pixels
+    val height: Float,      // ellipse minor axis in screen pixels
+    val angle: Float,       // ellipse rotation angle in degrees
+    val circularity: Float, // minor/major ratio → 1.0 = perfect circle
+    val isFound: Boolean
+)
+
+// single candidate world position ranked by circularity
+data class TrackedPos(
     val pos: Float3,
+    val circularity: Float
+)
+
+// A single candidate world rotation ranked by circularity
+data class TrackedRot(
     val rot: Quaternion,
     val circularity: Float
 )
 
-// Result from OpenCV Ellipse Fitting
-data class RefinedResult(
-    val cx: Float,
-    val cy: Float,
-    val width: Float,
-    val height: Float,
-    val angle: Float,
-    val circularity: Float,
-    val isFound: Boolean
-)
-
-// Model State & Smoothing Management
+// ──────────────────────────────────────────────
+// Per-model tracking state
+// ──────────────────────────────────────────────
 data class ModelState(
     var anchor: Anchor? = null,
     var lastDetectionTime: Long = 0L,
     var detectionHits: Int = 0,
-    val poseHistory: MutableList<TrackedPose> = mutableListOf(),
+    val posHistory: MutableList<TrackedPos> = mutableListOf(),
     var bestPos: Float3 = Float3(0f, 0f, 0f),
+    val rotHistory: MutableList<TrackedRot> = mutableListOf(),
     var bestRot: Quaternion = Quaternion(),
     var lastStablePos: Float3? = null,
     var driftFrames: Int = 0,
-    var stableFrames: Int = 0
+    var stableFrames: Int = 0   // consecutive high-circularity frames → triggers anchor creation
 )
 
-// --- Extensions ---
+// ──────────────────────────────────────────────
+// Extensions
+// ──────────────────────────────────────────────
 val Int.dp: Int
     get() = (this * Resources.getSystem().displayMetrics.density).toInt()
 

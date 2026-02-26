@@ -39,7 +39,6 @@ class OnnxRuntimeHandler(private val context: Context) {
         private const val MODEL_PATH = "yolov11n.onnx"
         private const val INPUT_SIZE = 320
         private const val CONFIDENCE_THRESHOLD = 0.4f
-        private const val BBOX_PADDING = 0.15f
     }
 
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
@@ -152,21 +151,15 @@ class OnnxRuntimeHandler(private val context: Context) {
         try {
             val matW = fullMat.cols()
             val matH = fullMat.rows()
-            val padX = bbox.width() * BBOX_PADDING
-            val padY = bbox.height() * BBOX_PADDING
-            val left = max(0f, (bbox.left - padX) * matW).toInt()
-            val top = max(0f, (bbox.top - padY) * matH).toInt()
-            val right = min(matW.toFloat(), (bbox.right + padX) * matW).toInt()
-            val bottom = min(matH.toFloat(), (bbox.bottom + padY) * matH).toInt()
+            val left = max(0f, bbox.left * matW).toInt()
+            val top = max(0f, bbox.top * matH).toInt()
+            val right = min(matW.toFloat(), bbox.right * matW).toInt()
+            val bottom = min(matH.toFloat(), bbox.bottom * matH).toInt()
             val cropW = right - left
             val cropH = bottom - top
             if (cropW <= 20 || cropH <= 20) return RefinedResult(defaultCx, defaultCy, 0f, 0f, 0f, 0f, false)
 
             croppedMat = Mat(fullMat, Rect(left, top, cropW, cropH))
-            val centerInCrop = OpenCVPoint(cropW / 2.0, cropH / 2.0)
-            val maskSize = Size(cropW * 0.25, cropH * 0.25)
-            Imgproc.ellipse(croppedMat, centerInCrop, maskSize, 0.0, 0.0, 360.0, Scalar(0.0), -1)
-
             edges = Mat()
             Imgproc.GaussianBlur(croppedMat, croppedMat, Size(5.0, 5.0), 0.0)
             Imgproc.Canny(croppedMat, edges, 40.0, 120.0)
@@ -180,7 +173,14 @@ class OnnxRuntimeHandler(private val context: Context) {
                 if (contour.toArray().size >= 5) {
                     val points2f = MatOfPoint2f(*contour.toArray())
                     val ellipse = Imgproc.fitEllipse(points2f)
-                    if (ellipse.size.width > cropW * 0.95 || ellipse.size.height > cropH * 0.95) continue
+                    val minW = cropW * 0.30
+                    val maxW = cropW * 0.95
+                    val minH = cropH * 0.30
+                    val maxH = cropH * 0.95
+
+                    val isValidSize = ellipse.size.width >= minW && ellipse.size.width <= maxW &&
+                        ellipse.size.height >= minH && ellipse.size.height <= maxH
+                    if (!isValidSize) continue
                     val circ = (min(ellipse.size.width, ellipse.size.height) / max(ellipse.size.width, ellipse.size.height)).toFloat()
                     if (circ > 0.4f && circ > maxCircularity) {
                         maxCircularity = circ

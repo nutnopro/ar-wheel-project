@@ -9,23 +9,21 @@ import com.arwheelapp.utils.Detection
 
 class OnnxOverlayView(context: Context) : View(context) {
     companion object {
-        private const val TAG = "OnnxOverlayView"
         private const val INPUT_SIZE = 320f
     }
 
     private val detections: MutableList<Detection> = mutableListOf()
 
-    private val boxPaint = Paint().apply {
+    private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.CYAN
         style = Paint.Style.STROKE
         strokeWidth = 8f
     }
 
-    private val textPaint = Paint().apply {
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.BLUE
         textSize = 40f
         style = Paint.Style.FILL
-        isAntiAlias = true
     }
 
     fun updateDetections(newDetections: List<Detection>) {
