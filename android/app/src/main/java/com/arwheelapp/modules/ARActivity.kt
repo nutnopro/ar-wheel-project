@@ -11,8 +11,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
 import android.util.Log
+import android.view.MotionEvent
 import android.view.PixelCopy
-import android.view.Surface
 import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -44,20 +44,18 @@ class ARActivity : ComponentActivity() {
 
     private var currentMode: ARMode = ARMode.DEFAULT
 
-    // Permission Handling
     private val cameraPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
         if (isGranted) startARLoop()
         else Toast.makeText(this, "Camera permission is needed for AR", Toast.LENGTH_LONG).show()
     }
 
-    // Lifecycle Methods
+    // ── Lifecycle ────────────────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        if (OpenCVLoader.initLocal()) {
-            Log.i(TAG, "OpenCV loaded successfully!")
-        } else {
-            Log.e(TAG, "OpenCV initialization failed!")
+        if (OpenCVLoader.initLocal()) Log.i(TAG, "OpenCV loaded ✅")
+        else {
+            Log.e(TAG, "OpenCV init failed!")
             Toast.makeText(this, "Failed to load computer vision module", Toast.LENGTH_LONG).show()
         }
         initViews()
@@ -74,7 +72,7 @@ class ARActivity : ComponentActivity() {
         uiManager.onPause()
     }
 
-    // Initialization
+    // ── Init ─────────────────────────────────────────────────────────────
     private fun initViews() {
         arSceneView.onSessionCreated = { setupARSession(it) }
         arSceneView.planeRenderer.isVisible = false
@@ -85,6 +83,21 @@ class ARActivity : ComponentActivity() {
         uiManager.setupInterface()
         setupUICallbacks()
         setContentView(rootLayout)
+
+        // ── Tap-to-select model ──────────────────────────────────────────
+        arSceneView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_UP) {
+                val tappedModel = arRendering.findModelAtScreen(event.x, event.y)
+                if (tappedModel != null) {
+                    arRendering.selectModel(tappedModel)
+                    uiManager.showAdjustPanel()
+                } else {
+                    arRendering.deselectModel()
+                    uiManager.hideAdjustPanel()
+                }
+            }
+            false
+        }
     }
 
     private fun setupUICallbacks() {
@@ -92,11 +105,25 @@ class ARActivity : ComponentActivity() {
             onBackClicked = { finish() }
             onModeSelected = { currentMode = it }
             onCaptureClicked = { takePhoto() }
-            onModelSelected = { modelPath -> arRendering.updateNewModel("models/$modelPath.glb") }
+            onModelSelected = { path -> arRendering.updateNewModel("models/$path.glb") }
             onSizeSelected = { sizeInch -> arRendering.updateModelSize(sizeInch) }
+
+            onAdjustUp = { arRendering.adjustSelectedModel(dy = +it) }
+            onAdjustDown = { arRendering.adjustSelectedModel(dy = -it) }
+            onAdjustLeft = { arRendering.adjustSelectedModel(dx = -it) }
+            onAdjustRight = { arRendering.adjustSelectedModel(dx = +it) }
+            onAdjustForward = { arRendering.adjustSelectedModel(dz = -it) }
+            onAdjustBack = { arRendering.adjustSelectedModel(dz = +it) }
+            onAdjustDone = {
+                arRendering.deselectModel()
+                uiManager.hideAdjustPanel()
+            }
+            onAdjustReset = { arRendering.resetSelectedModelOffset() }
+
         }
     }
 
+    // ── AR Session ───────────────────────────────────────────────────────
     private fun setupARSession(session: Session) {
         try {
             configureCameraSession(session)
@@ -106,9 +133,8 @@ class ARActivity : ComponentActivity() {
                 lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                 focusMode = Config.FocusMode.AUTO
-                if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
                     depthMode = Config.DepthMode.AUTOMATIC
-                }
             })
             arRendering.setupMarkerDatabase(session)
         } catch (e: Exception) {
@@ -121,41 +147,53 @@ class ARActivity : ComponentActivity() {
             targetFps = EnumSet.of(CameraConfig.TargetFps.TARGET_FPS_60)
             depthSensorUsage = EnumSet.of(CameraConfig.DepthSensorUsage.REQUIRE_AND_USE)
         }
-        val validConfigs = session.getSupportedCameraConfigs(filter)
-        if (validConfigs.isNotEmpty()) {
-            session.cameraConfig = validConfigs[0]
-            Log.d(TAG, "ARCore configured for 60 FPS")
+        val configs = session.getSupportedCameraConfigs(filter)
+        if (configs.isNotEmpty()) {
+            session.cameraConfig = configs[0]
+            Log.d(TAG, "ARCore configured for 60 FPS ✅")
         } else {
-            Log.w(TAG, "60 FPS not supported, falling back to 30 FPS")
+            Log.w(TAG, "60 FPS not supported, falling back")
         }
     }
 
+    // ── Permission & AR loop ─────────────────────────────────────────────
     private fun checkPermissionAndStartAR() {
         val permission = Manifest.permission.CAMERA
-        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED) {
+        if (ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED)
             startARLoop()
-        } else {
-            cameraPermissionLauncher.launch(permission)
+        else cameraPermissionLauncher.launch(permission)
+    }
+
+    private fun startARLoop() {
+        arSceneView.onFrame = { _ ->
+            arSceneView.frame?.let { frame ->
+                arRendering.render(arSceneView, frame, currentMode, uiManager.currentRotation)
+            }
         }
     }
 
+    // ── Photo capture ────────────────────────────────────────────────────
     private fun takePhoto() {
-        val bitmap = Bitmap.createBitmap(arSceneView.width, arSceneView.height, Bitmap.Config.ARGB_8888)
-        PixelCopy.request(arSceneView, bitmap, { result ->
+        val bmp = Bitmap.createBitmap(arSceneView.width, arSceneView.height, Bitmap.Config.ARGB_8888)
+        PixelCopy.request(arSceneView, bmp, { result ->
             if (result == PixelCopy.SUCCESS) {
                 lifecycleScope.launch {
-                    val isSuccess = saveBitmapToGallery(bitmap)
-                    Toast.makeText(this@ARActivity, if (isSuccess) "Saved image" else "Failed to save", Toast.LENGTH_SHORT).show()
+                    val ok = saveBitmapToGallery(bmp)
+                    Toast.makeText(
+                        this@ARActivity,
+                        if (ok) "Photo saved!" else "Failed to save",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
             } else {
-                Toast.makeText(this, "Failed to capture image", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Capture failed", Toast.LENGTH_SHORT).show()
             }
         }, Handler(Looper.getMainLooper()))
     }
 
     private suspend fun saveBitmapToGallery(bitmap: Bitmap): Boolean = withContext(Dispatchers.IO) {
         val filename = "AR_WHEEL_${System.currentTimeMillis()}.jpg"
-        val contentValues = ContentValues().apply {
+        val cv = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -163,32 +201,19 @@ class ARActivity : ComponentActivity() {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }
-
-        val resolver = contentResolver
-        val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues) ?: return@withContext false
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
+            ?: return@withContext false
         return@withContext try {
-            resolver.openOutputStream(imageUri)?.use { stream ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, stream)
-            }
+            contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it) }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                contentValues.clear()
-                contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                resolver.update(imageUri, contentValues, null, null)
+                cv.clear(); cv.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                contentResolver.update(uri, cv, null, null)
             }
             true
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save image", e)
-            resolver.delete(imageUri, null, null)
+            Log.e(TAG, "Save failed", e)
+            contentResolver.delete(uri, null, null)
             false
-        }
-    }
-
-    private fun startARLoop() {
-        arSceneView.onFrame = { _ ->
-            arSceneView.frame?.let { frame ->
-                val deviceRotation = uiManager.currentRotation
-                arRendering.render(arSceneView, frame, currentMode, deviceRotation)
-            }
         }
     }
 }

@@ -74,7 +74,8 @@ data class ModelState(
     var bestRot: Quaternion = Quaternion(),
     var lastStablePos: Float3? = null,
     var driftFrames: Int = 0,
-    var stableFrames: Int = 0   // consecutive high-circularity frames → triggers anchor creation
+    var stableFrames: Int = 0,      // consecutive high-circularity frames → triggers anchor creation
+    var manualOffset: Float3 = Float3(0f, 0f, 0f)
 )
 
 // ──────────────────────────────────────────────
