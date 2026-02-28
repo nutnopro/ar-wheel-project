@@ -3,23 +3,62 @@ package com.arwheelapp.modules
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.arwheelapp.processor.FrameConverter
 import com.arwheelapp.processor.OnnxRuntimeHandler
-import com.arwheelapp.utils.*
+import com.arwheelapp.utils.ARMode
+import com.arwheelapp.utils.FrameYData
+import com.arwheelapp.utils.ProcessedDetection
+import com.arwheelapp.utils.RefinedResult
 import com.google.ar.core.*
 import dev.romainguy.kotlin.math.*
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.ar.node.AugmentedImageNode
-import io.github.sceneview.utils.worldToScreen
 import io.github.sceneview.node.Node
+import io.github.sceneview.utils.worldToScreen
 import kotlin.math.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-wheel tracking state
+// ─────────────────────────────────────────────────────────────────────────────
+private class WheelState {
+    // Anchor & manual adjustment
+    var anchor: Anchor? = null
+    var isManuallyLocked: Boolean = false
+    var manualOffset: Float3 = Float3(0f, 0f, 0f)
+
+    // Position & rotation history (max 30 entries each)
+    val posHistory: ArrayDeque<Float3> = ArrayDeque(30)
+    val rotHistory: ArrayDeque<Quaternion> = ArrayDeque(30)
+
+    // Whether the model is stable enough to be anchor-placed on tap
+    var isReadyToAnchor: Boolean = false
+    var stableFrames: Int = 0
+
+    // Smoothed render values
+    var renderPos: Float3 = Float3(0f, 0f, 0f)
+    var renderRot: Quaternion = Quaternion()
+
+    // Detection bookkeeping
+    var detectionHits: Int = 0
+    var lastDetectionTime: Long = 0L
+
+    // 2D screen tracking (for overlap check & bbox validation)
+    var lastScreen2D: Float2 = Float2(0f, 0f)
+    var screenRadius2D: Float = 0f
+
+    // useRecentAvg transition
+    var useRecentAvg: Boolean = false
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 class ARRendering(
     private val context: Context,
     private val onnxOverlayView: OnnxOverlayView,
@@ -29,151 +68,197 @@ class ARRendering(
     companion object {
         private const val TAG = "ARRendering"
 
-        // Inference timing
-        private const val BASE_FAST_INTERVAL = 40L          // ~25 FPS when moving
-        private const val BASE_SLOW_INTERVAL = 250L         // ~4 FPS when idle
-        private const val JUMP_THRESHOLD = 0.05f            // 5 cm → switch to fast mode
-        private const val PROCESS_BUFFER_MS = 15L
+        // Hit-test donut
+        private const val DONUT_POINTS = 8
+        private const val DONUT_RADIUS_FALLBACK = 0.70f // 70% bbox when no opencv
 
-        // Hit-test
-        private const val RING_POINTS = 8                   // 8 ring points + 1 center = 9 total
-        private const val RING_RADIUS_FRACTION = 0.64f      // ring radius as fraction of half-bbox
+        // History
+        private const val HISTORY_SIZE = 30
+        private const val RECENT_SIZE = 10
+        private const val ROT_DIVERGE_DEG = 15f     // switch to recent avg above this
 
-        // Depth
-        private const val DEPTH_OUTLIER_THRESHOLD = 0.10f   // discard points > 10 cm from median depth
+        // Stability — MUST be stable before user can tap to place
+        private const val STABLE_FRAMES_REQUIRED = 20
+        private const val POS_STABLE_M = 0.02f      // 2 cm
+        private const val ROT_STABLE_DEG = 3f
 
-        // Stability / history
-        private const val MAX_BBOX_HISTORY = 15
-        private const val QUICK_OVERRIDE_FRAMES = 5
-        private const val HISTORY_MAX_POSES = 10            // keep N best poses per tracker
-        private const val OUTLIER_ANGLE_DEG = 25f
-        private const val OUTLIER_POS_DIST = 0.4f
-        private const val FRAMES_TO_ANCHOR = 6              // stable frames required before anchoring
-        private const val ANCHOR_CIRCULARITY_THRESHOLD = 0.95f  // wheel must look round enough
-        private const val DETECTION_TIMEOUT_MS = 1200L
+        // Confirm criteria
+        private const val MIN_CIRCULARITY = 0.50f
+        private const val MIN_BBOX_RATIO = 0.50f    // min(w,h)/max(w,h)
+        private const val MAX_TILT_DEG = 55f
+
+        // Bbox-count consistency
+        private const val BBOX_HISTORY_SIZE = 15
+        private const val BBOX_MATCH_FRAMES = 5
+
+        // Detection timeout
+        private const val DETECTION_TIMEOUT_MS = 1500L
+
+        // Dynamic FPS
+        private const val TARGET_MS = 40L       // target ≤40 ms/frame
+        private const val MIN_INT_MS = 33L      // max ~30 fps
+        private const val MAX_INT_MS = 500L     // min ~2 fps when idle
+        private const val IDLE_THRESH = 60      // frames before idle slow-down
+        private const val IDLE_STEP = 20L       // ms added per idle frame-batch
 
         // Lerp
-        private const val MIN_DIST = 0.02f
-        private const val MAX_DIST = 0.3f
         private const val MIN_ALPHA = 0.04f
-        private const val MAX_ALPHA = 0.6f
-        // Manual adjustment: nudge step in metres
-        const val ADJUST_STEP_FINE = 0.003f     // 3 mm — fine
-        const val ADJUST_STEP_MEDIUM = 0.008f   // 8 mm — medium
-        const val ADJUST_STEP_COARSE = 0.020f   // 20 mm — coarse
-
-        // Screen-space tap radius to count as "hit" on a model (dp-ish pixels)
-        private const val TAP_HIT_RADIUS_PX = 120f
+        private const val MAX_ALPHA = 0.60f
+        private const val MIN_DIST = 0.02f
+        private const val MAX_DIST = 0.30f
     }
 
-    // ── Dependencies ─────────────────────────────────────────────────────
+    // ── Dependencies ─────────────────────────────────────────────────────────
     private val modelManager = ModelManager(arSceneView)
     private val frameConverter = FrameConverter()
-    private val onnxRuntimeHandler = OnnxRuntimeHandler(context)
+    private val onnxHandler = OnnxRuntimeHandler(context)
+    private val mainHandler = Handler(Looper.getMainLooper())
 
-
+    // ── Runtime state ─────────────────────────────────────────────────────────
     private var previousMode: ARMode? = null
     private var lastInferenceTime = 0L
-    private var targetInferenceInterval = BASE_FAST_INTERVAL
-    private var currentInferenceInterval = BASE_FAST_INTERVAL
-    private var latestInferenceDurationMs = 0L
+    private var currentInterval = MIN_INT_MS
+    private var idleFrames = 0
 
-    // ── Model pools ───────────────────────────────────────────────────────
     private val modelPool = mutableListOf<Node>()
     private val augmentedImageMap = mutableMapOf<AugmentedImage, AugmentedImageNode>()
     private val markerlessActiveModels = mutableListOf<Node>()
-    private val modelStates = mutableMapOf<Node, ModelState>()
+    private val wheelStates = mutableMapOf<Node, WheelState>()
 
-    // ── Buffers ───────────────────────────────────────────────────────────
-    private var yPlaneBufferA: ByteArray? = null
-    private var yPlaneBufferB: ByteArray? = null
-    private var useBufferA = true
-    private val bboxCountHistory = mutableListOf<Int>()
+    @Volatile private var latestDetections: List<ProcessedDetection> = emptyList()
+    @Volatile private var isNewDetection = false
 
-    // ── Detection state ───────────────────────────────────────────────────
-    @Volatile private var latestProcessedDetections: List<ProcessedDetection> = emptyList()
-    @Volatile private var isNewDetectionAvailable = false
+    // Bbox count
+    private val bboxCountHistory = ArrayDeque<Int>(BBOX_HISTORY_SIZE)
 
-    // ── Config ────────────────────────────────────────────────────────────
-    @Volatile private var snapThreshold = 0.4572f
-    @Volatile private var modelPath = "models/wheel1.glb"   // !!Change to UI
+    // Motion tracking for dynamic FPS (reset each hit-test frame)
+    private var anyMotionThisFrame = false
 
-    // ── Manual adjustment state ───────────────────────────────────────────
-    @Volatile private var selectedModel: Node? = null
+    // Y-plane double-buffer
+    private var yBufA: ByteArray? = null
+    private var yBufB: ByteArray? = null
+    private var useYBufA = true
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Public: Manual adjustment API
-    // ═════════════════════════════════════════════════════════════════════
-    fun findModelAtScreen(screenX: Float, screenY: Float): Node? {
-        var best: Node? = null
-        var bestDist = TAP_HIT_RADIUS_PX
-        for (model in markerlessActiveModels) {
-            if (!model.isVisible) continue
-            val screenPt = arSceneView.view.worldToScreen(model.position)
-            val d = hypot(screenPt.x - screenX, screenPt.y - screenY)
-            if (d < bestDist) { bestDist = d; best = model }
-        }
-        return best
+    // ── Public config ─────────────────────────────────────────────────────────
+    @Volatile var snapThreshold = 0.4572f
+    @Volatile var modelPath = "models/wheel1.glb"   // !!Change to UI
+
+    // ── Callbacks (always called on Main thread) ───────────────────────────────
+    var selectedModel: Node? = null
+    var onShowAdjustmentUI: ((Boolean) -> Unit)? = null
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Manual nudge / confirm  (called from UI thread)
+    // ─────────────────────────────────────────────────────────────────────────
+    fun nudgeSelectedModel(dx: Float, dy: Float, dz: Float) {
+        val ws = selectedModel?.let { wheelStates[it] } ?: return
+        ws.manualOffset = Float3(
+            ws.manualOffset.x + dx,
+            ws.manualOffset.y + dy,
+            ws.manualOffset.z + dz
+        )
     }
 
-    fun selectModel(node: Node) {
-        selectedModel = node
-        // Highlight: slightly scale up so user sees selection feedback
-        node.scale = node.scale * 1.04f
-    }
-
-    fun deselectModel() {
-        selectedModel?.let { node ->
-            // Remove highlight scale
-            node.scale = node.scale / 1.04f
-        }
+    fun finishAdjusting() {
+        val m  = selectedModel ?: return
+        val ws = wheelStates[m] ?: return
+        // Bake current position into a new anchor
+        val pose = Pose(
+            floatArrayOf(m.position.x, m.position.y, m.position.z),
+            floatArrayOf(m.quaternion.x, m.quaternion.y, m.quaternion.z, m.quaternion.w)
+        )
+        ws.anchor?.detach()
+        ws.anchor = arSceneView.session?.createAnchor(pose)
+        ws.manualOffset = Float3(0f, 0f, 0f)
         selectedModel = null
+        onShowAdjustmentUI?.invoke(false)   // already on main thread (called from UI)
     }
 
-    fun adjustSelectedModel(dx: Float = 0f, dy: Float = 0f, dz: Float = 0f) {
-        val model = selectedModel ?: return
-        val state = modelStates[model] ?: return
-        val cameraPose = arSceneView.frame?.camera?.pose ?: return
-
-        // Build camera-space offset vector and rotate it into world space
-        val camRight = Float3(cameraPose.xAxis[0], cameraPose.xAxis[1], cameraPose.xAxis[2])
-        val camUp = Float3(cameraPose.yAxis[0], cameraPose.yAxis[1], cameraPose.yAxis[2])
-        val camForward = Float3(-cameraPose.zAxis[0], -cameraPose.zAxis[1], -cameraPose.zAxis[2])
-
-        val worldDelta = camRight * dx + camUp * dy + camForward * dz
-        state.manualOffset = state.manualOffset + worldDelta
-
-        // Apply immediately so the model moves without waiting for next frame
-        model.position = resolvePosition(state) + state.manualOffset
+    fun cancelAdjusting() {
+        val m = selectedModel ?: return
+        val ws = wheelStates[m] ?: return
+        ws.isManuallyLocked = false
+        ws.manualOffset = Float3(0f, 0f, 0f)
+        selectedModel = null
+        onShowAdjustmentUI?.invoke(false)
     }
 
-    fun resetSelectedModelOffset() {
-        val model = selectedModel ?: return
-        val state = modelStates[model] ?: return
-        state.manualOffset = Float3(0f, 0f, 0f)
-        model.position = resolvePosition(state)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Public model APIs
+    // ─────────────────────────────────────────────────────────────────────────
+    fun updateNewModel(path: String) {
+        modelPath = path
+        modelPool.forEach { modelManager.changeModel(it, path, coroutineScope) }
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Render entry
-    // ═════════════════════════════════════════════════════════════════════
-    fun render(arSceneView: ARSceneView, frame: Frame, currentMode: ARMode, deviceRotation: Int) {
-        if (previousMode != currentMode) {
-            handleModeSwitch()
-            previousMode = currentMode
+    fun updateModelSize(sizeInch: Float) {
+        val cm = sizeInch * 2.54f
+        snapThreshold = cm / 100f
+        val scale = cm / 45.72f
+        modelPool.forEach { modelManager.changeModelSize(it, scale) }
+    }
+
+    fun clear() {
+        modelPool.forEach { it.destroy() }
+        modelPool.clear()
+        augmentedImageMap.values.forEach { it.destroy() }
+        augmentedImageMap.clear()
+        markerlessActiveModels.clear()
+        wheelStates.clear()
+        onnxOverlayView.clear()
+    }
+
+    fun setupMarkerDatabase(session: Session, markerSize: Float = 0.15f) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val db = AugmentedImageDatabase(session)
+                val assets = context.assets
+                assets.list("markers")
+                    ?.filter { it.endsWith(".jpg", true) || it.endsWith(".png", true) }
+                    ?.forEach { fn ->
+                        runCatching {
+                            assets.open("markers/$fn").use { s ->
+                                db.addImage(fn.substringBeforeLast("."), BitmapFactory.decodeStream(s), markerSize)
+                                Log.d(TAG, "Marker loaded: $fn ✅")
+                            }
+                        }
+                    }
+                withContext(Dispatchers.Main) {
+                    session.configure(session.config.apply {
+                        augmentedImageDatabase = db
+                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                        focusMode = Config.FocusMode.AUTO
+                    })
+                }
+            } catch (e: Exception) { Log.e(TAG, "setupMarkerDatabase", e) }
         }
-        when (currentMode) {
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Render entry-point  (called every frame, on GL/main thread)
+    // ─────────────────────────────────────────────────────────────────────────
+    fun render(arSceneView: ARSceneView, frame: Frame, mode: ARMode, deviceRotation: Int) {
+        if (previousMode != mode) {
+            handleModeSwitch()
+            previousMode = mode
+        }
+        when (mode) {
             ARMode.MARKER_BASED -> processMarkerBased(arSceneView, frame)
             ARMode.MARKERLESS -> {
-                processMarkerlessInference(frame, deviceRotation)
-                processMarkerlessHitTest(arSceneView, frame)
+                val t0 = SystemClock.uptimeMillis()
+                runInference(frame, deviceRotation)
+                processHitTest(arSceneView, frame)
+                updateDynamicFPS(SystemClock.uptimeMillis() - t0)
             }
         }
     }
 
-    // ── Mode switch ───────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Mode switch
+    // ─────────────────────────────────────────────────────────────────────────
     private fun handleModeSwitch() {
         selectedModel = null
+        onShowAdjustmentUI?.invoke(false)
         modelPool.forEach {
             it.parent = null
             it.isVisible = false
@@ -184,341 +269,404 @@ class ARRendering(
             augmentedImageMap.clear()
         }
         if (previousMode == ARMode.MARKERLESS) {
-            modelStates.values.forEach { it.anchor?.detach() }
-            modelStates.clear()
+            wheelStates.values.forEach { it.anchor?.detach() }
+            wheelStates.clear()
             markerlessActiveModels.clear()
             onnxOverlayView.clear()
             bboxCountHistory.clear()
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // MARKER-BASED
-    // ═════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────
+    // Marker-based mode
+    // ─────────────────────────────────────────────────────────────────────────
     private fun processMarkerBased(arSceneView: ARSceneView, frame: Frame) {
-        for (image in frame.getUpdatedTrackables(AugmentedImage::class.java)) {
-            when (image.trackingState) {
+        for (img in frame.getUpdatedTrackables(AugmentedImage::class.java)) {
+            when (img.trackingState) {
                 TrackingState.TRACKING -> {
-                    val node = augmentedImageMap.getOrPut(image) {
-                        AugmentedImageNode(arSceneView.engine, image).apply {
-                            addChildNode(getOrCreateModel(modelPath).apply { isVisible = true })
+                    augmentedImageMap.getOrPut(img) {
+                        AugmentedImageNode(arSceneView.engine, img).apply {
+                            addChildNode(getOrCreatePoolModel(modelPath).apply { isVisible = true })
                             arSceneView.addChildNode(this)
                         }
-                    }
-                    node.isVisible = (image.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING)
+                    }.isVisible = (img.trackingMethod == AugmentedImage.TrackingMethod.FULL_TRACKING)
                 }
-                TrackingState.STOPPED -> augmentedImageMap.remove(image)?.let {
+                TrackingState.STOPPED -> augmentedImageMap.remove(img)?.let {
                     arSceneView.removeChildNode(it)
                     it.destroy()
                 }
-                TrackingState.PAUSED -> augmentedImageMap[image]?.isVisible = false
+                TrackingState.PAUSED  -> augmentedImageMap[img]?.isVisible = false
             }
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // MARKERLESS — inference
-    // ═════════════════════════════════════════════════════════════════════
-    private fun processMarkerlessInference(frame: Frame, deviceRotation: Int) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Inference — rate-limited
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun runInference(frame: Frame, deviceRotation: Int) {
         val now = SystemClock.uptimeMillis()
-        if (now - lastInferenceTime < currentInferenceInterval) return
+        if (now - lastInferenceTime < currentInterval) return
         lastInferenceTime = now
 
         try {
             val tensor = frameConverter.convertFrameToTensor(frame, deviceRotation)
-            val viewW = arSceneView.width.toFloat()
-            val viewH = arSceneView.height.toFloat()
-            val yData = extractYPlaneData(frame)
-
-            val t0 = SystemClock.uptimeMillis()
-
-            onnxRuntimeHandler.runOnnxInferenceAsync(tensor, deviceRotation, yData, viewW, viewH) { results ->
-                latestInferenceDurationMs = SystemClock.uptimeMillis() - t0
-                latestProcessedDetections = results
-                isNewDetectionAvailable = true
+            val yData = extractYPlane(frame)
+            val vw = arSceneView.width.toFloat()
+            val vh = arSceneView.height.toFloat()
+            onnxHandler.runOnnxInferenceAsync(tensor, deviceRotation, yData, vw, vh) { results ->
+                latestDetections = results
+                isNewDetection = true
                 onnxOverlayView.updateDetections(results.map { it.detection })
             }
         } catch (e: Exception) { Log.e(TAG, "Inference error", e) }
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // MARKERLESS — hit-test & pose tracking
-    // ═════════════════════════════════════════════════════════════════════
-    private fun processMarkerlessHitTest(arSceneView: ARSceneView, frame: Frame) {
-        if (!isNewDetectionAvailable) return
-        isNewDetectionAvailable = false
+    // ─────────────────────────────────────────────────────────────────────────
+    // Hit-test & pose tracking
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun processHitTest(arSceneView: ARSceneView, frame: Frame) {
+        if (!isNewDetection) return
+        isNewDetection = false
 
         if (frame.camera.trackingState != TrackingState.TRACKING) return
 
-        val hitStart = SystemClock.uptimeMillis()
+        val now = SystemClock.uptimeMillis()
 
-        val cameraPos = frame.camera.pose.let { Float3(it.tx(), it.ty(), it.tz()) }
-        val viewW = arSceneView.width.toFloat()
-        val viewH = arSceneView.height.toFloat()
-        var maxShift = 0f
+        val vw = arSceneView.width.toFloat()
+        val vh = arSceneView.height.toFloat()
+        val camPos = frame.camera.pose.let { Float3(it.tx(), it.ty(), it.tz()) }
 
-        bboxCountHistory.add(latestProcessedDetections.size)
-        if (bboxCountHistory.size > MAX_BBOX_HISTORY) bboxCountHistory.removeAt(0)
+        // Bbox count history
+        if (bboxCountHistory.size >= BBOX_HISTORY_SIZE) bboxCountHistory.removeFirst()
+        bboxCountHistory.addLast(latestDetections.size)
+        val targetCount = getTargetBboxCount()
 
-        val data = latestProcessedDetections.let { list ->
-            if (list.size > getTargetBBoxCount())
-                list.sortedByDescending { it.detection.confidence }.take(getTargetBBoxCount())
-            else list
-        }
+        val workDets = if (latestDetections.size > targetCount)
+            latestDetections.sortedByDescending { it.detection.confidence }.take(targetCount)
+        else latestDetections
 
-        val claimedModels = mutableSetOf<Node>()
+        val claimed = mutableSetOf<Node>()
 
-        for (pd in data) {
+        for (pd in workDets) {
             val det = pd.detection
-            val cvRes = pd.cvResult
+            val cv = pd.cvResult
             val bbox = det.boundingBox
 
-            val allPoses = collectHitPoses(frame, cvRes, bbox, viewW, viewH)
-            if (allPoses.isEmpty()) continue
+            // ── 1. Collect hit points ─────────────────────────────────────
+            val hitPts = collectHitPoints(frame, cv, bbox, vw, vh)
+            if (hitPts.isEmpty()) continue
 
-            val depthOk = filterDepthOutliers(allPoses, cameraPos)
-            if (depthOk.isEmpty()) continue
+            // ── 2. Center = average of all hit points ─────────────────────
+            val center = hitPts.average3()
 
-            val trueCenter = allPoses.firstOrNull()?.let {
-                Float3(it.tx(), it.ty(), it.tz()) }
-                ?: depthOk.map { Float3(it.tx(), it.ty(), it.tz()) }.average3()
+            // ── 3. Plane normal (must face camera) ────────────────────────
+            val normal = planeNormal(hitPts, center, camPos)
 
-            val pts3D = depthOk.map { Float3(it.tx(), it.ty(), it.tz()) }
+            // ── 4. Rotation (model forward = normal = facing camera) ──────
+            val planeRot = lookRotationForward(normal)
 
-            val normal = fitPlaneNormalSVD(pts3D, trueCenter, cameraPos)
-            val planeRot = buildRotationFromNormal(normal)
-            val offsetRot = Quaternion.fromAxisAngle(Float3(1f, 0f, 0f), 90f)
-            val calcRot = if (cvRes.isFound) {
-                val zRot = Quaternion.fromAxisAngle(Float3(0f, 0f, 1f), cvRes.angle)
-                planeRot * zRot * offsetRot
-            } else planeRot * offsetRot
+            // ── 5. Camera tilt from plane ─────────────────────────────────
+            val tiltDeg = Math.toDegrees(
+                acos(dot(normal, normalize(camPos - center)).coerceIn(-1f, 1f)).toDouble()
+            ).toFloat()
 
-            val ellipseTiltDiffDeg: Float = if (cvRes.isFound && cvRes.width > 0f && cvRes.height > 0f) {
-                val major = max(cvRes.width, cvRes.height)
-                val minor = min(cvRes.width, cvRes.height)
-                val eTilt = acos(minor / major)
-                val sCos     = dot(normal, normalize(cameraPos - trueCenter)).coerceIn(-1f, 1f)
-                val sTilt = acos(sCos)
-                Math.toDegrees(abs(eTilt - sTilt).toDouble()).toFloat()
-            } else 0f
-
-            val circ = cvRes.circularity
-
-            val closest = markerlessActiveModels.asSequence()
-                .filter { it !in claimedModels }
-                .minByOrNull { dist(it.position, trueCenter) }
-            val model = if (closest != null && dist(closest.position, trueCenter) < snapThreshold * 1.2f)
+            // ── 6. Snap to closest model or create new ────────────────────
+            val closest = markerlessActiveModels
+                .filter { it !in claimed }
+                .minByOrNull { dist(it.position, center) }
+            val model = if (closest != null && dist(closest.position, center) < snapThreshold * 1.2f)
                 closest
-            else getAvailableMarkerlessModel(claimedModels)
+            else getOrCreateMarkerlessModel()
 
-            claimedModels.add(model)
-            val state = modelStates.getOrPut(model) { ModelState() }
+            claimed.add(model)
+            val ws = wheelStates.getOrPut(model) { WheelState() }
 
-            // Bbox drift check
-            val absBbox = RectF(bbox.left * viewW, bbox.top * viewH, bbox.right * viewW, bbox.bottom * viewH)
-            val checkPt = if (state.posHistory.isNotEmpty()) state.bestPos else trueCenter
-            val screenPt = arSceneView.view.worldToScreen(checkPt)
-            if (!absBbox.contains(screenPt.x, screenPt.y)) {
-                if (state.posHistory.isEmpty()) continue
-                if (++state.driftFrames > 15) { resetModelState(state); continue }
-            } else state.driftFrames = 0
+            // ── 7. If manually locked → servo the anchor + offset ─────────
+            if (ws.isManuallyLocked) {
+                val ap = ws.anchor?.pose ?: continue
+                model.position = Float3(
+                    ap.tx() + ws.manualOffset.x,
+                    ap.ty() + ws.manualOffset.y,
+                    ap.tz() + ws.manualOffset.z
+                )
+                model.quaternion = Quaternion(ap.qx(), ap.qy(), ap.qz(), ap.qw())
+                continue
+            }
 
-            state.lastDetectionTime = hitStart
+            ws.lastDetectionTime = now
+            ws.detectionHits++
+            if (ws.detectionHits >= 3) model.isVisible = true
 
-            if (++state.detectionHits >= 3) model.isVisible = true
+            // ── 8. Update position history ────────────────────────────────
+            if (ws.posHistory.size >= HISTORY_SIZE) ws.posHistory.removeFirst()
+            ws.posHistory.addLast(center)
 
-            val shift = state.lastStablePos?.let { dist(it, trueCenter) } ?: Float.MAX_VALUE
-            maxShift = max(maxShift, shift)
-            state.lastStablePos = trueCenter
+            // ── 9. Update rotation history ────────────────────────────────
+            if (ws.rotHistory.size >= HISTORY_SIZE) ws.rotHistory.removeFirst()
+            ws.rotHistory.addLast(planeRot)
 
-            val angleDiff = if (state.rotHistory.isNotEmpty()) angleBetween(state.bestRot, calcRot) else 0f
-            val posDiff = if (state.posHistory.isNotEmpty()) dist(state.bestPos, trueCenter) else 0f
-            val isOutlier = (state.posHistory.isNotEmpty() && (angleDiff > OUTLIER_ANGLE_DEG || posDiff > OUTLIER_POS_DIST)) || ellipseTiltDiffDeg > 22f
-
-            if (!isOutlier) {
-                state.posHistory.add(TrackedPos(trueCenter, circ))
-                state.posHistory.sortByDescending { it.circularity }
-                if (state.posHistory.size > HISTORY_MAX_POSES) state.posHistory.removeLast()
-                state.bestPos = state.posHistory[0].pos
-
-                state.rotHistory.add(TrackedRot(calcRot, circ))
-                state.rotHistory.sortByDescending { it.circularity }
-                if (state.rotHistory.size > HISTORY_MAX_POSES) state.rotHistory.removeLast()
-                state.bestRot = state.rotHistory[0].rot
-
-                if (state.anchor == null) {
-                    if (circ >= ANCHOR_CIRCULARITY_THRESHOLD) state.stableFrames++
-                    else state.stableFrames = 0
-                    if (state.stableFrames >= FRAMES_TO_ANCHOR) {
-                        state.anchor = arSceneView.session?.createAnchor(
-                            Pose(
-                                floatArrayOf(state.bestPos.x, state.bestPos.y, state.bestPos.z),
-                                floatArrayOf(state.bestRot.x, state.bestRot.y, state.bestRot.z, state.bestRot.w)
-                            )
-                        )
-                    }
+            // ── 10. Compute best rotation (full avg vs recent 10) ─────────
+            val fullAvg = averageQuaternions(ws.rotHistory.toList())
+            val recentAvg = averageQuaternions(ws.rotHistory.takeLast(RECENT_SIZE))
+            val diverge = angleBetween(fullAvg, recentAvg)
+            val bestRot: Quaternion = when {
+                diverge > ROT_DIVERGE_DEG -> {
+                    ws.useRecentAvg = true
+                    recentAvg
                 }
-            } else state.stableFrames = 0
+                ws.useRecentAvg && diverge > 2f -> recentAvg    // still transitioning
+                else -> {
+                    ws.useRecentAvg = false
+                    fullAvg
+                }
+            }
 
-            // ── Skip lerp update while user is manually adjusting this model ──
-            if (model == selectedModel) continue
+            // ── 11. Confirm criteria ──────────────────────────────────────
+            val bboxW = bbox.width() * vw
+            val bboxH = bbox.height() * vh
+            val ratio = if (max(bboxW, bboxH) > 0f) min(bboxW, bboxH) / max(bboxW, bboxH) else 0f
+            val screenPt = arSceneView.view.worldToScreen(center)
+            val bboxAbs = RectF(bbox.left * vw, bbox.top * vh, bbox.right * vw, bbox.bottom * vh)
+            val inBbox = bboxAbs.contains(screenPt.x, screenPt.y)
 
-            val renderPos = resolvePosition(state)
-            val renderRot = resolveRotation(state, calcRot)
+            val confirmed = confirmDetection(
+                circularity = cv.circularity,
+                bboxRatio = ratio,
+                posInBbox = inBbox,
+                tiltDeg = tiltDeg,
+                hasOpenCV = cv.isFound
+            )
 
+            // ── 12. Stability counter ─────────────────────────────────────
+            val prevPos = if (ws.posHistory.size >= 2) ws.posHistory[ws.posHistory.size - 2] else null
+            val prevRot = if (ws.rotHistory.size >= 2) ws.rotHistory[ws.rotHistory.size - 2] else null
+            val posStable = prevPos == null || dist(prevPos, center) < POS_STABLE_M
+            val rotStable = prevRot == null || angleBetween(prevRot, planeRot) < ROT_STABLE_DEG
+
+            if (confirmed && posStable && rotStable) {
+                ws.stableFrames++
+                if (ws.stableFrames >= STABLE_FRAMES_REQUIRED) {
+                    ws.isReadyToAnchor = true
+                    // Visual hint: brighter / ready indicator (overlay handles this via OnnxOverlayView if needed)
+                }
+            } else {
+                ws.stableFrames = 0
+                ws.isReadyToAnchor = false
+            }
+
+            // ── 13. Render (lerp to best pos/rot) ─────────────────────────
+            val renderPos = center   // pos always = center
             val alpha = dynamicAlpha(model.position, renderPos)
-            model.position = mix(model.position, renderPos + state.manualOffset, alpha)
-            model.quaternion = slerp(model.quaternion, renderRot, alpha)
+            model.position = mix(model.position, renderPos, alpha)
+            model.quaternion = slerp(model.quaternion, bestRot, alpha)
+
+            if (dist(model.position, renderPos) > 0.02f) anyMotionThisFrame = true
+
+            // Update 2D tracking info
+            ws.lastScreen2D = Float2(screenPt.x, screenPt.y)
+            ws.screenRadius2D = max(bboxW, bboxH) / 2f
         }
 
-        hideStaleModels(claimedModels, hitStart)
+        hideStaleModels(claimed, now)
 
-        val totalMs = latestInferenceDurationMs + (SystemClock.uptimeMillis() - hitStart)
-        targetInferenceInterval = if (maxShift > JUMP_THRESHOLD || bboxCountHistory.size < MAX_BBOX_HISTORY)
-            BASE_FAST_INTERVAL
-        else min(BASE_SLOW_INTERVAL, targetInferenceInterval + 10L)
-        currentInferenceInterval = max(targetInferenceInterval, totalMs + PROCESS_BUFFER_MS)
+        if (anyMotionThisFrame) idleFrames = 0 else idleFrames++
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Pose resolution helpers
-    // ═════════════════════════════════════════════════════════════════════
-    private fun resolvePosition(state: ModelState): Float3 =
-        state.anchor?.pose?.let { Float3(it.tx(), it.ty(), it.tz()) }
-            ?: if (state.posHistory.isNotEmpty()) state.bestPos else Float3(0f, 0f, 0f)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Hit-test helpers
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun collectHitPoints(
+        frame: Frame, cv: RefinedResult, bbox: RectF, vw: Float, vh: Float
+    ): List<Float3> {
+        val pts = mutableListOf<Float3>()
 
-    private fun resolveRotation(state: ModelState, fallback: Quaternion): Quaternion =
-        state.anchor?.pose?.let { Quaternion(it.qx(), it.qy(), it.qz(), it.qw()) }
-            ?: if (state.rotHistory.isNotEmpty()) state.bestRot else fallback
+        // Center hit (opencv cx/cy, or bbox center)
+        frame.hitTest(cv.cx, cv.cy)
+            .firstOrNull { it.trackable is Plane || it.trackable is Point }
+            ?.let { pts.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz())) }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Plane fitting
-    // ═════════════════════════════════════════════════════════════════════
-    private fun fitPlaneNormalSVD(points: List<Float3>, center: Float3, cameraPos: Float3): Float3 {
-        if (points.size < 3) return normalize(cameraPos - center)
-
-        var nx = 0f; var ny = 0f; var nz = 0f
-        val n = points.size
-        for (i in 0 until n) {
-            val c = points[i] - center
-            val next = points[(i + 1) % n] - center
-            nx += (c.y - next.y) * (c.z + next.z)
-            ny += (c.z - next.z) * (c.x + next.x)
-            nz += (c.x - next.x) * (c.y + next.y)
+        // Donut: radius = max(ellipse w, h)/2 from opencv, else 70% bbox
+        val radius: Float = if (cv.isFound && cv.width > 0f && cv.height > 0f) {
+            max(cv.width, cv.height) / 2f
+        } else {
+            max(bbox.width() * vw, bbox.height() * vh) * DONUT_RADIUS_FALLBACK / 2f
         }
+        val aRad = Math.toRadians(cv.angle.toDouble()).toFloat()
+        val cosA = cos(aRad)
+        val sinA = sin(aRad)
 
-        val raw = Float3(nx, ny, nz)
-        val len = length(raw)
-        if (len < 1e-6f || len.isNaN()) return normalize(cameraPos - center)
-        val normal = normalize(raw)
-
-        return if (dot(normal, normalize(cameraPos - center)) < 0f) -normal
-        else normal
+        for (i in 0 until DONUT_POINTS) {
+            val t = (2f * kotlin.math.PI.toFloat() * i) / DONUT_POINTS
+            val lx = radius * cos(t)
+            val ly = radius * sin(t)
+            frame.hitTest(cv.cx + lx * cosA - ly * sinA, cv.cy + lx * sinA + ly * cosA)
+                .firstOrNull { it.trackable is Plane || it.trackable is Point }
+                ?.let { pts.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz())) }
+        }
+        return pts
     }
 
-    private fun buildRotationFromNormal(normal: Float3): Quaternion {
-        val f = normalize(normal)
-        val up = if (abs(dot(f, Float3(0f, 1f, 0f))) > 0.98f) Float3(0f, 0f, 1f)
-        else Float3(0f, 1f, 0f)
-        val r = normalize(cross(up, f))
+    // ─────────────────────────────────────────────────────────────────────────
+    // Plane normal – always points toward camera (user side)
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun planeNormal(pts: List<Float3>, center: Float3, camPos: Float3): Float3 {
+        if (pts.size < 3) return normalize(camPos - center)
+        var accum = Float3(0f, 0f, 0f)
+        for (i in pts.indices) {
+            accum += cross(pts[i] - center, pts[(i + 1) % pts.size] - center)
+        }
+        val len = length(accum)
+        if (len < 1e-6f || len.isNaN()) return normalize(camPos - center)
+        val n = normalize(accum)
+        return if (dot(n, normalize(camPos - center)) < 0f) -n else n
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Rotation: model FORWARD (Z+) = plane normal = faces camera
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun lookRotationForward(normal: Float3): Quaternion {
+        val f  = normalize(normal)
+        val up = if (abs(dot(f, Float3(0f, 1f, 0f))) > 0.99f) Float3(0f, 0f, 1f) else Float3(0f, 1f, 0f)
+        val r  = normalize(cross(up, f))
         val u2 = cross(f, r)
         val tr = r.x + u2.y + f.z
-
         return when {
-            tr > 0f -> {
-                val s = sqrt(tr + 1f) * 2f
-                Quaternion((u2.z - f.y)/s, (f.x - r.z)/s, (r.y - u2.x)/s, 0.25f*s)
-            }
-            r.x > u2.y && r.x > f.z -> {
-                val s = sqrt(1f + r.x - u2.y - f.z) * 2f; Quaternion(0.25f*s, (u2.x+r.y)/s, (f.x+r.z)/s, (u2.z-f.y)/s)
-            }
-            u2.y > f.z -> {
-                val s = sqrt(1f + u2.y - r.x - f.z) * 2f; Quaternion((u2.x+r.y)/s, 0.25f*s, (f.y+u2.z)/s, (f.x-r.z)/s)
-            }
-            else -> {
-                val s = sqrt(1f + f.z - r.x - u2.y) * 2f; Quaternion((f.x+r.z)/s, (f.y+u2.z)/s, 0.25f*s, (r.y-u2.x)/s)
-            }
+            tr > 0f -> { val s = sqrt(tr + 1f) * 2f
+                Quaternion((u2.z - f.y)/s, (f.x - r.z)/s, (r.y - u2.x)/s, 0.25f*s) }
+            r.x > u2.y && r.x > f.z -> { val s = sqrt(1f + r.x - u2.y - f.z) * 2f
+                Quaternion(0.25f*s, (u2.x+r.y)/s, (f.x+r.z)/s, (u2.z-f.y)/s) }
+            u2.y > f.z -> { val s = sqrt(1f + u2.y - r.x - f.z) * 2f
+                Quaternion((u2.x+r.y)/s, 0.25f*s, (f.y+u2.z)/s, (f.x-r.z)/s) }
+            else -> { val s = sqrt(1f + f.z - r.x - u2.y) * 2f
+                Quaternion((f.x+r.z)/s, (f.y+u2.z)/s, 0.25f*s, (r.y-u2.x)/s) }
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Hit-test helpers
-    // ═════════════════════════════════════════════════════════════════════
-    private fun collectHitPoses(frame: Frame, cvRes: RefinedResult, bbox: RectF, viewW: Float, viewH: Float): List<Pose> {
-        val poses = mutableListOf<Pose>()
-        frame.hitTest(cvRes.cx, cvRes.cy).firstOrNull { it.trackable is Plane || it.trackable is Point }
-            ?.let { poses.add(it.hitPose) }
-
-        val rx = if (cvRes.isFound && cvRes.width  > 0f) cvRes.width  / 2f
-        else bbox.width()  * viewW * RING_RADIUS_FRACTION / 2f
-        val ry = if (cvRes.isFound && cvRes.height > 0f) cvRes.height / 2f
-        else bbox.height() * viewH * RING_RADIUS_FRACTION / 2f
-        val aRad = Math.toRadians(cvRes.angle.toDouble()).toFloat()
-        val cosA = cos(aRad); val sinA = sin(aRad)
-
-        for (i in 0 until RING_POINTS) {
-            val t  = 2f * kotlin.math.PI.toFloat() * i / RING_POINTS
-            val lx = rx * cos(t)
-            val ly = ry * sin(t)
-
-            frame.hitTest(cvRes.cx + lx * cosA - ly * sinA, cvRes.cy + lx * sinA + ly * cosA)
-                .firstOrNull { it.trackable is Plane || it.trackable is Point }
-                ?.let { poses.add(it.hitPose) }
-        }
-
-        return poses
+    // ─────────────────────────────────────────────────────────────────────────
+    // Confirmation criteria
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun confirmDetection(
+        circularity: Float, bboxRatio: Float, posInBbox: Boolean, tiltDeg: Float, hasOpenCV: Boolean
+    ): Boolean {
+        val circOk = if (hasOpenCV) circularity >= MIN_CIRCULARITY else bboxRatio >= MIN_CIRCULARITY
+        val ratioOk = bboxRatio >= MIN_BBOX_RATIO
+        val tiltOk = tiltDeg <= MAX_TILT_DEG
+        return circOk && ratioOk && posInBbox && tiltOk
     }
 
-    private fun filterDepthOutliers(poses: List<Pose>, cam: Float3): List<Pose> {
-        if (poses.size <= 2) return poses
-        val depths = poses.map { dist(Float3(it.tx(), it.ty(), it.tz()), cam) }.sorted()
-        val median = depths[depths.size / 2]
-        return poses.filter { abs(dist(Float3(it.tx(), it.ty(), it.tz()), cam) - median) <= DEPTH_OUTLIER_THRESHOLD }
-    }
-
-    // ═════════════════════════════════════════════════════════════════════
-    // Model lifecycle
-    // ═════════════════════════════════════════════════════════════════════
-    private fun getOrCreateModel(path: String): Node =
+    // ─────────────────────────────────────────────────────────────────────────
+    // Model pool
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun getOrCreatePoolModel(path: String): Node =
         modelPool.find { it.parent == null || !it.isVisible }?.apply { isVisible = true }
             ?: modelManager.createNewModel(path, coroutineScope).also { modelPool.add(it) }
 
-    private fun getAvailableMarkerlessModel(claimed: Set<Node>): Node {
-        markerlessActiveModels.find { it !in claimed }?.let { return it }
+    /** Creates or recycles a markerless model node, wires the tap handler. */
+    private fun getOrCreateMarkerlessModel(): Node {
+        // Recycle first invisible un-anchored model
+        markerlessActiveModels.firstOrNull { !it.isVisible }?.let { m ->
+            val ws = wheelStates.getOrPut(m) { WheelState() }
+            ws.stableFrames = 0
+            ws.isReadyToAnchor = false
+            ws.detectionHits = 0
+            return m
+        }
+        // Create new
         return modelManager.createNewModel(modelPath, coroutineScope).also { m ->
             m.isVisible = false
             arSceneView.addChildNode(m)
             markerlessActiveModels.add(m)
-            modelStates[m] = ModelState()
-        }
-    }
+            val ws = WheelState()
+            wheelStates[m] = ws
 
-    private fun resetModelState(state: ModelState) {
-        state.anchor?.detach()
-        state.anchor = null
-        state.posHistory.clear()
-        state.rotHistory.clear()
-        state.driftFrames = 0
-        state.stableFrames = 0
-        state.detectionHits = 0
-        state.manualOffset = Float3(0f, 0f, 0f)
-    }
-
-    private fun hideStaleModels(claimed: Set<Node>, now: Long) {
-        for (m in markerlessActiveModels) {
-            if (m in claimed) continue
-            val s = modelStates[m] ?: continue
-            if (now - s.lastDetectionTime > DETECTION_TIMEOUT_MS) {
-                m.isVisible = false
-                if (m == selectedModel) selectedModel = null
-                resetModelState(s)
+            // ── Tap handler: place anchor and show adjustment UI ──────────
+            // onSingleTapConfirmed fires on the MAIN thread (touch event)
+            m.onSingleTapConfirmed = { _ ->
+                val state = wheelStates[m]
+                if (state != null) {
+                    if (state.anchor != null) {
+                        // Re-open adjustment for already-anchored model
+                        state.isManuallyLocked = true
+                        selectedModel = m
+                        onShowAdjustmentUI?.invoke(true)    // main thread ✅
+                    } else if (state.isReadyToAnchor) {
+                        // Place anchor NOW at latest tracked position
+                        val bestPos = state.posHistory.lastOrNull() ?: m.position
+                        val bestRot = averageQuaternions(state.rotHistory.toList())
+                            .takeIf { state.rotHistory.isNotEmpty() } ?: m.quaternion
+                        state.anchor = arSceneView.session?.createAnchor(
+                            Pose(
+                                floatArrayOf(bestPos.x, bestPos.y, bestPos.z),
+                                floatArrayOf(bestRot.x, bestRot.y, bestRot.z, bestRot.w)
+                            )
+                        )
+                        state.isManuallyLocked = true
+                        selectedModel = m
+                        onShowAdjustmentUI?.invoke(true)    // main thread ✅
+                    }
+                    // Not ready yet → ignore tap (model hasn't been stable 20 frames)
+                }
+                true
             }
         }
     }
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Math
-    // ═════════════════════════════════════════════════════════════════════
+    // ─────────────────────────────────────────────────────────────────────────
+    // Bbox count helpers
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun getTargetBboxCount(): Int {
+        if (bboxCountHistory.isEmpty()) return 1
+        val sorted = bboxCountHistory.sorted()
+        return sorted[sorted.size / 2]
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Stale model cleanup
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun hideStaleModels(claimed: Set<Node>, now: Long) {
+        for (m in markerlessActiveModels) {
+            if (m in claimed) continue
+            val ws = wheelStates[m] ?: continue
+            if (ws.anchor != null) continue     // anchored → keep visible always
+            if (now - ws.lastDetectionTime > DETECTION_TIMEOUT_MS) {
+                m.isVisible = false
+                if (m == selectedModel) {
+                    selectedModel = null
+                    mainHandler.post { onShowAdjustmentUI?.invoke(false) }
+                }
+                resetState(ws)
+            }
+        }
+    }
+
+    private fun resetState(ws: WheelState) {
+        ws.anchor?.detach()
+        ws.anchor = null
+        ws.posHistory.clear()
+        ws.rotHistory.clear()
+        ws.stableFrames = 0
+        ws.isReadyToAnchor = false
+        ws.detectionHits = 0
+        ws.isManuallyLocked = false
+        ws.manualOffset = Float3(0f, 0f, 0f)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Dynamic FPS — based on total process time + idle detection
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun updateDynamicFPS(totalMs: Long) {
+        currentInterval = when {
+            totalMs > TARGET_MS -> (totalMs + 10L).coerceIn(MIN_INT_MS, MAX_INT_MS)
+            idleFrames > IDLE_THRESH -> (currentInterval + IDLE_STEP).coerceAtMost(MAX_INT_MS)
+            else -> MIN_INT_MS
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Math utilities
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun dist(a: Float3, b: Float3) = length(a - b)
+
     private fun dynamicAlpha(cur: Float3, tgt: Float3): Float {
         val t = ((dist(cur, tgt) - MIN_DIST) / (MAX_DIST - MIN_DIST)).coerceIn(0f, 1f)
         return MIN_ALPHA + (MAX_ALPHA - MIN_ALPHA) * t
@@ -527,109 +675,46 @@ class ARRendering(
     private fun angleBetween(q1: Quaternion, q2: Quaternion) =
         Math.toDegrees(2.0 * acos(abs(dot(q1, q2)).coerceIn(0f, 1f).toDouble())).toFloat()
 
-    private fun dist(a: Float3, b: Float3) = length(a - b)
-    // private fun dist(p1: Pose, p2: Pose) = sqrt((p1.tx() - p2.tx()).pow(2) + (p1.ty() - p2.ty()).pow(2) + (p1.tz() - p2.tz()).pow(2))
-
     private fun List<Float3>.average3() = Float3(
         map { it.x }.average().toFloat(),
         map { it.y }.average().toFloat(),
         map { it.z }.average().toFloat()
     )
 
-    // ═════════════════════════════════════════════════════════════════════
-    // Y-plane
-    // ═════════════════════════════════════════════════════════════════════
-    private fun extractYPlaneData(frame: Frame): FrameYData? {
+    /** Iterative slerp-chain average — accurate for clustered rotations (N≤30). */
+    private fun averageQuaternions(qs: List<Quaternion>): Quaternion {
+        if (qs.isEmpty()) return Quaternion()
+        var avg = qs[0]
+        for (i in 1 until qs.size) avg = slerp(avg, qs[i], 1f / (i + 1f))
+        return avg
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Y-plane extraction (double-buffered)
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun extractYPlane(frame: Frame): FrameYData? {
         val img = try { frame.acquireCameraImage() } catch (e: Exception) { return null }
         return try {
-            val yPlane = img.planes[0].buffer.apply { rewind() }
+            val yp = img.planes[0].buffer.apply { rewind() }
             val w = img.width
             val h = img.height
             val stride = img.planes[0].rowStride
             val size = w * h
 
-            if (yPlaneBufferA == null || yPlaneBufferA!!.size != size) {
-                yPlaneBufferA = ByteArray(size)
-                yPlaneBufferB = ByteArray(size)
+            if (yBufA == null || yBufA!!.size != size) {
+                yBufA = ByteArray(size)
+                yBufB = ByteArray(size)
             }
-            val buf = if (useBufferA) yPlaneBufferA!! else yPlaneBufferB!!
-            useBufferA = !useBufferA
+            val buf = if (useYBufA) yBufA!! else yBufB!!
+            useYBufA = !useYBufA
 
-            if (stride == w) yPlane.get(buf)
+            if (stride == w) yp.get(buf)
             else for (row in 0 until h) {
-                yPlane.position(row * stride)
-                yPlane.get(buf, row * w, w)
+                yp.position(row * stride)
+                yp.get(buf, row * w, w)
             }
-
             FrameYData(buf, w, h, w)
-        } catch (e: Exception) {
-            Log.e(TAG, "Y-plane error", e)
-            null
-        } finally { img.close() }
-    }
-
-    private fun getTargetBBoxCount(): Int {
-        if (bboxCountHistory.isEmpty()) return 0
-        if (bboxCountHistory.size >= QUICK_OVERRIDE_FRAMES) {
-            val last = bboxCountHistory.takeLast(QUICK_OVERRIDE_FRAMES)
-            if (last.all { it == last.first() }) return last.first()
-        }
-        return bboxCountHistory.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key ?: 0
-    }
-
-    // ═════════════════════════════════════════════════════════════════════
-    // Public API
-    // ═════════════════════════════════════════════════════════════════════
-    fun updateNewModel(path: String) {
-        modelPath = path
-        modelPool.forEach { modelManager.changeModel(it, path, coroutineScope) }
-    }
-
-    fun updateModelSize(sizeInch: Float) {
-        val cm = sizeInch * 2.54f
-        snapThreshold = cm / 100f
-        modelPool.forEach { modelManager.changeModelSize(it, cm / 45.72f) }
-    }
-
-    fun clear() {
-        selectedModel = null
-        modelPool.forEach { it.destroy() }
-        modelPool.clear()
-        augmentedImageMap.values.forEach { it.destroy() }
-        augmentedImageMap.clear()
-        modelStates.values.forEach { it.anchor?.detach() }
-        markerlessActiveModels.clear()
-        modelStates.clear()
-        onnxOverlayView.clear()
-    }
-
-    fun setupMarkerDatabase(session: Session, markerSize: Float = 0.15f) {
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                Log.d(TAG, "⏳ Loading marker database…")
-                val db = AugmentedImageDatabase(session)
-                val assets = context.assets
-                assets.list("markers")
-                    ?.filter { it.endsWith(".jpg", true) || it.endsWith(".png", true) }
-                    ?.forEach { fn ->
-                        try { assets.open("markers/$fn").use { s ->
-                            db.addImage(fn.substringBeforeLast("."), BitmapFactory.decodeStream(s), markerSize)
-                            Log.d(TAG, "Marker: $fn ✅")
-                        } } catch (e: Exception) {
-                            Log.e(TAG, "Marker load failed: $fn", e)
-                        }
-                    }
-                withContext(Dispatchers.Main) {
-                    session.configure(session.config.apply {
-                        augmentedImageDatabase = db
-                        updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                        focusMode = Config.FocusMode.AUTO
-                    })
-                    Log.d(TAG, "Marker DB configured ✅")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "setupMarkerDatabase error", e)
-            }
-        }
+        } catch (e: Exception) { null }
+        finally { img.close() }
     }
 }
