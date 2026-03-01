@@ -1,131 +1,85 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import Ionicons from '@react-native-vector-icons/ionicons';
-import { COLORS } from '../../theme/colors';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useForm } from 'react-hook-form';
+import CustomInput from '../../components/CustomInput';
+import { COLORS } from '../../constants/colors';
+import Icon from 'react-native-vector-icons/Ionicons';
 
-export default function ForgotPasswordScreen({ navigation }: any) {
+const ForgotPasswordScreen = () => {
+  const navigation = useNavigation();
+  const [step, setStep] = useState(1); // 1 = Email, 2 = New Password
+  const { control, handleSubmit, watch } = useForm();
+  
+  const pwd = watch('newPassword');
+
+  const onSubmit = (data: any) => {
+    if (step === 1) {
+      console.log('Send Email to:', data.email);
+      // TODO: Call API to send reset email
+      setStep(2);
+    } else {
+      console.log('Reset Password Data:', data);
+      // TODO: Call API to reset password
+      navigation.goBack();
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <View style={styles.content}>
-          {/* Back Button */}
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backBtn}
-          >
-            <Ionicons name="arrow-back" size={24} color={COLORS.text} />
+    <View style={styles.container}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Icon name="chevron-back" size={30} color={COLORS.primary} />
+      </TouchableOpacity>
+
+      <Text style={styles.title}>Forget Password</Text>
+
+      {step === 1 ? (
+        <>
+          <Text style={styles.subtitle}>Enter email address</Text>
+          <CustomInput
+            name="email"
+            placeholder="Email"
+            control={control}
+            rules={{ required: 'Email is required', pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email' } }}
+          />
+          <TouchableOpacity style={styles.button} onPress={handleSubmit(onSubmit)}>
+            <Text style={styles.buttonText}>Send</Text>
           </TouchableOpacity>
-
-          {/* Icon & Header */}
-          <View style={styles.header}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="lock-open" size={40} color={COLORS.primary} />
-            </View>
-            <Text style={styles.title}>Forgot Password?</Text>
-            <Text style={styles.subtitle}>
-              Don't worry! It happens. Please enter the email associated with
-              your account.
-            </Text>
-          </View>
-
-          {/* Form */}
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color={COLORS.textDim}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="Enter your email"
-                placeholderTextColor={COLORS.textDim}
-                style={styles.input}
-                keyboardType="email-address"
-              />
-            </View>
-
-            <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.8}>
-              <Text style={styles.primaryBtnText}>Send Reset Link</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        </>
+      ) : (
+        <>
+          <CustomInput
+            name="newPassword"
+            label="New Password"
+            placeholder="New Password"
+            control={control}
+            rules={{ required: 'Required', minLength: { value: 6, message: 'Min 6 chars' } }}
+          />
+          <CustomInput
+            name="confirmPassword"
+            label="Confirm Password"
+            placeholder="Confirm Password"
+            control={control}
+            rules={{ 
+              validate: (value: string) => value === pwd || 'Passwords do not match' 
+            }}
+          />
+          <TouchableOpacity style={styles.button} onPress={handleSubmit(onSubmit)}>
+            <Text style={styles.buttonText}>Submit</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  content: { flex: 1, padding: 24 },
-  backBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-
-  header: { alignItems: 'center', marginBottom: 40 },
-  iconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: '#EFF6FF', // สีฟ้าอ่อนมากๆ
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.textDim,
-    textAlign: 'center',
-    lineHeight: 22,
-    paddingHorizontal: 20,
-  },
-
-  form: { gap: 20 },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 56,
-  },
-  inputIcon: { marginRight: 12 },
-  input: { flex: 1, color: COLORS.text, fontSize: 16, height: '100%' },
-
-  primaryBtn: {
-    backgroundColor: COLORS.primary,
-    height: 56,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  container: { flex: 1, padding: 24, backgroundColor: COLORS.white, paddingTop: 50 },
+  backButton: { marginBottom: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', color: COLORS.primary, textAlign: 'center', marginBottom: 40 },
+  subtitle: { textAlign: 'center', marginBottom: 20, color: COLORS.text },
+  button: { backgroundColor: COLORS.primary, padding: 15, borderRadius: 30, alignItems: 'center', marginTop: 20 },
+  buttonText: { color: COLORS.white, fontWeight: 'bold', fontSize: 16 },
 });
+
+export default ForgotPasswordScreen;

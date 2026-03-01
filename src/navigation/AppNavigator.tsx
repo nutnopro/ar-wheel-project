@@ -1,131 +1,259 @@
 // src/navigation/AppNavigator.tsx
 import React from 'react';
-import { View, NativeModules, Alert } from 'react-native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import Ionicons from 'react-native-vector-icons/Ionicons';
-import { COLORS } from '../theme/colors';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-// Commons Screens
-import SplashScreen from '../screens/auth/SplashScreen';
+import { ThemeProvider, useTheme } from '../context/ThemeContext';
+import { AuthProvider, useAuth } from '../context/AuthContext';
+import { LanguageProvider, useLanguage } from '../context/LanguageContext';
+
+// User Screens
+import SplashScreen from '../screens/common/SplashScreen';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
-import HomeScreen from '../screens/common/HomeScreen';
-import ProductDetailScreen from '../screens/common/ProductDetailScreen';
-import ProfileScreen from '../screens/common/ProfileScreen';
-import EditProfileScreen from '../screens/common/EditProfileScreen';
-
-// User Screens
+import HomeScreen from '../screens/user/HomeScreen';
+import ProductDetailScreen from '../screens/user/ProductDetailScreen';
+import ArScreen from '../screens/user/ArScreen';
+import ProfileScreen from '../screens/user/ProfileScreen';
 import FavoritesScreen from '../screens/user/FavoritesScreen';
-
-// Store Screens
-import StoreModelsScreen from '../screens/store/StoreModelsScreen';
-import StoreAddEditModelScreen from '../screens/store/StoreAddEditModelScreen';
-import StoreStatisticsScreen from '../screens/store/StoreStatisticsScreen';
+import EditProfileScreen from '../screens/user/EditProfileScreen';
+import ChangePasswordScreen from '../screens/user/ChangePasswordScreen';
+import LanguageScreen from '../screens/user/LanguageScreen';
+import ARPreferencesScreen from '../screens/user/ARPreferencesScreen';
 
 // Admin Screens
-import SystemManagementScreen from '../screens/admin/SystemManagementScreen';
 import ManageUsersScreen from '../screens/admin/ManageUsersScreen';
 import ManageStoresScreen from '../screens/admin/ManageStoresScreen';
-import AdminModelsScreen from '../screens/admin/AdminModelsScreen';
-import AdminAddEditModelScreen from '../screens/admin/AdminAddEditModelScreen';
 import ManageCategoriesScreen from '../screens/admin/ManageCategoriesScreen';
-import LogsScreen from '../screens/admin/LogsScreen';
-import SystemStatisticsScreen from '../screens/admin/SystemStatisticsScreen';
+import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
+import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Splash: undefined;
+  SignIn: undefined;
+  Register: undefined;
+  ForgotPassword: undefined;
+  MainApp: undefined;
+  ProductDetail: { item: any };
+  Favorites: undefined;
+  EditProfile: undefined;
+  ChangePassword: undefined;
+  Language: undefined;
+  ARPreferences: undefined;
+
+  // Admin
+  ManageUsers: undefined;
+  ManageStores: undefined;
+  ManageModels: undefined;
+  ManageCategories: undefined;
+  SystemLogs: undefined;
+};
+
+const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
-const { ARLauncher } = NativeModules;
 
-// Placeholder สำหรับปุ่ม AR
-const ARPlaceholder = () => (
-  <View style={{ flex: 1, backgroundColor: '#000' }} />
-);
+// --- Main Tab Navigator ---
+function MainTabNavigator() {
+  const { theme } = useTheme();
+  const { t } = useLanguage();
 
-function MainTabs() {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textDim,
-        tabBarStyle: { height: 60, paddingBottom: 10, paddingTop: 10 },
-        tabBarIcon: ({ color, size }) => {
-          let iconName = 'home-outline';
-          if (route.name === 'Home') iconName = 'home-outline';
-          else if (route.name === 'AR') iconName = 'cube-outline';
-          else if (route.name === 'Profile') iconName = 'person-outline';
-          return <Ionicons name={iconName as any} size={size} color={color} />;
-        },
-      })}
+        tabBarShowLabel: false,
+        tabBarStyle: [styles.tabBarContainer, { backgroundColor: theme.card, shadowColor: theme.text }],
+      }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen
-        name="AR"
-        component={ARPlaceholder}
-        listeners={{
-          tabPress: e => {
-            e.preventDefault();
-            if (ARLauncher && ARLauncher.openARActivity) {
-              ARLauncher.openARActivity();
-            } else {
-              Alert.alert('AR Error', 'AR Module not found');
-            }
-          },
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.iconContainer}>
+              <Icon
+                name={focused ? 'home' : 'home-outline'}
+                size={28}
+                color={focused ? theme.icon : theme.subText}
+              />
+              <Text style={[styles.label, { color: focused ? theme.icon : theme.subText }]}>
+                {t.tab_home}
+              </Text>
+            </View>
+          ),
         }}
       />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen
+        name="AR"
+        component={ArScreen}
+        options={{
+          tabBarStyle: { display: 'none' },
+          tabBarIcon: () => (
+            <View style={styles.arButtonWrapper}>
+              <View style={styles.diamondShape}>
+                <View style={{ transform: [{ rotate: '-45deg' }] }}>
+                  <Icon name="cube-scan" size={30} color="white" />
+                </View>
+              </View>
+              <Text style={styles.arLabel}>{t.tab_ar}</Text>
+            </View>
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <View style={styles.iconContainer}>
+              <Icon
+                name={focused ? 'account' : 'account-outline'}
+                size={28}
+                color={focused ? theme.icon : theme.subText}
+              />
+              <Text style={[styles.label, { color: focused ? theme.icon : theme.subText }]}>
+                {t.tab_profile}
+              </Text>
+            </View>
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
 
-export default function AppNavigator() {
+// --- App Navigation Wrapper ---
+const AppNavigationWrapper = () => {
+  const { userRole } = useAuth();
+  const { t } = useLanguage();
+  const { theme } = useTheme();
+
+  const renderBackButton = (navigation: any) => (
+    <TouchableOpacity
+      onPress={() => navigation.goBack()}
+      style={{ paddingRight: 15, paddingVertical: 5 }}
+    >
+      <Icon name="arrow-left" size={24} color={theme.text} />
+    </TouchableOpacity>
+  );
+
+  const adminSubPageOptions = ({ navigation, route }: any) => ({
+    headerShown: true,
+    title: route.name.replace(/([A-Z])/g, ' $1').trim(),
+    headerStyle: { backgroundColor: theme.card },
+    headerTintColor: theme.text,
+    headerTitleStyle: { fontWeight: 'bold' as const },
+    headerLeft: () => renderBackButton(navigation),
+    headerShadowVisible: false,
+  });
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {/* --- Auth Flow --- */}
-      <Stack.Screen name="Splash" component={SplashScreen} />
-      <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
-      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+    <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+      {userRole === null ? (
+        <>
+          <Stack.Screen name="Splash" component={SplashScreen} />
+          <Stack.Screen name="SignIn" component={LoginScreen} />
+          <Stack.Screen name="Register" component={RegisterScreen} />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        </>
+      ) : (
+        <>
+          <Stack.Screen name="MainApp" component={MainTabNavigator} />
 
-      {/* --- Main Flow (User) --- */}
-      <Stack.Screen name="MainTabs" component={MainTabs} />
-      <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
-      <Stack.Screen name="Favorites" component={FavoritesScreen} />
-      <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          {/* User Screens */}
+          <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
+          <Stack.Screen name="Favorites" component={FavoritesScreen} />
+          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+          <Stack.Screen name="Language" component={LanguageScreen} />
+          <Stack.Screen name="ARPreferences" component={ARPreferencesScreen} />
 
-      {/* --- Store Flow --- */}
-      <Stack.Screen name="StoreModels" component={StoreModelsScreen} />
-      <Stack.Screen
-        name="StoreAddEditModel"
-        component={StoreAddEditModelScreen}
-      />
-      <Stack.Screen name="StoreStatistics" component={StoreStatisticsScreen} />
-
-      {/* --- Admin Flow --- */}
-      <Stack.Screen
-        name="SystemManagement"
-        component={SystemManagementScreen}
-      />
-      <Stack.Screen name="AdminStatistics" component={SystemStatisticsScreen} />
-
-      {/* Admin: Management List Group */}
-      <Stack.Screen name="ManageUsers" component={ManageUsersScreen} />
-      <Stack.Screen name="ManageStores" component={ManageStoresScreen} />
-      <Stack.Screen
-        name="ManageCategories"
-        component={ManageCategoriesScreen}
-      />
-
-      {/* Admin: Model Management */}
-      <Stack.Screen name="AdminModels" component={AdminModelsScreen} />
-      <Stack.Screen
-        name="AdminAddEditModel"
-        component={AdminAddEditModelScreen}
-      />
-
-      <Stack.Screen name="Logs" component={LogsScreen} />
+          {/* Admin Screens: แสดงเฉพาะเมื่อ role === 'admin' */}
+          {userRole === 'admin' && (
+            <>
+              <Stack.Screen
+                name="ManageUsers"
+                component={ManageUsersScreen}
+                options={adminSubPageOptions}
+              />
+              <Stack.Screen
+                name="ManageStores"
+                component={ManageStoresScreen}
+                options={adminSubPageOptions}
+              />
+              <Stack.Screen
+                name="ManageCategories"
+                component={ManageCategoriesScreen}
+                options={adminSubPageOptions}
+              />
+              <Stack.Screen
+                name="ManageModels"
+                component={ManageModelsScreen}
+                options={adminSubPageOptions}
+              />
+              <Stack.Screen
+                name="SystemLogs"
+                component={SystemLogsScreen}
+                options={adminSubPageOptions}
+              />
+            </>
+          )}
+        </>
+      )}
     </Stack.Navigator>
   );
+};
+
+export default function AppNavigator() {
+  return (
+    <AuthProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <NavigationContainer>
+            <AppNavigationWrapper />
+          </NavigationContainer>
+        </LanguageProvider>
+      </ThemeProvider>
+    </AuthProvider>
+  );
 }
+
+const styles = StyleSheet.create({
+  tabBarContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    height: 70,
+    borderRadius: 35,
+    borderTopWidth: 0,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  iconContainer: { alignItems: 'center', justifyContent: 'center', top: 0 },
+  label: { fontSize: 10, fontWeight: '600', marginTop: 4 },
+  arButtonWrapper: { alignItems: 'center', justifyContent: 'center', top: -20 },
+  diamondShape: {
+    width: 56,
+    height: 56,
+    backgroundColor: '#2563EB',
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    transform: [{ rotate: '45deg' }],
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 5,
+    elevation: 8,
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  arLabel: { color: '#2563EB', marginTop: 10, fontWeight: 'bold', fontSize: 11 },
+});

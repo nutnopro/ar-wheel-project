@@ -1,176 +1,199 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from 'react-native';
-import Ionicons from '@react-native-vector-icons/ionicons';
-import { COLORS } from '../../theme/colors';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { useForm } from 'react-hook-form';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../navigation/AppNavigator';
 
-export default function RegisterScreen({ navigation }: any) {
+import CustomInput from '../../components/CustomInput';
+import { COLORS } from '../../constants/colors';
+
+// ✅ 1. Import Service เพื่อใช้ยิง API
+import { authService } from '../../services/authService';
+
+type RegisterScreenProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
+
+const RegisterScreen = () => {
+  const navigation = useNavigation<RegisterScreenProp>();
   const [showPassword, setShowPassword] = useState(false);
+  
+  // เพิ่ม loading state เผื่อตอนเน็ตช้าหรือ Server ประมวลผล
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { control, handleSubmit } = useForm();
+
+  // ✅ 2. ฟังก์ชันสมัครสมาชิกที่เชื่อมต่อ Backend แล้ว
+  const onRegisterPressed = async (data: any) => {
+    if (isLoading) return; // ป้องกันการกดรัวๆ
+
+    setIsLoading(true);
+    try {
+      console.log('📝 Raw Form Data:', data);
+
+      // 🛠️ แปลงข้อมูล (Mapping) ให้ตรงกับที่ Backend ต้องการ
+      // Form เราใช้ชื่อ 'dob' แต่ Backend น่าจะรอรับ 'dateOfBirth'
+      const newUser = {
+        username: data.username,
+        password: data.password,
+        email: data.email,
+        phoneNumber: data.phoneNumber,
+        dateOfBirth: data.dob, // 👈 ส่งค่า dob ไปในชื่อ dateOfBirth
+      };
+
+      console.log('🚀 Sending Registration to Backend:', newUser);
+
+      // ยิง API ไปที่ NestJS
+      await authService.register(newUser);
+
+      // ถ้าไม่มี Error เด้ง แสดงว่าสมัครสำเร็จ
+      Alert.alert("Success", "Account created successfully!", [
+        { text: "OK", onPress: () => navigation.navigate('SignIn') }
+      ]);
+
+    } catch (error: any) {
+      console.error("Register Error:", error);
+      
+      // ดึงข้อความ Error จาก Backend มาแสดง (ถ้ามี)
+      const errorMessage = error.response?.data?.message || "Registration failed. Please try again.";
+      Alert.alert("Registration Failed", errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onSignInPressed = () => {
+    navigation.navigate('SignIn');
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1 }}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
-          <View style={{ marginBottom: 30 }}>
-            <TouchableOpacity
-              onPress={() => navigation.goBack()}
-              style={styles.backBtn}
-            >
-              <Ionicons name="arrow-back" size={24} color={COLORS.text} />
-            </TouchableOpacity>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Sign up to get started!</Text>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
+      <View style={styles.container}>
+        
+        {/* --- ปุ่ม Back --- */}
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => navigation.goBack()}
+        >
+          <Icon name="chevron-left" size={40} color={COLORS.primary} />
+        </TouchableOpacity>
+
+        {/* โลโก้ล้อรถให้ตรงกับ Splash/Login */}
+        <View style={styles.logoWrapper}>
+          <View style={styles.logoCircle}>
+            <Icon name="steering" size={40} color={COLORS.primary} />
           </View>
+        </View>
 
-          {/* Form */}
-          <View style={styles.form}>
-            {/* Name */}
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="person-outline"
-                size={20}
-                color={COLORS.textDim}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="Full Name"
-                placeholderTextColor={COLORS.textDim}
-                style={styles.input}
-              />
-            </View>
+        <Text style={styles.title}>New Account</Text>
 
-            {/* Email */}
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="mail-outline"
-                size={20}
-                color={COLORS.textDim}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="Email Address"
-                placeholderTextColor={COLORS.textDim}
-                style={styles.input}
-                keyboardType="email-address"
-              />
-            </View>
+        <CustomInput
+          name="username"
+          label="Username"
+          placeholder="Username"
+          control={control}
+          rules={{ required: 'Username is required' }}
+        />
 
-            {/* Password */}
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color={COLORS.textDim}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="Password"
-                placeholderTextColor={COLORS.textDim}
-                style={styles.input}
-                secureTextEntry={!showPassword}
-              />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                <Ionicons
-                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                  size={20}
-                  color={COLORS.textDim}
-                />
-              </TouchableOpacity>
-            </View>
+        <CustomInput
+          name="password"
+          label="Password"
+          placeholder="Password"
+          control={control}
+          secureTextEntry={!showPassword}
+          rightIcon={showPassword ? 'eye-off' : 'eye'}
+          onRightIconPress={() => setShowPassword(!showPassword)}
+          rules={{ 
+            required: 'Password is required',
+            minLength: { value: 6, message: 'Password must be at least 6 characters' }
+          }}
+        />
 
-            {/* Confirm Password */}
-            <View style={styles.inputContainer}>
-              <Ionicons
-                name="lock-closed-outline"
-                size={20}
-                color={COLORS.textDim}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                placeholder="Confirm Password"
-                placeholderTextColor={COLORS.textDim}
-                style={styles.input}
-                secureTextEntry={!showPassword}
-              />
-            </View>
+        <CustomInput
+          name="email"
+          label="Email"
+          placeholder="Email"
+          control={control}
+          rules={{ 
+            required: 'Email is required',
+            pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email format' }
+          }}
+        />
 
-            {/* Sign Up Button */}
-            <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.8}>
-              <Text style={styles.primaryBtnText}>Sign Up</Text>
-            </TouchableOpacity>
-          </View>
+        <CustomInput
+          name="phoneNumber"
+          label="Phone Number"
+          placeholder="Phone Number"
+          control={control}
+          rules={{ required: 'Phone Number is required' }}
+        />
 
-          {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Already have an account? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
-              <Text style={styles.linkText}>Login</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <CustomInput
+          name="dob"
+          label="Date Of Birth"
+          placeholder="DD/MM/YYYY"
+          control={control}
+          rules={{ 
+            required: 'Date of Birth is required',
+            pattern: { value: /^\d{2}\/\d{2}\/\d{4}$/, message: 'Format: DD/MM/YYYY' }
+          }}
+        />
+
+        {/* ปุ่ม Sign Up */}
+        <TouchableOpacity 
+            style={[styles.button, isLoading && { opacity: 0.7 }]} 
+            onPress={handleSubmit(onRegisterPressed)}
+            disabled={isLoading}
+        >
+          <Text style={styles.buttonText}>
+            {isLoading ? "Signing up..." : "Sign Up"}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Already have an account? </Text>
+          <TouchableOpacity onPress={onSignInPressed}>
+            <Text style={styles.linkText}>Sign in</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </ScrollView>
   );
-}
+};
 
-// ใช้ Styles เดียวกับ LoginScreen ได้เลย แต่ขอแปะให้ครบเพื่อความสะดวก
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  scrollContent: { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  backBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
+  scrollContainer: { flexGrow: 1, backgroundColor: COLORS.white },
+  container: { flex: 1, padding: 24, paddingTop: 20 },
+  logoWrapper: {
+    alignItems: 'center',
     marginBottom: 10,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  subtitle: { fontSize: 16, color: COLORS.textDim },
-  form: { gap: 16, marginTop: 20 },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 56,
-  },
-  inputIcon: { marginRight: 12 },
-  input: { flex: 1, color: COLORS.text, fontSize: 16, height: '100%' },
-  primaryBtn: {
-    backgroundColor: COLORS.primary,
-    height: 56,
-    borderRadius: 16,
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#EFF6FF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 16,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
+    marginBottom: 10,
   },
-  primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 30 },
-  footerText: { color: COLORS.textDim, fontSize: 16 },
-  linkText: { color: COLORS.primary, fontSize: 16, fontWeight: 'bold' },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginLeft: -10,
+    marginBottom: 10,
+  },
+  title: { 
+    fontSize: 28, 
+    fontWeight: 'bold', 
+    color: COLORS.primary, 
+    textAlign: 'center', 
+    marginBottom: 30 
+  },
+  button: { backgroundColor: COLORS.primary, padding: 15, borderRadius: 30, alignItems: 'center', marginTop: 10, marginBottom: 20 },
+  buttonText: { color: COLORS.white, fontWeight: 'bold', fontSize: 16 },
+  footer: { flexDirection: 'row', justifyContent: 'center' },
+  footerText: { color: '#888', fontSize: 12 },
+  linkText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 12 },
 });
+
+export default RegisterScreen;

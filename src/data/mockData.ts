@@ -1,75 +1,61 @@
-// src/data/mockData.js
-export const MockData = [
+// src/data/mockData.ts
+
+// 1. ประกาศ Interface ให้ตรงกับที่หน้า Home เรียกใช้
+export interface Wheel {
+  id: string;
+  name: string;
+  price: number;
+  image: string; 
+  brand: string; // บรรทัดนี้สำคัญมาก โค้ดหน้า Home เรียกใช้ตัวนี้
+}
+
+// 2. ข้อมูลตัวอย่าง
+//    เพื่อให้ "ทุกภาพ" ในแอปใช้โมเดลล้อ demo ตัวเดียวกัน
+//    เราจะใช้ URL เดียวกันสำหรับทุก item
+const DEMO_WHEEL_IMAGE =
+  'https://img.freepik.com/free-photo/car-wheel-isolated-white-background_1012-320.jpg';
+
+export const MOCK_WHEELS: Wheel[] = [
   {
-    id: 1,
-    name: 'Sport Classic',
-    brand: 'Racing Pro',
-    price: '8,900',
-    size: 15,
-    material: 'Alloy',
-    img: 'https://images.unsplash.com/photo-1617469165781-8dca0d24dd47?q=80&w=640&auto=format&fit=crop',
+    id: '1',
+    name: 'BBS FI-R',
+    price: 8500,
+    image: DEMO_WHEEL_IMAGE, 
+    brand: 'Sport'
   },
   {
-    id: 2,
-    name: 'Urban Style',
-    brand: 'City Drive',
-    price: '7,500',
-    size: 15,
-    material: 'Steel',
-    img: 'https://images.unsplash.com/photo-1595717579655-587eb7c1575e?q=80&w=640&auto=format&fit=crop',
+    id: '2',
+    name: 'Vossen HF-5',
+    price: 3200,
+    image: DEMO_WHEEL_IMAGE,
+    brand: 'Luxury'
   },
   {
-    id: 3,
-    name: 'Performance Pro',
-    brand: 'Racing Elite',
-    price: '10,500',
-    size: 16,
-    material: 'Alloy',
-    img: 'https://images.unsplash.com/photo-1517946132621-7a3bb2f0b2ae?q=80&w=640&auto=format&fit=crop',
+    id: '3',
+    name: 'Rays TE37',
+    price: 4500,
+    image: DEMO_WHEEL_IMAGE,
+    brand: 'Sport'
   },
   {
-    id: 4,
-    name: 'Modern Design',
-    brand: 'Urban Tech',
-    price: '9,800',
-    size: 16,
-    material: 'Forged',
-    img: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?q=80&w=640&auto=format&fit=crop',
+    id: '4',
+    name: 'Enkei RPF1',
+    price: 1500,
+    image: DEMO_WHEEL_IMAGE,
+    brand: 'Classic'
   },
   {
-    id: 5,
-    name: 'Ultra Sport',
-    brand: 'Max Performance',
-    price: '13,500',
-    size: 17,
-    material: 'Carbon',
-    img: 'https://images.unsplash.com/photo-1592813630413-9f0402c2fd90?q=80&w=640&auto=format&fit=crop',
+    id: '5',
+    name: 'HRE P101',
+    price: 9500,
+    image: DEMO_WHEEL_IMAGE,
+    brand: 'Luxury'
   },
   {
-    id: 6,
-    name: 'Executive Line',
-    brand: 'Luxury Motors',
-    price: '15,800',
-    size: 17,
-    material: 'Forged',
-    img: 'https://images.unsplash.com/photo-1542281286-9e0a16bb7366?q=80&w=640&auto=format&fit=crop',
-  },
-  {
-    id: 7,
-    name: 'Super Sport',
-    brand: 'Turbo Rim',
-    price: '18,500',
-    size: 18,
-    material: 'Carbon',
-    img: 'https://images.unsplash.com/photo-1592194996308-7b43878e84a6?q=80&w=640&auto=format&fit=crop',
-  },
-  {
-    id: 8,
-    name: 'Luxury Sport',
-    brand: 'Diamond Cut',
-    price: '21,200',
-    size: 18,
-    material: 'Forged',
-    img: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=640&auto=format&fit=crop',
+    id: '6',
+    name: 'OZ Racing',
+    price: 2100,
+    image: DEMO_WHEEL_IMAGE,
+    brand: 'Sport'
   },
 ];

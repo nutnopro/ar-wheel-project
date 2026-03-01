@@ -1,289 +1,74 @@
-//src/screens/user/FavoritesScreen.tsx
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  FlatList,
-  StyleSheet,
-  Image,
-  TouchableOpacity,
-  SafeAreaView,
-  Alert,
-} from 'react-native';
-import Ionicons from '@react-native-vector-icons/ionicons';
-import { COLORS } from '../../theme/colors';
+import React from 'react';
+import { View, Text, FlatList, Image, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { MOCK_WHEELS } from '../../data/mockData';
+import { useTheme } from '../../context/ThemeContext'; // เรียกใช้ธีม
 
-// Mock Data สำหรับทดสอบ (ระบบจริงจะดึงจาก Context/Database)
-const MOCK_FAVORITES = [
-  {
-    id: 1,
-    name: 'Sport Classic',
-    brand: 'Racing Pro',
-    price: 8900,
-    size: 15,
-    img: null,
-  },
-  {
-    id: 3,
-    name: 'Performance Pro',
-    brand: 'Racing Elite',
-    price: 10500,
-    size: 16,
-    img: null,
-  },
-  {
-    id: 4,
-    name: 'Drift King',
-    brand: 'Sideways',
-    price: 12000,
-    size: 17,
-    img: null,
-  },
-];
+const { width } = Dimensions.get('window');
+const COLUMN_WIDTH = width / 2 - 24;
 
-export default function FavoritesScreen({ navigation }: any) {
-  const [favorites, setFavorites] = useState(MOCK_FAVORITES);
+import Header from '../../components/Header'; // Import Header
 
-  // ฟังก์ชันลบรายการ
-  const handleRemove = (id: number) => {
-    Alert.alert(
-      'ลบรายการ',
-      'คุณต้องการลบสินค้านี้ออกจากรายการโปรดใช่หรือไม่?',
-      [
-        { text: 'ยกเลิก', style: 'cancel' },
-        {
-          text: 'ลบ',
-          style: 'destructive',
-          onPress: () =>
-            setFavorites(prev => prev.filter(item => item.id !== id)),
-        },
-      ],
-    );
-  };
+const FavoritesScreen = () => {
+  const navigation = useNavigation<any>();
+  const { theme } = useTheme();
 
-  // UI เมื่อไม่มีสินค้าในรายการ
-  const renderEmptyState = () => (
-    <View style={styles.emptyContainer}>
-      <View style={styles.emptyIconBg}>
-        <Ionicons
-          name="heart-dislike-outline"
-          size={60}
-          color={COLORS.textDim}
-        />
-      </View>
-      <Text style={styles.emptyTitle}>ยังไม่มีรายการโปรด</Text>
-      <Text style={styles.emptySub}>
-        กดหัวใจที่สินค้าที่คุณสนใจ{'\n'}เพื่อบันทึกไว้ดูภายหลัง
-      </Text>
-      <TouchableOpacity
-        style={styles.browseButton}
-        onPress={() => navigation.navigate('Home')}
-      >
-        <Text style={styles.browseButtonText}>เลือกชมสินค้า</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  // จำลองว่า User กด Favorite สินค้า 2 ตัวแรกไว้
+  const favoriteItems = MOCK_WHEELS.slice(0, 2);
 
-  // UI ของแต่ละรายการ (Card แนวนอน)
-  const renderItem = ({ item }: any) => (
+  const renderItem = ({ item }: { item: any }) => (
     <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.7}
-      onPress={() => navigation.navigate('ProductDetail', { product: item })}
+      activeOpacity={0.9}
+      style={[styles.card, { backgroundColor: theme.card }]}
+      onPress={() => navigation.navigate('ProductDetail', { item })}
     >
-      {/* รูปภาพจำลอง */}
-      <View style={styles.imageBox}>
-        <Image
-          source={{ uri: 'https://via.placeholder.com/150' }}
-          style={styles.image}
-        />
+      <View style={styles.imageContainer}>
+        <Image source={{ uri: item.image }} style={styles.image} resizeMode="contain" />
       </View>
-
-      {/* ข้อมูลสินค้า */}
-      <View style={styles.infoBox}>
-        <View>
-          <Text style={styles.brand}>{item.brand}</Text>
-          <Text style={styles.name} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text style={styles.specs}>ขนาด {item.size} นิ้ว</Text>
-        </View>
-        <Text style={styles.price}>฿{item.price.toLocaleString()}</Text>
+      <View style={styles.cardContent}>
+        <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.cardPrice}>${item.price.toLocaleString()}</Text>
+        <Text style={styles.cardCategory}>{item.brand}</Text>
       </View>
-
-      {/* ปุ่มลบ (ถังขยะ) */}
-      <TouchableOpacity
-        style={styles.deleteBtn}
-        onPress={() => handleRemove(item.id)}
-      >
-        <Ionicons name="trash-outline" size={20} color={COLORS.error} />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>รายการโปรด</Text>
-        <Text style={styles.itemCount}>{favorites.length} รายการ</Text>
-      </View>
-
-      {/* Content */}
-      <View style={styles.content}>
-        {favorites.length > 0 ? (
-          <FlatList
-            data={favorites}
-            keyExtractor={item => item.id.toString()}
-            renderItem={renderItem}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            showsVerticalScrollIndicator={false}
-          />
-        ) : (
-          renderEmptyState()
-        )}
-      </View>
-    </SafeAreaView>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <Header title="Favorites" />
+      <FlatList
+        data={favoriteItems}
+        renderItem={renderItem}
+        keyExtractor={(item) => item.id}
+        numColumns={2}
+        columnWrapperStyle={styles.row}
+        contentContainerStyle={styles.listContent}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={{ color: theme.subText }}>No favorites yet.</Text>
+          </View>
+        }
+      />
+    </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'baseline',
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '900',
-    color: COLORS.text,
-  },
-  itemCount: {
-    fontSize: 14,
-    color: COLORS.textDim,
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 10,
-  },
-  // Card Styles
+  container: { flex: 1 },
+  listContent: { padding: 16 },
+  row: { justifyContent: 'space-between' },
   card: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-    alignItems: 'center',
-    // Shadow
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    width: COLUMN_WIDTH, borderRadius: 16, marginBottom: 16,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2, overflow: 'hidden',
   },
-  imageBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 16,
-  },
-  image: {
-    width: 60,
-    height: 60,
-    resizeMode: 'contain',
-  },
-  infoBox: {
-    flex: 1,
-    justifyContent: 'space-between',
-    height: 80,
-    paddingVertical: 2,
-  },
-  brand: {
-    fontSize: 12,
-    color: COLORS.textDim,
-    fontWeight: '600',
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  specs: {
-    fontSize: 12,
-    color: COLORS.secondary,
-    backgroundColor: '#F1F5F9',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  price: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  deleteBtn: {
-    padding: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Empty State Styles
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 60,
-  },
-  emptyIconBg: {
-    width: 120,
-    height: 120,
-    backgroundColor: '#F1F5F9',
-    borderRadius: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  emptySub: {
-    fontSize: 14,
-    color: COLORS.textDim,
-    textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 32,
-  },
-  browseButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    backgroundColor: COLORS.primary,
-    borderRadius: 30,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  browseButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  imageContainer: { height: 130, backgroundColor: '#F1F5F9', justifyContent: 'center', alignItems: 'center' },
+  image: { width: '80%', height: '80%' },
+  cardContent: { padding: 12 },
+  cardTitle: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
+  cardPrice: { fontSize: 15, fontWeight: 'bold', color: '#2563EB', marginBottom: 2 },
+  cardCategory: { fontSize: 11, color: '#94A3B8' },
+  emptyContainer: { alignItems: 'center', marginTop: 50 },
 });
+
+export default FavoritesScreen;
