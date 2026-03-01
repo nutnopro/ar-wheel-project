@@ -12,7 +12,7 @@ const api = axios.create({
   // ⚠️ IMPORTANT: แก้ IP Address ให้ตรงกับ backend ของคุณ
   // - Emulator Android: ใช้ 'http://10.0.2.2:3000'
   // - Device จริง: ใช้ 'http://<IP เครื่องคอมของคุณ>:3000'
-  baseURL: 'http://10.0.2.2:3000',
+  baseURL: 'https://ar-alloy-api.onrender.com',
   timeout: 60000,
   headers: {
     'Content-Type': 'application/json',
