@@ -6,9 +6,9 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
-import { Controller } from 'react-hook-form';
+import { Controller, RegisterOptions } from 'react-hook-form';
 import { COLORS } from '../constants/colors';
-import Icon from 'react-native-vector-icons/Ionicons'; // ตรวจสอบว่าลง library นี้แล้ว
+import Icon from 'react-native-vector-icons/Ionicons';
 
 interface CustomInputProps {
   control: any;
@@ -16,7 +16,7 @@ interface CustomInputProps {
   placeholder: string;
   label?: string;
   secureTextEntry?: boolean;
-  rules?: object;
+  rules?: RegisterOptions;
   rightIcon?: string;
   onRightIconPress?: () => void;
 }

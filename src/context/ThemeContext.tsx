@@ -22,15 +22,18 @@ export const themes = {
   },
 };
 
-const ThemeContext = createContext<any>(null);
+export type ThemeType = typeof themes.light;
+interface ThemeContextType {
+  isDarkMode: boolean;
+  toggleTheme: () => void;
+  theme: ThemeType;
+}
+
+const ThemeContext = createContext<ThemeContextType>({} as ThemeContextType);
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [isDarkMode, setIsDarkMode] = useState(false);
-
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
-
+  const toggleTheme = () => setIsDarkMode(!isDarkMode);
   const theme = isDarkMode ? themes.dark : themes.light;
 
   return (

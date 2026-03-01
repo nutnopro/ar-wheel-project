@@ -11,7 +11,6 @@ import {
   removeUserData,
 } from '../utils/storage';
 
-// ✅ เพิ่ม role 'store' ให้ครบตามระบบจริง
 export type UserRole = 'visitor' | 'user' | 'store' | 'admin' | null;
 
 interface AuthContextType {
@@ -36,6 +35,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const checkLogin = () => {
       const token = getToken();
       const savedUser = getUserData();
+
+      // ✅ ตรวจสอบสถานะ Visitor
+      if (savedUser?.role === 'visitor') {
+        setUserRole('visitor');
+        return;
+      }
+
       if (token && savedUser) {
         setUserData(savedUser);
         // ถ้า backend ส่ง role มา: 'visitor' | 'user' | 'store' | 'admin'
@@ -52,10 +58,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const response = await authService.login(emailOrUser, pass);
       const { access_token, user } = response.data;
-
-      if (!access_token) {
-        throw new Error('No access token received');
-      }
+      if (!access_token) throw new Error('No access token received');
 
       // บันทึกลงเครื่อง
       setToken(access_token);
@@ -78,6 +81,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setTimeout(() => {
       setUserRole('visitor');
       setUserData(null);
+      setStorageUser({ role: 'visitor' });
       setIsLoading(false);
     }, 500);
   };

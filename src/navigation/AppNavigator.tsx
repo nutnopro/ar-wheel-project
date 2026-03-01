@@ -31,6 +31,7 @@ import ManageStoresScreen from '../screens/admin/ManageStoresScreen';
 import ManageCategoriesScreen from '../screens/admin/ManageCategoriesScreen';
 import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
 import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
+import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -46,6 +47,7 @@ export type RootStackParamList = {
   ARPreferences: undefined;
 
   // Admin
+  AdminDashboard: undefined;
   ManageUsers: undefined;
   ManageStores: undefined;
   ManageModels: undefined;
@@ -197,6 +199,11 @@ const AppNavigationWrapper = () => {
           {/* Admin Screens: แสดงเฉพาะเมื่อ role === 'admin' */}
           {userRole === 'admin' && (
             <>
+              <Stack.Screen
+                name="AdminDashboard"
+                component={AdminDashboardScreen}
+                options={adminSubPageOptions}
+              />
               <Stack.Screen
                 name="ManageUsers"
                 component={ManageUsersScreen}
