@@ -25,7 +25,7 @@ const HomeScreen = () => {
 
   return (
     <View style={homeStyles.container}>
-      <Text style={homeStyles.label}>Demo App</Text>
+      <Text style={homeStyles.label}>Demo App Test on S23 Ultra</Text>
       <TouchableOpacity style={homeStyles.button} onPress={openAR}>
         <Text style={homeStyles.buttonText}>Open AR Scene</Text>
       </TouchableOpacity>
