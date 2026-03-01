@@ -49,36 +49,6 @@ data class RefinedResult(
     val isFound: Boolean
 )
 
-// single candidate world position ranked by circularity
-data class TrackedPos(
-    val pos: Float3,
-    val circularity: Float
-)
-
-// A single candidate world rotation ranked by circularity
-data class TrackedRot(
-    val rot: Quaternion,
-    val circularity: Float
-)
-
-// ──────────────────────────────────────────────
-// Per-model tracking state
-// ──────────────────────────────────────────────
-data class ModelState(
-    var anchor: Anchor? = null,
-    var lastDetectionTime: Long = 0L,
-    var detectionHits: Int = 0,
-    val posHistory: MutableList<TrackedPos> = mutableListOf(),
-    var bestPos: Float3 = Float3(0f, 0f, 0f),
-    val rotHistory: MutableList<TrackedRot> = mutableListOf(),
-    var bestRot: Quaternion = Quaternion(),
-    var lastStablePos: Float3? = null,
-    var driftFrames: Int = 0,
-    var stableFrames: Int = 0,      // consecutive high-circularity frames → triggers anchor creation
-    var isManuallyLocked: Boolean = false,
-    var manualOffset: Float3 = Float3(0f, 0f, 0f)
-)
-
 // ──────────────────────────────────────────────
 // Extensions
 // ──────────────────────────────────────────────

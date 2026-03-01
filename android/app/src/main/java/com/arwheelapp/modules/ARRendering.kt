@@ -34,28 +34,17 @@ private class WheelState {
     var isManuallyLocked: Boolean = false
     var manualOffset: Float3 = Float3(0f, 0f, 0f)
 
-    // Position & rotation history (max 30 entries each)
-    val posHistory: ArrayDeque<Float3> = ArrayDeque(30)
-    val rotHistory: ArrayDeque<Quaternion> = ArrayDeque(30)
-
     // Whether the model is stable enough to be anchor-placed on tap
     var isReadyToAnchor: Boolean = false
     var stableFrames: Int = 0
-
-    // Smoothed render values
-    var renderPos: Float3 = Float3(0f, 0f, 0f)
-    var renderRot: Quaternion = Quaternion()
 
     // Detection bookkeeping
     var detectionHits: Int = 0
     var lastDetectionTime: Long = 0L
 
-    // 2D screen tracking (for overlap check & bbox validation)
-    var lastScreen2D: Float2 = Float2(0f, 0f)
-    var screenRadius2D: Float = 0f
-
-    // useRecentAvg transition
-    var useRecentAvg: Boolean = false
+    // Used to check the stability of the last position (for use in counting stableFrames)
+    var lastCenter: Float3? = null
+    var lastRot: Quaternion? = null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -359,18 +348,25 @@ class ARRendering(
             // ── 2. Center = average of all hit points ─────────────────────
             val center = hitPts.average3()
 
-            // ── 3. Plane normal (must face camera) ────────────────────────
+            // ── 3. Check if the 3D point has been converted back to 2D and is located in the BBox.
+            val screenPt = arSceneView.view.worldToScreen(center)
+            val bboxAbs = RectF(bbox.left * vw, bbox.top * vh, bbox.right * vw, bbox.bottom * vh)
+            if (!bboxAbs.contains(screenPt.x, screenPt.y)) {
+                continue
+            }
+
+            // ── 4. Plane normal (must face camera) ────────────────────────
             val normal = planeNormal(hitPts, center, camPos)
 
-            // ── 4. Rotation (model forward = normal = facing camera) ──────
+            // ── 5. Rotation ล่าสุด (model forward = normal = facing camera)
             val planeRot = lookRotationForward(normal)
 
-            // ── 5. Camera tilt from plane ─────────────────────────────────
+            // ── 6. Camera tilt from plane ─────────────────────────────────
             val tiltDeg = Math.toDegrees(
                 acos(dot(normal, normalize(camPos - center)).coerceIn(-1f, 1f)).toDouble()
             ).toFloat()
 
-            // ── 6. Snap to closest model or create new ────────────────────
+            // ── 7. Snap to closest model or create new ────────────────────
             val closest = markerlessActiveModels
                 .filter { it !in claimed }
                 .minByOrNull { dist(it.position, center) }
@@ -381,7 +377,7 @@ class ARRendering(
             claimed.add(model)
             val ws = wheelStates.getOrPut(model) { WheelState() }
 
-            // ── 7. If manually locked → servo the anchor + offset ─────────
+            // ── 8. If manually locked → servo the anchor + offset ─────────
             if (ws.isManuallyLocked) {
                 val ap = ws.anchor?.pose ?: continue
                 model.position = Float3(
@@ -397,51 +393,23 @@ class ARRendering(
             ws.detectionHits++
             if (ws.detectionHits >= 3) model.isVisible = true
 
-            // ── 8. Update position history ────────────────────────────────
-            if (ws.posHistory.size >= HISTORY_SIZE) ws.posHistory.removeFirst()
-            ws.posHistory.addLast(center)
 
-            // ── 9. Update rotation history ────────────────────────────────
-            if (ws.rotHistory.size >= HISTORY_SIZE) ws.rotHistory.removeFirst()
-            ws.rotHistory.addLast(planeRot)
-
-            // ── 10. Compute best rotation (full avg vs recent 10) ─────────
-            val fullAvg = averageQuaternions(ws.rotHistory.toList())
-            val recentAvg = averageQuaternions(ws.rotHistory.takeLast(RECENT_SIZE))
-            val diverge = angleBetween(fullAvg, recentAvg)
-            val bestRot: Quaternion = when {
-                diverge > ROT_DIVERGE_DEG -> {
-                    ws.useRecentAvg = true
-                    recentAvg
-                }
-                ws.useRecentAvg && diverge > 2f -> recentAvg    // still transitioning
-                else -> {
-                    ws.useRecentAvg = false
-                    fullAvg
-                }
-            }
-
-            // ── 11. Confirm criteria ──────────────────────────────────────
+            // ── 9. Confirm criteria ──────────────────────────────────────
             val bboxW = bbox.width() * vw
             val bboxH = bbox.height() * vh
             val ratio = if (max(bboxW, bboxH) > 0f) min(bboxW, bboxH) / max(bboxW, bboxH) else 0f
-            val screenPt = arSceneView.view.worldToScreen(center)
-            val bboxAbs = RectF(bbox.left * vw, bbox.top * vh, bbox.right * vw, bbox.bottom * vh)
-            val inBbox = bboxAbs.contains(screenPt.x, screenPt.y)
 
             val confirmed = confirmDetection(
                 circularity = cv.circularity,
                 bboxRatio = ratio,
-                posInBbox = inBbox,
+                posInBbox = true,
                 tiltDeg = tiltDeg,
                 hasOpenCV = cv.isFound
             )
 
-            // ── 12. Stability counter ─────────────────────────────────────
-            val prevPos = if (ws.posHistory.size >= 2) ws.posHistory[ws.posHistory.size - 2] else null
-            val prevRot = if (ws.rotHistory.size >= 2) ws.rotHistory[ws.rotHistory.size - 2] else null
-            val posStable = prevPos == null || dist(prevPos, center) < POS_STABLE_M
-            val rotStable = prevRot == null || angleBetween(prevRot, planeRot) < ROT_STABLE_DEG
+            // ── 10. Stability counter (เทียบกับเฟรมก่อนหน้า) ──────────────
+            val posStable = ws.lastCenter == null || dist(ws.lastCenter!!, center) < POS_STABLE_M
+            val rotStable = ws.lastRot == null || angleBetween(ws.lastRot!!, planeRot) < ROT_STABLE_DEG
 
             if (confirmed && posStable && rotStable) {
                 ws.stableFrames++
@@ -454,17 +422,15 @@ class ARRendering(
                 ws.isReadyToAnchor = false
             }
 
-            // ── 13. Render (lerp to best pos/rot) ─────────────────────────
-            val renderPos = center   // pos always = center
-            val alpha = dynamicAlpha(model.position, renderPos)
-            model.position = mix(model.position, renderPos, alpha)
-            model.quaternion = slerp(model.quaternion, bestRot, alpha)
+            ws.lastCenter = center
+            ws.lastRot = planeRot
 
-            if (dist(model.position, renderPos) > 0.02f) anyMotionThisFrame = true
+            // ── 11. Render (always revert to the last value) ─────────────────────────
+            val alpha = dynamicAlpha(model.position, center)
+            model.position = mix(model.position, center, alpha)
+            model.quaternion = slerp(model.quaternion, planeRot, alpha)
 
-            // Update 2D tracking info
-            ws.lastScreen2D = Float2(screenPt.x, screenPt.y)
-            ws.screenRadius2D = max(bboxW, bboxH) / 2f
+            if (dist(model.position, center) > 0.02f) anyMotionThisFrame = true
         }
 
         hideStaleModels(claimed, now)
@@ -569,6 +535,8 @@ class ARRendering(
             ws.stableFrames = 0
             ws.isReadyToAnchor = false
             ws.detectionHits = 0
+            ws.lastCenter = null 
+            ws.lastRot = null
             return m
         }
         // Create new
@@ -590,14 +558,10 @@ class ARRendering(
                         selectedModel = m
                         onShowAdjustmentUI?.invoke(true)    // main thread ✅
                     } else if (state.isReadyToAnchor) {
-                        // Place anchor NOW at latest tracked position
-                        val bestPos = state.posHistory.lastOrNull() ?: m.position
-                        val bestRot = averageQuaternions(state.rotHistory.toList())
-                            .takeIf { state.rotHistory.isNotEmpty() } ?: m.quaternion
                         state.anchor = arSceneView.session?.createAnchor(
                             Pose(
-                                floatArrayOf(bestPos.x, bestPos.y, bestPos.z),
-                                floatArrayOf(bestRot.x, bestRot.y, bestRot.z, bestRot.w)
+                                floatArrayOf(m.position.x, m.position.y, m.position.z),
+                                floatArrayOf(m.quaternion.x, m.quaternion.y, m.quaternion.z, m.quaternion.w)
                             )
                         )
                         state.isManuallyLocked = true
@@ -642,8 +606,8 @@ class ARRendering(
     private fun resetState(ws: WheelState) {
         ws.anchor?.detach()
         ws.anchor = null
-        ws.posHistory.clear()
-        ws.rotHistory.clear()
+        ws.lastCenter = null
+        ws.lastRot = null
         ws.stableFrames = 0
         ws.isReadyToAnchor = false
         ws.detectionHits = 0
