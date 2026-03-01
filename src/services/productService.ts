@@ -14,7 +14,7 @@ export const productService = {
   // Create (เพิ่มสินค้าใหม่ - ต้องมี Token ถึงทำได้)
   create: async (data: any) => {
     // ไม่ต้องใส่ Header เอง เพราะ Interceptor ในข้อ 1 ทำให้แล้ว!
-    return api.post('/wheels', data); 
+    return api.post('/wheels', data);
   },
 
   // Update (แก้ไข)
@@ -25,5 +25,5 @@ export const productService = {
   // Delete (ลบ)
   delete: async (id: string) => {
     return api.delete(`/wheels/${id}`);
-  }
+  },
 };

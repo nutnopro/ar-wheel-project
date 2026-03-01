@@ -8,7 +8,7 @@ import {
   FlatList,
   Image,
   Platform,
-  StatusBar
+  StatusBar,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -17,12 +17,14 @@ import { MOCK_WHEELS } from '../../data/mockData'; // ตรวจสอบ path
 const ArScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  
+
   // 1. รับค่า item ที่ส่งมาจากหน้า ProductDetail (ถ้ามี)
   const incomingItem = route.params?.item;
-  
+
   // 2. State สำหรับโมเดลที่กำลังโชว์
-  const [currentModel, setCurrentModel] = useState(incomingItem || MOCK_WHEELS[0]);
+  const [currentModel, setCurrentModel] = useState(
+    incomingItem || MOCK_WHEELS[0],
+  );
 
   // อัปเดต state ถ้ามีการส่งค่าใหม่เข้ามา
   useEffect(() => {
@@ -44,19 +46,27 @@ const ArScreen = () => {
   const renderModelItem = ({ item }: { item: any }) => {
     const isActive = currentModel?.id === item.id;
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         onPress={() => setCurrentModel(item)}
         activeOpacity={0.8}
         style={styles.modelItem}
       >
         {/* ใช้ Array styles เพื่อเปลี่ยนสีขอบเมื่อถูกเลือก */}
-        <View style={[
-          styles.modelImageContainer, 
-          isActive && styles.modelImageContainerActive 
-        ]}>
-           <Image source={{ uri: item.image }} style={styles.modelImage} resizeMode="contain" />
+        <View
+          style={[
+            styles.modelImageContainer,
+            isActive && styles.modelImageContainerActive,
+          ]}
+        >
+          <Image
+            source={{ uri: item.image }}
+            style={styles.modelImage}
+            resizeMode="contain"
+          />
         </View>
-        <Text style={styles.modelName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.modelName} numberOfLines={1}>
+          {item.name}
+        </Text>
       </TouchableOpacity>
     );
   };
@@ -64,7 +74,11 @@ const ArScreen = () => {
   return (
     <View style={styles.container}>
       {/* ทำให้ Status Bar โปร่งใสเพื่อให้กล้องเต็มจอ */}
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
       {/* --- ส่วนแสดงผลกล้อง (Mockup) --- */}
       <View style={styles.cameraPlaceholder}>
@@ -76,36 +90,38 @@ const ArScreen = () => {
       {/* --- ปุ่มย้อนกลับ (Header) --- */}
       <SafeAreaView style={styles.headerArea}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-           <Icon name="chevron-left" size={40} color="#2563EB" /> 
+          <Icon name="chevron-left" size={40} color="#2563EB" />
         </TouchableOpacity>
       </SafeAreaView>
 
       {/* --- ส่วนควบคุมด้านล่าง (Footer) --- */}
       <View style={styles.footerArea}>
-        
         {/* Carousel เลือกโมเดล */}
         <View style={styles.carouselContainer}>
-             <FlatList
-                data={MOCK_WHEELS}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                renderItem={renderModelItem}
-                keyExtractor={item => item.id}
-                contentContainerStyle={styles.carouselContent}
-             />
+          <FlatList
+            data={MOCK_WHEELS}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            renderItem={renderModelItem}
+            keyExtractor={item => item.id}
+            contentContainerStyle={styles.carouselContent}
+          />
         </View>
 
         {/* ปุ่ม Shutter & Menu */}
         <View style={styles.controlsRow}>
-           <View style={styles.sideControl} /> 
-           
-           <TouchableOpacity style={styles.shutterButtonOuter} activeOpacity={0.7}>
-              <View style={styles.shutterButtonInner} />
-           </TouchableOpacity>
+          <View style={styles.sideControl} />
 
-           <TouchableOpacity style={[styles.sideControl, styles.menuButton]}>
-              <Icon name="dots-grid" size={24} color="#fff" />
-           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.shutterButtonOuter}
+            activeOpacity={0.7}
+          >
+            <View style={styles.shutterButtonInner} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.sideControl, styles.menuButton]}>
+            <Icon name="dots-grid" size={24} color="#fff" />
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -177,7 +193,7 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)', 
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,

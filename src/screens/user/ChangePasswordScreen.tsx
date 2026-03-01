@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Platform
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -55,7 +55,7 @@ const ChangePasswordScreen = () => {
     setTimeout(() => {
       setSaving(false);
       Alert.alert('Success', 'Password changed successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() }
+        { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     }, 1500);
   };
@@ -67,12 +67,22 @@ const ChangePasswordScreen = () => {
     onChangeText,
     showPass,
     toggleShowPass,
-    placeholder
+    placeholder,
   }: any) => (
     <View style={styles.inputGroup}>
       <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-      <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Icon name="lock-outline" size={20} color={theme.subText} style={styles.inputIcon} />
+      <View
+        style={[
+          styles.inputContainer,
+          { backgroundColor: theme.card, borderColor: theme.border },
+        ]}
+      >
+        <Icon
+          name="lock-outline"
+          size={20}
+          color={theme.subText}
+          style={styles.inputIcon}
+        />
 
         <TextInput
           style={[styles.input, { color: theme.text }]}
@@ -87,7 +97,7 @@ const ChangePasswordScreen = () => {
         {/* ปุ่มดวงตา */}
         <TouchableOpacity onPress={toggleShowPass} style={styles.eyeButton}>
           <Icon
-            name={showPass ? "eye-off-outline" : "eye-outline"}
+            name={showPass ? 'eye-off-outline' : 'eye-outline'}
             size={22}
             color={theme.subText}
           />
@@ -98,18 +108,21 @@ const ChangePasswordScreen = () => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={[styles.container, { backgroundColor: theme.background }]}
     >
       <Header title="Change Password" />
       <ScrollView contentContainerStyle={styles.content}>
-
         <View style={styles.headerIconContainer}>
           <View style={styles.iconCircle}>
             <Icon name="lock-reset" size={40} color="#2563EB" />
           </View>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Create New Password</Text>
-          <Text style={styles.headerSubtitle}>Your new password must be different from previous used passwords.</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>
+            Create New Password
+          </Text>
+          <Text style={styles.headerSubtitle}>
+            Your new password must be different from previous used passwords.
+          </Text>
         </View>
 
         <View style={styles.form}>
@@ -152,7 +165,6 @@ const ChangePasswordScreen = () => {
             <Text style={styles.saveButtonText}>Reset Password</Text>
           )}
         </TouchableOpacity>
-
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -162,13 +174,28 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 24 },
 
-  headerIconContainer: { alignItems: 'center', marginBottom: 30, marginTop: 10 },
+  headerIconContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
+    marginTop: 10,
+  },
   iconCircle: {
-    width: 80, height: 80, borderRadius: 40, backgroundColor: '#EFF6FF',
-    justifyContent: 'center', alignItems: 'center', marginBottom: 16
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   headerTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
-  headerSubtitle: { fontSize: 14, color: '#94A3B8', textAlign: 'center', paddingHorizontal: 20, lineHeight: 20 },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#94A3B8',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    lineHeight: 20,
+  },
 
   form: { marginBottom: 20 },
   inputGroup: { marginBottom: 20 },
@@ -176,21 +203,31 @@ const styles = StyleSheet.create({
 
   // Style ของ Input ที่มี icon ซ้ายขวา
   inputContainer: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: 12, borderWidth: 1,
-    paddingHorizontal: 12, height: 50
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    height: 50,
   },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, fontSize: 16 },
   eyeButton: { padding: 5 }, // พื้นที่กดปุ่มตา
 
   saveButton: {
-    backgroundColor: '#2563EB', height: 50, borderRadius: 12,
-    justifyContent: 'center', alignItems: 'center', marginTop: 10,
-    shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 5, elevation: 5
+    backgroundColor: '#2563EB',
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 5,
   },
-  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
 });
 
 export default ChangePasswordScreen;

@@ -1,5 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useForm } from 'react-hook-form';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -12,12 +19,15 @@ import { COLORS } from '../../constants/colors';
 // ✅ 1. Import Service เพื่อใช้ยิง API
 import { authService } from '../../services/authService';
 
-type RegisterScreenProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
+type RegisterScreenProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'Register'
+>;
 
 const RegisterScreen = () => {
   const navigation = useNavigation<RegisterScreenProp>();
   const [showPassword, setShowPassword] = useState(false);
-  
+
   // เพิ่ม loading state เผื่อตอนเน็ตช้าหรือ Server ประมวลผล
   const [isLoading, setIsLoading] = useState(false);
 
@@ -47,16 +57,17 @@ const RegisterScreen = () => {
       await authService.register(newUser);
 
       // ถ้าไม่มี Error เด้ง แสดงว่าสมัครสำเร็จ
-      Alert.alert("Success", "Account created successfully!", [
-        { text: "OK", onPress: () => navigation.navigate('SignIn') }
+      Alert.alert('Success', 'Account created successfully!', [
+        { text: 'OK', onPress: () => navigation.navigate('SignIn') },
       ]);
-
     } catch (error: any) {
-      console.error("Register Error:", error);
-      
+      console.error('Register Error:', error);
+
       // ดึงข้อความ Error จาก Backend มาแสดง (ถ้ามี)
-      const errorMessage = error.response?.data?.message || "Registration failed. Please try again.";
-      Alert.alert("Registration Failed", errorMessage);
+      const errorMessage =
+        error.response?.data?.message ||
+        'Registration failed. Please try again.';
+      Alert.alert('Registration Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -67,12 +78,14 @@ const RegisterScreen = () => {
   };
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContainer}
+    >
       <View style={styles.container}>
-        
         {/* --- ปุ่ม Back --- */}
-        <TouchableOpacity 
-          style={styles.backButton} 
+        <TouchableOpacity
+          style={styles.backButton}
           onPress={() => navigation.goBack()}
         >
           <Icon name="chevron-left" size={40} color={COLORS.primary} />
@@ -103,9 +116,12 @@ const RegisterScreen = () => {
           secureTextEntry={!showPassword}
           rightIcon={showPassword ? 'eye-off' : 'eye'}
           onRightIconPress={() => setShowPassword(!showPassword)}
-          rules={{ 
+          rules={{
             required: 'Password is required',
-            minLength: { value: 6, message: 'Password must be at least 6 characters' }
+            minLength: {
+              value: 6,
+              message: 'Password must be at least 6 characters',
+            },
           }}
         />
 
@@ -114,9 +130,9 @@ const RegisterScreen = () => {
           label="Email"
           placeholder="Email"
           control={control}
-          rules={{ 
+          rules={{
             required: 'Email is required',
-            pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email format' }
+            pattern: { value: /\S+@\S+\.\S+/, message: 'Invalid email format' },
           }}
         />
 
@@ -133,20 +149,23 @@ const RegisterScreen = () => {
           label="Date Of Birth"
           placeholder="DD/MM/YYYY"
           control={control}
-          rules={{ 
+          rules={{
             required: 'Date of Birth is required',
-            pattern: { value: /^\d{2}\/\d{2}\/\d{4}$/, message: 'Format: DD/MM/YYYY' }
+            pattern: {
+              value: /^\d{2}\/\d{2}\/\d{4}$/,
+              message: 'Format: DD/MM/YYYY',
+            },
           }}
         />
 
         {/* ปุ่ม Sign Up */}
-        <TouchableOpacity 
-            style={[styles.button, isLoading && { opacity: 0.7 }]} 
-            onPress={handleSubmit(onRegisterPressed)}
-            disabled={isLoading}
+        <TouchableOpacity
+          style={[styles.button, isLoading && { opacity: 0.7 }]}
+          onPress={handleSubmit(onRegisterPressed)}
+          disabled={isLoading}
         >
           <Text style={styles.buttonText}>
-            {isLoading ? "Signing up..." : "Sign Up"}
+            {isLoading ? 'Signing up...' : 'Sign Up'}
           </Text>
         </TouchableOpacity>
 
@@ -182,14 +201,21 @@ const styles = StyleSheet.create({
     marginLeft: -10,
     marginBottom: 10,
   },
-  title: { 
-    fontSize: 28, 
-    fontWeight: 'bold', 
-    color: COLORS.primary, 
-    textAlign: 'center', 
-    marginBottom: 30 
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+    textAlign: 'center',
+    marginBottom: 30,
   },
-  button: { backgroundColor: COLORS.primary, padding: 15, borderRadius: 30, alignItems: 'center', marginTop: 10, marginBottom: 20 },
+  button: {
+    backgroundColor: COLORS.primary,
+    padding: 15,
+    borderRadius: 30,
+    alignItems: 'center',
+    marginTop: 10,
+    marginBottom: 20,
+  },
   buttonText: { color: COLORS.white, fontWeight: 'bold', fontSize: 16 },
   footer: { flexDirection: 'row', justifyContent: 'center' },
   footerText: { color: '#888', fontSize: 12 },

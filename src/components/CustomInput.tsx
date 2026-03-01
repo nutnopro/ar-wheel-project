@@ -1,5 +1,11 @@
 import React from 'react';
-import { View, Text, TextInput, StyleSheet, TouchableOpacity } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
 import { Controller } from 'react-hook-form';
 import { COLORS } from '../constants/colors';
 import Icon from 'react-native-vector-icons/Ionicons'; // ตรวจสอบว่าลง library นี้แล้ว
@@ -30,7 +36,10 @@ const CustomInput = ({
       control={control}
       name={name}
       rules={rules}
-      render={({ field: { value, onChange, onBlur }, fieldState: { error } }) => (
+      render={({
+        field: { value, onChange, onBlur },
+        fieldState: { error },
+      }) => (
         <View style={styles.container}>
           {label && <Text style={styles.label}>{label}</Text>}
           <View style={[styles.inputContainer, error && styles.inputError]}>
@@ -49,7 +58,9 @@ const CustomInput = ({
               </TouchableOpacity>
             )}
           </View>
-          {error && <Text style={styles.errorText}>{error.message || 'Error'}</Text>}
+          {error && (
+            <Text style={styles.errorText}>{error.message || 'Error'}</Text>
+          )}
         </View>
       )}
     />

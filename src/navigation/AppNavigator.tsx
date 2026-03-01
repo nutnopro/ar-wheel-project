@@ -66,7 +66,10 @@ function MainTabNavigator() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarStyle: [styles.tabBarContainer, { backgroundColor: theme.card, shadowColor: theme.text }],
+        tabBarStyle: [
+          styles.tabBarContainer,
+          { backgroundColor: theme.card, shadowColor: theme.text },
+        ],
       }}
     >
       <Tab.Screen
@@ -80,7 +83,12 @@ function MainTabNavigator() {
                 size={28}
                 color={focused ? theme.icon : theme.subText}
               />
-              <Text style={[styles.label, { color: focused ? theme.icon : theme.subText }]}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: focused ? theme.icon : theme.subText },
+                ]}
+              >
                 {t.tab_home}
               </Text>
             </View>
@@ -115,7 +123,12 @@ function MainTabNavigator() {
                 size={28}
                 color={focused ? theme.icon : theme.subText}
               />
-              <Text style={[styles.label, { color: focused ? theme.icon : theme.subText }]}>
+              <Text
+                style={[
+                  styles.label,
+                  { color: focused ? theme.icon : theme.subText },
+                ]}
+              >
                 {t.tab_profile}
               </Text>
             </View>
@@ -152,13 +165,19 @@ const AppNavigationWrapper = () => {
   });
 
   return (
-    <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator
+      initialRouteName="Splash"
+      screenOptions={{ headerShown: false }}
+    >
       {userRole === null ? (
         <>
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="SignIn" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          <Stack.Screen
+            name="ForgotPassword"
+            component={ForgotPasswordScreen}
+          />
         </>
       ) : (
         <>
@@ -168,7 +187,10 @@ const AppNavigationWrapper = () => {
           <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
           <Stack.Screen name="Favorites" component={FavoritesScreen} />
           <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+          <Stack.Screen
+            name="ChangePassword"
+            component={ChangePasswordScreen}
+          />
           <Stack.Screen name="Language" component={LanguageScreen} />
           <Stack.Screen name="ARPreferences" component={ARPreferencesScreen} />
 
@@ -255,5 +277,10 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: '#FFFFFF',
   },
-  arLabel: { color: '#2563EB', marginTop: 10, fontWeight: 'bold', fontSize: 11 },
+  arLabel: {
+    color: '#2563EB',
+    marginTop: 10,
+    fontWeight: 'bold',
+    fontSize: 11,
+  },
 });

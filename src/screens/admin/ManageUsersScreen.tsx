@@ -92,10 +92,10 @@ const ManageUsersScreen = () => {
       Alert.alert('Success', `User role updated to ${selectedRole}`);
 
       // Update local state
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.uid === selectedUser.uid ? { ...u, role: selectedRole as any } : u
-        )
+      setUsers(prev =>
+        prev.map(u =>
+          u.uid === selectedUser.uid ? { ...u, role: selectedRole as any } : u,
+        ),
       );
 
       setModalVisible(false);
@@ -107,20 +107,24 @@ const ManageUsersScreen = () => {
   };
 
   const getRoleColor = (role: string) => {
-    const roleObj = ROLES.find((r) => r.value === role);
+    const roleObj = ROLES.find(r => r.value === role);
     return roleObj?.color || '#94A3B8';
   };
 
   const getRoleLabel = (role: string) => {
-    const roleObj = ROLES.find((r) => r.value === role);
+    const roleObj = ROLES.find(r => r.value === role);
     return roleObj?.label || role;
   };
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+      <View
+        style={[styles.loadingContainer, { backgroundColor: theme.background }]}
+      >
         <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={[styles.loadingText, { color: theme.text }]}>Loading users...</Text>
+        <Text style={[styles.loadingText, { color: theme.text }]}>
+          Loading users...
+        </Text>
       </View>
     );
   }
@@ -130,19 +134,26 @@ const ManageUsersScreen = () => {
       <Header title="Manage Users" />
       <FlatList
         data={users}
-        keyExtractor={(item) => item.uid || item.id}
+        keyExtractor={item => item.uid || item.id}
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2563EB']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#2563EB']}
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Icon name="account-off" size={64} color={theme.subText} />
-            <Text style={[styles.emptyText, { color: theme.subText }]}>No users found</Text>
+            <Text style={[styles.emptyText, { color: theme.subText }]}>
+              No users found
+            </Text>
           </View>
         }
         renderItem={({ item }) => {
-          const isDeleted = item.status === 'deleted' || item.status === 'Deleted';
+          const isDeleted =
+            item.status === 'deleted' || item.status === 'Deleted';
           const isInactive = item.isActive === false;
           const disabled = isDeleted || isInactive;
 
@@ -168,17 +179,31 @@ const ManageUsersScreen = () => {
                 >
                   {item.username}
                 </Text>
-                <Text style={{ color: theme.subText, fontSize: 12, marginTop: 2 }}>
+                <Text
+                  style={{ color: theme.subText, fontSize: 12, marginTop: 2 }}
+                >
                   {item.email}
                 </Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 4,
+                  }}
+                >
                   <View
                     style={[
                       styles.roleBadge,
                       { backgroundColor: getRoleColor(item.role) + '20' },
                     ]}
                   >
-                    <Text style={{ color: getRoleColor(item.role), fontSize: 11, fontWeight: '600' }}>
+                    <Text
+                      style={{
+                        color: getRoleColor(item.role),
+                        fontSize: 11,
+                        fontWeight: '600',
+                      }}
+                    >
                       {getRoleLabel(item.role)}
                     </Text>
                   </View>
@@ -223,38 +248,60 @@ const ManageUsersScreen = () => {
           activeOpacity={1}
           onPress={() => setModalVisible(false)}
         >
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Change User Role</Text>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={e => e.stopPropagation()}
+          >
+            <View
+              style={[styles.modalContent, { backgroundColor: theme.card }]}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                Change User Role
+              </Text>
               <Text style={[styles.modalSubtitle, { color: theme.subText }]}>
                 {selectedUser?.username} ({selectedUser?.email})
               </Text>
 
               <View style={styles.roleOptions}>
-                {ROLES.map((role) => (
+                {ROLES.map(role => (
                   <TouchableOpacity
                     key={role.value}
                     style={[
                       styles.roleOption,
                       {
-                        borderColor: selectedRole === role.value ? role.color : theme.border,
+                        borderColor:
+                          selectedRole === role.value
+                            ? role.color
+                            : theme.border,
                         backgroundColor:
-                          selectedRole === role.value ? role.color + '10' : 'transparent',
+                          selectedRole === role.value
+                            ? role.color + '10'
+                            : 'transparent',
                       },
                     ]}
                     onPress={() => setSelectedRole(role.value)}
                   >
                     <Icon
-                      name={selectedRole === role.value ? 'radiobox-marked' : 'radiobox-blank'}
+                      name={
+                        selectedRole === role.value
+                          ? 'radiobox-marked'
+                          : 'radiobox-blank'
+                      }
                       size={24}
-                      color={selectedRole === role.value ? role.color : theme.subText}
+                      color={
+                        selectedRole === role.value ? role.color : theme.subText
+                      }
                     />
                     <Text
                       style={[
                         styles.roleOptionText,
                         {
-                          color: selectedRole === role.value ? role.color : theme.text,
-                          fontWeight: selectedRole === role.value ? 'bold' : 'normal',
+                          color:
+                            selectedRole === role.value
+                              ? role.color
+                              : theme.text,
+                          fontWeight:
+                            selectedRole === role.value ? 'bold' : 'normal',
                         },
                       ]}
                     >

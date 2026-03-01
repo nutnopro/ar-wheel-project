@@ -1,11 +1,7 @@
 // src/services/api.ts
 import axios from 'axios';
 import { Alert } from 'react-native';
-import { 
-  getToken, 
-  removeToken, 
-  removeUserData 
-} from '../utils/storage';
+import { getToken, removeToken, removeUserData } from '../utils/storage';
 
 // สร้าง instance กลางของ Axios
 const api = axios.create({
@@ -21,7 +17,7 @@ const api = axios.create({
 
 // === Request Interceptor: แนบ Token ทุกครั้งถ้ามี ===
 api.interceptors.request.use(
-  async (config) => {
+  async config => {
     try {
       const token = await getToken();
       if (token) {
@@ -33,15 +29,15 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
+  error => {
     return Promise.reject(error);
   },
 );
 
 // === Response Interceptor: จัดการ 401 / session หมดอายุ ===
 api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
+  response => response,
+  async error => {
     const status = error?.response?.status;
 
     if (status === 401) {
@@ -52,7 +48,7 @@ api.interceptors.response.use(
       // แจ้งผู้ใช้
       Alert.alert(
         'Session expired',
-        'Your login session has expired. Please login again.'
+        'Your login session has expired. Please login again.',
       );
 
       // TODO (ถ้าอยาก auto redirect): ใช้ navigationRef.reset({ ... }) ไปหน้า SignIn

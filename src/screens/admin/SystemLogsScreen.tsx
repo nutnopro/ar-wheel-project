@@ -115,9 +115,13 @@ const SystemLogsScreen = () => {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+      <View
+        style={[styles.loadingContainer, { backgroundColor: theme.background }]}
+      >
         <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={[styles.loadingText, { color: theme.text }]}>Loading logs...</Text>
+        <Text style={[styles.loadingText, { color: theme.text }]}>
+          Loading logs...
+        </Text>
       </View>
     );
   }
@@ -130,12 +134,22 @@ const SystemLogsScreen = () => {
         keyExtractor={(item, index) => item.id || `log-${index}`}
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2563EB']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#2563EB']}
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Icon name="file-document-outline" size={64} color={theme.subText} />
-            <Text style={[styles.emptyText, { color: theme.subText }]}>No logs available</Text>
+            <Icon
+              name="file-document-outline"
+              size={64}
+              color={theme.subText}
+            />
+            <Text style={[styles.emptyText, { color: theme.subText }]}>
+              No logs available
+            </Text>
           </View>
         }
         renderItem={({ item }) => {
@@ -149,8 +163,17 @@ const SystemLogsScreen = () => {
                 { backgroundColor: theme.card, borderLeftColor: actionColor },
               ]}
             >
-              <View style={[styles.iconBox, { backgroundColor: actionColor + '15' }]}>
-                <Icon name={getActionIcon(item.action)} size={22} color={actionColor} />
+              <View
+                style={[
+                  styles.iconBox,
+                  { backgroundColor: actionColor + '15' },
+                ]}
+              >
+                <Icon
+                  name={getActionIcon(item.action)}
+                  size={22}
+                  color={actionColor}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.actionText, { color: theme.text }]}>
@@ -229,7 +252,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  refreshText: { fontSize: 11, color: '#10B981', marginLeft: 6, fontWeight: '600' },
+  refreshText: {
+    fontSize: 11,
+    color: '#10B981',
+    marginLeft: 6,
+    fontWeight: '600',
+  },
 });
 
 export default SystemLogsScreen;

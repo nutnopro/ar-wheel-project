@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
 import { productService } from '../../services/productService'; // เรียก Service
@@ -31,7 +40,7 @@ const ManageModelsScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchModels();
-    }, [])
+    }, []),
   );
 
   // ฟังก์ชัน Refresh (ดึงหน้าจอลงเพื่อโหลดใหม่)
@@ -43,12 +52,12 @@ const ManageModelsScreen = () => {
   // ฟังก์ชันลบข้อมูล
   const handleDelete = (id: string) => {
     Alert.alert(
-      "Confirm Delete",
-      "Are you sure you want to delete this model?",
+      'Confirm Delete',
+      'Are you sure you want to delete this model?',
       [
-        { text: "Cancel" },
+        { text: 'Cancel' },
         {
-          text: "Delete",
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -60,15 +69,22 @@ const ManageModelsScreen = () => {
             } catch (error) {
               Alert.alert('Error', 'Failed to delete model');
             }
-          }
-        }
-      ]
+          },
+        },
+      ],
     );
   };
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.background }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: theme.background,
+        }}
+      >
         <ActivityIndicator size="large" color="#F59E0B" />
       </View>
     );
@@ -80,13 +96,21 @@ const ManageModelsScreen = () => {
       <FlatList
         data={models}
         // ⚠️ เช็คว่า Backend ส่ง id หรือ _id มา
-        keyExtractor={(item) => item.id || item._id}
+        keyExtractor={item => item.id || item._id}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#F59E0B']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#F59E0B']}
+          />
         }
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         ListEmptyComponent={
-          <Text style={{ color: theme.subText, textAlign: 'center', marginTop: 50 }}>No models found.</Text>
+          <Text
+            style={{ color: theme.subText, textAlign: 'center', marginTop: 50 }}
+          >
+            No models found.
+          </Text>
         }
         renderItem={({ item }) => {
           // Mapping ข้อมูล: ตรวจสอบชื่อ field กับ Backend ว่าตรงกันไหม (เช่น name หรือ title, price)
@@ -104,10 +128,16 @@ const ManageModelsScreen = () => {
                 </Text>
               </View>
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => Alert.alert('Edit', `Edit ID: ${item.id}`)} style={styles.actionBtn}>
+                <TouchableOpacity
+                  onPress={() => Alert.alert('Edit', `Edit ID: ${item.id}`)}
+                  style={styles.actionBtn}
+                >
                   <Icon name="pencil-outline" size={24} color="#3B82F6" />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(item.id || item._id)} style={styles.actionBtn}>
+                <TouchableOpacity
+                  onPress={() => handleDelete(item.id || item._id)}
+                  style={styles.actionBtn}
+                >
                   <Icon name="trash-can-outline" size={24} color="#EF4444" />
                 </TouchableOpacity>
               </View>
@@ -115,8 +145,16 @@ const ManageModelsScreen = () => {
           );
         }}
       />
-      <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-        <TouchableOpacity style={[styles.addButton, { backgroundColor: '#F59E0B' }]} onPress={() => Alert.alert('Add', 'Feature coming soon')}>
+      <View
+        style={[
+          styles.footer,
+          { backgroundColor: theme.card, borderTopColor: theme.border },
+        ]}
+      >
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: '#F59E0B' }]}
+          onPress={() => Alert.alert('Add', 'Feature coming soon')}
+        >
           <Icon name="plus" size={24} color="#fff" />
           <Text style={styles.addText}>Add Model</Text>
         </TouchableOpacity>
@@ -126,14 +164,43 @@ const ManageModelsScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  card: { flexDirection: 'row', alignItems: 'center', padding: 16, marginBottom: 12, borderRadius: 12, elevation: 2 },
-  iconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    elevation: 2,
+  },
+  iconBox: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
   title: { fontSize: 16, fontWeight: '600' },
   actions: { flexDirection: 'row' },
   actionBtn: { padding: 8 },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 40, borderTopWidth: 1 },
-  addButton: { backgroundColor: '#2563EB', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 16, borderRadius: 12 },
-  addText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 8 }
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    paddingBottom: 40,
+    borderTopWidth: 1,
+  },
+  addButton: {
+    backgroundColor: '#2563EB',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+  },
+  addText: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
 });
 
 export default ManageModelsScreen;

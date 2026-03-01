@@ -9,7 +9,7 @@ export const themes = {
     icon: '#2563EB',
     subText: '#64748B',
     border: '#E2E8F0',
-    tabBar: '#FFFFFF'
+    tabBar: '#FFFFFF',
   },
   dark: {
     background: '#0F172A',
@@ -18,8 +18,8 @@ export const themes = {
     icon: '#60A5FA',
     subText: '#94A3B8',
     border: '#334155',
-    tabBar: '#1E293B'
-  }
+    tabBar: '#1E293B',
+  },
 };
 
 const ThemeContext = createContext<any>(null);

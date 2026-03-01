@@ -16,8 +16,8 @@ const LanguageScreen = () => {
         styles.option,
         {
           backgroundColor: theme.card,
-          borderColor: language === langCode ? '#2563EB' : theme.border
-        }
+          borderColor: language === langCode ? '#2563EB' : theme.border,
+        },
       ]}
       onPress={() => changeLanguage(langCode)}
       activeOpacity={0.7}
@@ -39,37 +39,46 @@ const LanguageScreen = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Header title={t.select_language} />
-      <Text style={[styles.headerTitle, { color: theme.subText }]}>{t.select_language}</Text>
+      <Text style={[styles.headerTitle, { color: theme.subText }]}>
+        {t.select_language}
+      </Text>
 
-      <LanguageOption
-        langCode="en"
-        label={t.lang_english}
-        flag="EN"
-      />
+      <LanguageOption langCode="en" label={t.lang_english} flag="EN" />
 
-      <LanguageOption
-        langCode="th"
-        label={t.lang_thai}
-        flag="TH"
-      />
+      <LanguageOption langCode="th" label={t.lang_thai} flag="TH" />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20 },
-  headerTitle: { fontSize: 14, fontWeight: '600', marginBottom: 15, textTransform: 'uppercase' },
+  headerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 15,
+    textTransform: 'uppercase',
+  },
   option: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
   },
   left: { flexDirection: 'row', alignItems: 'center' },
   flagBox: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF',
-    justifyContent: 'center', alignItems: 'center', marginRight: 15
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 15,
   },
   flagText: { fontWeight: 'bold', color: '#2563EB' },
-  label: { fontSize: 16, fontWeight: '500' }
+  label: { fontSize: 16, fontWeight: '500' },
 });
 
 export default LanguageScreen;

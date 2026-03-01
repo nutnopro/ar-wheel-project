@@ -2,9 +2,13 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { Alert } from 'react-native';
 import { authService } from '../services/authService';
-import { 
-  setToken, getToken, removeToken, 
-  setUserData as setStorageUser, getUserData, removeUserData 
+import {
+  setToken,
+  getToken,
+  removeToken,
+  setUserData as setStorageUser,
+  getUserData,
+  removeUserData,
 } from '../utils/storage';
 
 // ✅ เพิ่ม role 'store' ให้ครบตามระบบจริง

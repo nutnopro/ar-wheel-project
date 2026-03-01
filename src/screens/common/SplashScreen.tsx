@@ -26,7 +26,7 @@ const SplashScreen = () => {
       <View style={styles.logoCircle}>
         <Icon name="steering" size={60} color={COLORS.primary} />
       </View>
-      
+
       {/* ชื่อแอป */}
       <Text style={styles.appName}>Wheel AR</Text>
     </View>
@@ -49,7 +49,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 20,
     // เงาเล็กน้อยเพื่อความสวยงาม
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
