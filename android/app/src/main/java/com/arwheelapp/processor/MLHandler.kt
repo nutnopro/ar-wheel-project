@@ -1,3 +1,4 @@
+// utils/MLHandler.kt
 package com.arwheelapp.processor
 
 import ai.onnxruntime.OnnxTensor
@@ -33,9 +34,9 @@ import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 
-class OnnxRuntimeHandler(private val context: Context) {
+class MLHandler(private val context: Context) {
     companion object {
-        private const val TAG = "OnnxRuntimeHandler"
+        private const val TAG = "MLHandler"
         private const val MODEL_PATH = "yolov11n.onnx"
         private const val INPUT_SIZE = 320
         private const val CONFIDENCE_THRESHOLD = 0.4f
@@ -68,7 +69,7 @@ class OnnxRuntimeHandler(private val context: Context) {
     }
 
     // Run inference with ONNX Runtime with Coroutine
-    fun runOnnxInferenceAsync(
+    fun runInferenceAsync(
         tensor: FloatArray,
         deviceRotation: Int,
         frameData: FrameYData?,

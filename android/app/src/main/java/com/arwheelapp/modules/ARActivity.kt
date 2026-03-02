@@ -1,3 +1,4 @@
+// utils/ARActivity.kt
 package com.arwheelapp.modules
 
 import android.content.ContentValues
@@ -24,6 +25,7 @@ import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Session
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.loaders.EnvironmentLoader
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -40,6 +42,7 @@ class ARActivity : ComponentActivity() {
     private val rootLayout: FrameLayout by lazy { FrameLayout(this) }
     private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlay, arSceneView, lifecycleScope) }
     private val uiManager: ARUIManager by lazy { ARUIManager(this, rootLayout, onnxOverlay, lifecycleScope) }
+    private val environmentLoader: EnvironmentLoader by lazy { EnvironmentLoader(arSceneView.engine, arSceneView.context) }
 
     private var currentMode: ARMode = ARMode.DEFAULT
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -74,23 +77,41 @@ class ARActivity : ComponentActivity() {
         uiManager.onPause()
     }
 
-    // ── Views ─────────────────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────────────
     private fun initViews() {
         arSceneView.onSessionCreated = { configureARSession(it) }
         arSceneView.planeRenderer.isVisible = false
-        val matchParent = FrameLayout.LayoutParams(
+        setupLighting()
+        val mp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         )
-        rootLayout.addView(arSceneView, matchParent)
-        rootLayout.addView(onnxOverlay, matchParent)
+        rootLayout.addView(arSceneView, mp)
+        rootLayout.addView(onnxOverlay, mp)
 
         uiManager.setupInterface()
         wireCallbacks()
         setContentView(rootLayout)
     }
 
-    // ── Callback wiring ───────────────────────────────────────────────────────
+    private fun setupLighting() {
+        lifecycleScope.launch {
+            try {
+                arSceneView.environment = environmentLoader.createHDREnvironment("environments/studio_lighting.hdr")!!
+                Log.d(TAG, "Environment loaded ✅")
+            } catch (e: Exception) { Log.e(TAG, "Failed to load environment", e) }
+
+            // val mainLight = LightNode(this@ARActivity).apply {
+            //     type = LightNode.Type.DIRECTIONAL
+            //     intensity = 30_000f
+            //     color = android.graphics.Color.WHITE
+            //     rotation = Rotation(x = -45f, y = 45f, z = 0f)
+            // }
+            // arSceneView.addChild(mainLight)
+        }
+    }
+
+    // ── Callbacks ─────────────────────────────────────────────────────────────
     private fun wireCallbacks() {
         // ── UI → AR ──────────────────────────────────────────────────────────
         uiManager.apply {
@@ -100,18 +121,15 @@ class ARActivity : ComponentActivity() {
             onModelSelected = { path -> arRendering.updateNewModel("models/$path.glb") }
             onSizeSelected = { inch -> arRendering.updateModelSize(inch) }
 
-            // Nudge: called from UI thread (button hold) → safe to forward directly
-            onNudge = { dx, dy, dz -> arRendering.nudgeSelectedModel(dx, dy, dz) }
-            // Confirm: bake offset into new anchor
-            onAdjustConfirm = { arRendering.finishAdjusting() }
+            // Nudge: ARUIManager passes (editMode="POS"|"ROT", dir="LEFT"|"RIGHT"|"UP"|"DOWN")
+            // Called from UI thread (button hold) → safe
+            onNudge = { editMode, dir -> arRendering.nudgeModel(editMode, dir) }
 
-            // Cancel: discard offset, hide panel
+            onAdjustConfirm = { arRendering.finishAdjusting() }
             onAdjustCancel = { arRendering.cancelAdjusting() }
         }
 
-        // ── AR → UI ───────────────────────────────────────────────────────────
-        // onShowAdjustmentUI is triggered from onSingleTapConfirmed (main thread)
-        // OR from mainHandler.post() in ARRendering — always main thread ✅
+        // AR → UI: onSingleTapConfirmed fires on main thread; hide/show is always safe
         arRendering.onShowAdjustmentUI = { show ->
             mainHandler.post { uiManager.showAdjustmentPanel(show) }
         }
@@ -124,16 +142,14 @@ class ARActivity : ComponentActivity() {
             session.configure(session.config.apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
+                lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                 focusMode = Config.FocusMode.AUTO
                 if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
                     depthMode = Config.DepthMode.AUTOMATIC
             })
             arRendering.setupMarkerDatabase(session)
-        } catch (e: Exception) {
-            Log.e(TAG, "R session config error", e)
-        }
+        } catch (e: Exception) { Log.e(TAG, "AR session config error", e) }
     }
 
     private fun configureCameraFPS(session: Session) {
@@ -145,9 +161,7 @@ class ARActivity : ComponentActivity() {
         if (configs.isNotEmpty()) {
             session.cameraConfig = configs[0]
             Log.d(TAG, "60 FPS configured ✅")
-        } else {
-            Log.w(TAG, "60 FPS not supported, using default")
-        }
+        } else Log.w(TAG, "60 FPS not supported")
     }
 
     // ── Permission & render loop ──────────────────────────────────────────────
