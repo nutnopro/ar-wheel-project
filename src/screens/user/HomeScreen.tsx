@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,12 @@ import {
   StatusBar,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { MOCK_WHEELS, Wheel } from '../../data/mockData';
+import { Wheel } from '../../utils/types';
+import api from '../../services/api';
 
 // [NEW] Import Contexts
 import { useTheme } from '../../context/ThemeContext';
@@ -30,6 +32,10 @@ const HomeScreen = () => {
   // เรียกใช้ Hooks
   const { theme, isDarkMode } = useTheme();
   const { t } = useLanguage();
+
+  const [wheels, setWheels] = useState<Wheel[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterVisible, setFilterVisible] = useState(false);
@@ -64,6 +70,43 @@ const HomeScreen = () => {
     setMaxPrice('999');
   };
 
+  const fetchWheels = async () => {
+    try {
+      setLoading(true);
+      // สมมติว่า endpoint คือ /wheels หรือ /products
+      const response = await api.get('/models');
+      setWheels(response.data);
+    } catch (error) {
+      console.error('Fetch wheels error:', error);
+      // คุณอาจจะเพิ่ม Alert.alert('Error', 'Cannot fetch data');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  // ดึงข้อมูลครั้งแรกเมื่อหน้าจอโหลด
+  useEffect(() => {
+    fetchWheels();
+  }, []);
+
+  // ฟังก์ชัน Pull to Refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchWheels();
+  };
+
+  // --- Filter Logic (แบบง่าย) ---
+  const filteredWheels = wheels.filter(wheel => {
+    const matchSearch =
+      wheel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      wheel.brand.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchCategory =
+      selectedCategory === 'All' || wheel.category === selectedCategory;
+
+    return matchSearch && matchCategory;
+  });
+
   const renderItem = ({ item }: { item: Wheel }) => (
     <TouchableOpacity
       activeOpacity={0.9}
@@ -77,7 +120,8 @@ const HomeScreen = () => {
         ]}
       >
         <Image
-          source={{ uri: item.image }}
+          source={require('../../assets/cube')}
+          // source={{ uri: item.image }}
           style={styles.image}
           resizeMode="contain"
         />
@@ -87,7 +131,8 @@ const HomeScreen = () => {
           style={[styles.cardTitle, { color: theme.text }]}
           numberOfLines={1}
         >
-          {item.name}
+          {item.id}
+          {/* {item.name} */}
         </Text>
         <Text style={styles.cardPrice}>${item.price.toLocaleString()}</Text>
         <Text style={styles.cardCategory}>{item.brand}</Text>
@@ -172,16 +217,42 @@ const HomeScreen = () => {
         </View>
       </View>
 
-      {/* Product List */}
-      <FlatList
-        data={MOCK_WHEELS}
-        renderItem={renderItem}
-        keyExtractor={item => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      />
+      {loading ? (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color="#2563EB" />
+        </View>
+      ) : (
+        // Product List
+        <FlatList
+          data={filteredWheels}
+          renderItem={renderItem}
+          keyExtractor={item => item.id.toString()}
+          numColumns={2}
+          columnWrapperStyle={styles.row}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          onRefresh={onRefresh}
+          refreshing={refreshing}
+          // กรณีไม่มีข้อมูล
+          ListEmptyComponent={
+            <Text
+              style={{
+                textAlign: 'center',
+                marginTop: 50,
+                color: theme.subText,
+              }}
+            >
+              No wheels found.
+            </Text>
+          }
+        />
+      )}
 
       {/* Filter Modal */}
       <Modal
