@@ -26,12 +26,13 @@ import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Session
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.loaders.EnvironmentLoader
+import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
+import io.github.sceneview.math.Rotation
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.opencv.android.OpenCVLoader
 
 class ARActivity : ComponentActivity() {
     companion object {
@@ -97,13 +98,14 @@ class ARActivity : ComponentActivity() {
                 Log.d(TAG, "Environment loaded ✅")
             } catch (e: Exception) { Log.e(TAG, "Failed to load environment", e) }
 
-            // val mainLight = LightNode(this@ARActivity).apply {
-            //     type = LightNode.Type.DIRECTIONAL
-            //     intensity = 30_000f
-            //     color = android.graphics.Color.WHITE
-            //     rotation = Rotation(x = -45f, y = 45f, z = 0f)
-            // }
-            // arSceneView.addChild(mainLight)
+            arSceneView.addChildNode(
+                LightNode(arSceneView.engine, com.google.android.filament.EntityManager.get().create())
+                .apply {
+                    intensity = 30_000f
+                    color = dev.romainguy.kotlin.math.Float4(1.0f, 1.0f, 1.0f, 1.0f)
+                    rotation = Rotation(x = -45f, y = 45f, z = 0f)
+                }
+            )
         }
     }
 
@@ -117,24 +119,18 @@ class ARActivity : ComponentActivity() {
             onModelSelected = { path -> arRendering.updateNewModel("models/$path.glb") }
             onSizeSelected = { inch -> arRendering.updateModelSize(inch) }
 
-            // Nudge: ARUIManager passes (editMode="POS"|"ROT", dir="LEFT"|"RIGHT"|"UP"|"DOWN")
-            // Called from UI thread (button hold) → safe
-            onNudge = { editMode, dir -> Log.d("AR_DEBUG_NUDGE", "UI Event: onNudge called with Mode=$editMode, Direction=$dir"); arRendering.nudgeModel(editMode, dir) }
-
-            onAdjustConfirm = { Log.d("AR_DEBUG_NUDGE", "UI Event: onAdjustConfirm called"); arRendering.finishAdjusting() }
-            onAdjustCancel = { Log.d("AR_DEBUG_NUDGE", "UI Event: onAdjustCancel called"); arRendering.cancelAdjusting() }
+            onNudge = { editMode, dir -> arRendering.nudgeModel(editMode, dir) }
+            onAdjustConfirm = { arRendering.finishAdjusting() }
+            onAdjustCancel = { arRendering.cancelAdjusting() }
         }
     }
 
     private fun setNudgeListeners() {
         arSceneView.setOnGestureListener(
             onSingleTapUp = { e, node ->
-                Log.d("AR_DEBUG_NUDGE", "Gesture: at (${e.x}, ${e.y}). -> Parent: ${node?.parent} -> Node: ${node}")
                 if (node is ModelNode) {
-                    Log.d("AR_DEBUG_NUDGE", "Gesture: Valid Node tapped. Starting nudge process.")
                     arRendering.startNudging(node.parent!!)
                     arRendering.onShowAdjustmentUI = { show ->
-                        Log.d("AR_DEBUG_NUDGE", "UI Update: Toggling adjustment panel visibility to $show")
                         mainHandler.post { uiManager.showAdjustmentPanel(show) }
                     }
                 }

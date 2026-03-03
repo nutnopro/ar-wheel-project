@@ -160,7 +160,7 @@ class ARUIManager(
     private fun setupSelectionOverlay() {
         selectionContainer = FrameLayout(context).apply {
             visibility = View.GONE
-            setBackgroundColor(Color.parseColor("#01000000"))
+            setBackgroundColor(Color.parseColor("#01000000")) // Touch interceptor
             setOnClickListener { closeSelectionMenu() }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -175,7 +175,7 @@ class ARUIManager(
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setShadowLayer(2f, 0f, 2f, Color.BLACK)
+            setShadowLayer(4f, 0f, 2f, Color.parseColor("#80000000"))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -196,7 +196,8 @@ class ARUIManager(
         adjustOverlay = View(context).apply {
             setBackgroundColor(Color.parseColor("#44000000"))
             visibility = View.GONE
-            isClickable = false
+            isClickable = true
+            setOnClickListener { onAdjustCancel?.invoke() }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -207,8 +208,15 @@ class ARUIManager(
         // Panel card
         adjustPanel = FrameLayout(context).apply {
             visibility = View.GONE
-            background = createRoundDrawable(Color.parseColor("#CC1A1A2E"), 28.dp.toFloat())
-            setPadding(20.dp, 16.dp, 20.dp, 24.dp)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#E6121212")) // โปร่งแสงนิดๆ สไตล์กระจก
+                cornerRadii = floatArrayOf(
+                    36.dp.toFloat(), 36.dp.toFloat(),   // Top left
+                    36.dp.toFloat(), 36.dp.toFloat(),   // Top right
+                    0f, 0f, 0f, 0f  // Bottom square
+                )
+            }
+            setPadding(24.dp, 16.dp, 24.dp, 32.dp)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -225,17 +233,24 @@ class ARUIManager(
             )
         }
 
+        // Handle Bar
+        val handleBar = View(context).apply {
+            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 4.dp.toFloat())
+            layoutParams = LinearLayout.LayoutParams(40.dp, 5.dp).apply { bottomMargin = 16.dp }
+        }
+        inner.addView(handleBar)
+
         // Title row
         val titleRow = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 12.dp }
+            ).apply { bottomMargin = 16.dp }
         }
         titleRow.addView(TextView(context).apply {
-            text = "ปรับตำแหน่งล้อ"
+            text = "ปรับแต่งตำแหน่ง"
             setTextColor(Color.WHITE)
-            textSize = 15f
+            textSize = 16f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(
@@ -244,23 +259,15 @@ class ARUIManager(
                 Gravity.CENTER
             )
         })
-        titleRow.addView(TextView(context).apply {
-            text = "✕"
-            setTextColor(Color.parseColor("#AAAAAA"))
-            textSize = 18f
-            gravity = Gravity.CENTER
-            layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp).apply { gravity = Gravity.END }
+
+        titleRow.addView(AppCompatImageView(context).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(Color.parseColor("#AAAAAA"))
+            setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+            layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+            background = createRoundDrawable(Color.parseColor("#22FFFFFF"), 20.dp.toFloat())
             setOnClickListener { onAdjustCancel?.invoke() }
         })
-
-        // Divider
-        val divider = View(context).apply {
-            setBackgroundColor(Color.parseColor("#33FFFFFF"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1
-            ).apply { bottomMargin = 16.dp }
-        }
 
         // Controls row: D-pad | spacer | right column
         val controlsRow = LinearLayout(context).apply {
@@ -273,24 +280,23 @@ class ARUIManager(
         }
         controlsRow.addView(buildDPad())
         controlsRow.addView(Space(context).apply {
-            layoutParams = LinearLayout.LayoutParams(24.dp, 1)
+            layoutParams = LinearLayout.LayoutParams(32.dp, 1)
         })
         controlsRow.addView(buildRightColumn())
 
         // Hint
         val tvHint = TextView(context).apply {
-            text = "กดค้างเพื่อขยับ  •  ปุ่มกลางสลับ ตำแหน่ง/หมุน  •  OK ยืนยัน"
+            text = "กดค้างที่ลูกศรเพื่อขยับ • กดปุ่มกลางเพื่อสลับโหมด"
             setTextColor(Color.parseColor("#88FFFFFF"))
-            textSize = 11f
+            textSize = 12f
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 12.dp }
+            ).apply { topMargin = 20.dp }
         }
 
         inner.addView(titleRow)
-        inner.addView(divider)
         inner.addView(controlsRow)
         inner.addView(tvHint)
         adjustPanel?.addView(inner)
@@ -301,7 +307,7 @@ class ARUIManager(
     // D-Pad: ▲▼◀▶ + center POS/ROT toggle
     // ─────────────────────────────────────────────────────────────────────────
     private fun buildDPad(): FrameLayout {
-        val size = 164.dp
+        val size = 180.dp
         val btnSz = 52.dp
 
         return FrameLayout(context).apply {
@@ -326,16 +332,16 @@ class ARUIManager(
 
             // Center mode toggle button
             btnCenterMode = TextView(context).apply {
-                text = "📍 POS"
+                text = "POS"
                 gravity = Gravity.CENTER
                 setTextColor(Color.WHITE)
-                textSize = 11f
+                textSize = 12f
                 typeface = Typeface.DEFAULT_BOLD
                 layoutParams = FrameLayout.LayoutParams(56.dp, 56.dp, Gravity.CENTER)
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#CC2255AA"))
-                    setStroke(2, Color.parseColor("#80AAAAFF"))
+                    setColor(Color.parseColor("#3478F6")) // iOS Blue for POS
+                    setStroke(2, Color.parseColor("#80FFFFFF"))
                 }
                 setOnClickListener { toggleEditMode() }
             }
@@ -345,21 +351,21 @@ class ARUIManager(
 
     private fun buildDirBtn(iconResId: Int, gravity: Int, sizePx: Int, action: () -> Unit): AppCompatImageView {
         return AppCompatImageView(context).apply {
-        setImageResource(iconResId)
-        setColorFilter(Color.WHITE)
-        setPadding(14.dp, 14.dp, 14.dp, 14.dp)
-        layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, gravity)
-        background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.parseColor("#55FFFFFF"))
-            setStroke(2, Color.parseColor("#80FFFFFF"))
+            setImageResource(iconResId)
+            setColorFilter(Color.WHITE)
+            setPadding(10.dp, 10.dp, 10.dp, 10.dp)
+            scaleType = ImageView.ScaleType.FIT_CENTER 
+            layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, gravity)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#33FFFFFF"))
+            }
+            setContinuousClickListener(coroutineScope, action)
         }
-        setContinuousClickListener(coroutineScope, action)
     }
-}
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Right column: OK button only (Z-axis removed per flow: ซ้ายขวาและขึ้นลงเท่านั้น)
+    // Right column: OK button only
     // ─────────────────────────────────────────────────────────────────────────
     private fun buildRightColumn(): LinearLayout {
         return LinearLayout(context).apply {
@@ -370,23 +376,36 @@ class ARUIManager(
                 164.dp
             )
 
-            addView(buildRectBtn("✔ OK", Color.parseColor("#2E7D32")) {
+            addView(buildConfirmBtn(R.drawable.ic_check, Color.parseColor("#34C759")) {
                 onAdjustConfirm?.invoke()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(80.dp, 56.dp)
-                (background as GradientDrawable).setStroke(2, Color.parseColor("#66A0FF66"))
+            }.apply { layoutParams = LinearLayout.LayoutParams(64.dp, 64.dp) })
+
+            addView(TextView(context).apply {
+                text = "ยืนยัน"
+                setTextColor(Color.parseColor("#34C759"))
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 8.dp }
             })
+
         }
     }
 
-    private fun buildRectBtn(label: String, bgColor: Int, action: () -> Unit): TextView {
-        return TextView(context).apply {
-            text = label
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD
-            background = createRoundDrawable(bgColor, 12.dp.toFloat())
+    private fun buildConfirmBtn(iconResId: Int, bgColor: Int, action: () -> Unit): AppCompatImageView {
+        return AppCompatImageView(context).apply {
+            setImageResource(iconResId)
+            setColorFilter(Color.WHITE)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(16.dp, 16.dp, 16.dp, 16.dp)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(bgColor)
+                setStroke(3.dp, Color.parseColor("#4DFFFFFF"))
+            }
             setContinuousClickListener(coroutineScope, action)
         }
     }
@@ -401,11 +420,11 @@ class ARUIManager(
 
     private fun updateCenterModeBtn() {
         if (editMode == "POS") {
-            btnCenterMode?.text = "📍 POS"
-            (btnCenterMode?.background as? GradientDrawable)?.setColor(Color.parseColor("#CC2255AA"))
+            btnCenterMode?.text = "POS"
+            (btnCenterMode?.background as? GradientDrawable)?.setColor(Color.parseColor("#3478F6"))
         } else {
-            btnCenterMode?.text = "🔄 ROT"
-            (btnCenterMode?.background as? GradientDrawable)?.setColor(Color.parseColor("#CC774400"))
+            btnCenterMode?.text = "ROT"
+            (btnCenterMode?.background as? GradientDrawable)?.setColor(Color.parseColor("#FF9500"))
         }
     }
 
@@ -421,16 +440,16 @@ class ARUIManager(
             panel.animate()
                 .translationY(0f)
                 .alpha(1f)
-                .setDuration(280)
-                .setInterpolator(DecelerateInterpolator())
+                .setDuration(350)
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .withEndAction { onEnd?.invoke() }
                 .start()
         } else {
             panel.animate()
-                .translationY(screenH * 0.4f)
+                .translationY(screenH * 0.5f)
                 .alpha(0f)
-                .setDuration(220)
-                .setInterpolator(DecelerateInterpolator())
+                .setDuration(250)
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .withEndAction { onEnd?.invoke() }
                 .start()
         }
@@ -460,8 +479,10 @@ class ARUIManager(
     // ═════════════════════════════════════════════════════════════════════════
     private fun toggleMenu(menu: String) {
         if (currentOpenMenu == menu) closeSelectionMenu()
-        else currentOpenMenu = menu
+        else {
+            currentOpenMenu = menu
             if (menu == "MODEL") showModelSelector() else showSizeSelector()
+        }
     }
 
     private fun closeSelectionMenu() {
@@ -595,15 +616,15 @@ class ARUIManager(
         layoutParams = LinearLayout.LayoutParams(72.dp, 72.dp)
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(Color.WHITE)
-            setStroke(4.dp, Color.parseColor("#DDDDDD"))
+            setColor(Color.parseColor("#F5F5F5"))
+            setStroke(5.dp, Color.parseColor("#B3FFFFFF"))
         }
     }
 
     private fun createRoundDrawable(color: Int, radius: Float) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = radius
-        setStroke(2.dp, Color.parseColor("#80FFFFFF"))
+        setStroke(1.dp, Color.parseColor("#4DFFFFFF"))
     }
 
     private fun getStatusBarHeight(): Int {
@@ -637,7 +658,7 @@ class ARUIManager(
             setImageResource(R.drawable.ic_cube)
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             setPadding(15.dp, 15.dp, 15.dp, 15.dp)
-            background = createRoundDrawable(Color.parseColor("#66000000"), 16.dp.toFloat())
+            background = createRoundDrawable(Color.parseColor("#80000000"), 20.dp.toFloat())
         }
 
         private fun makeSizeCircle() = TextView(context).apply {
@@ -648,7 +669,8 @@ class ARUIManager(
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#66000000"))
+                setColor(Color.parseColor("#80000000"))
+                setStroke(2.dp, Color.parseColor("#4DFFFFFF"))
             }
         }
     }
@@ -662,7 +684,7 @@ fun View.setContinuousClickListener(scope: CoroutineScope, action: () -> Unit) {
     setOnTouchListener { v, event ->
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                v.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80).start()
+                v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).start()
                 job = scope.launch {
                     while (isActive) {
                         action()
@@ -673,7 +695,7 @@ fun View.setContinuousClickListener(scope: CoroutineScope, action: () -> Unit) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 job?.cancel()
-                v.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
+                v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
                 v.performClick()
                 true
             }

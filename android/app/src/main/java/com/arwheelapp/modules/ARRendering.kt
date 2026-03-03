@@ -186,7 +186,7 @@ class ARRendering(
         val ws = selectedModel?.let { wheelStates[it] } ?: return
         val posStep = 0.005f
         val rotStep = 1.5f
-        when (editMode)
+        when (editMode) {
             "POS" -> when (direction) {
                 "LEFT" -> ws.manualOffsetRight -= posStep
                 "RIGHT" -> ws.manualOffsetRight += posStep
@@ -222,8 +222,10 @@ class ARRendering(
     fun cancelAdjusting() {
         val ws = selectedModel?.let { wheelStates[it] } ?: return
         ws.isManuallyLocked = false
-        ws.manualOffsetRight = 0f; ws.manualOffsetUp = 0f
-        ws.manualRotH = 0f; ws.manualRotV = 0f
+        ws.manualOffsetRight = 0f
+        ws.manualOffsetUp = 0f
+        ws.manualRotH = 0f
+        ws.manualRotV = 0f
         selectedModel = null
         onShowAdjustmentUI?.invoke(false)
     }
@@ -500,7 +502,8 @@ class ARRendering(
                 ws.stableFrames = 0
                 ws.isReadyToAnchor = false
             }
-            ws.lastCenter = center; ws.lastRot = planeRot
+            ws.lastCenter = center
+            ws.lastRot = planeRot
 
             // 13. Auto-upgrade anchor when quality improves
             val confirmed = confirmDetection(ratio)
@@ -549,7 +552,7 @@ class ARRendering(
 
         val rotH = Quaternion.fromAxisAngle(ws.planeUp, ws.manualRotH)
         val rotV = Quaternion.fromAxisAngle(ws.planeRight, ws.manualRotV)
-        val finalRot = normalize(rotH * rotV * baseRot)
+        val finalRot = normalize(rotH * baseRot * rotV)
 
         model.position = finalPos
         model.quaternion = finalRot
