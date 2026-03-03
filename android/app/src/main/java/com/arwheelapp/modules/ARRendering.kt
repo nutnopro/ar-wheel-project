@@ -43,12 +43,15 @@ private class WheelState {
     // Manual adjustment (in plane-local space)
     var manualOffsetRight: Float = 0f
     var manualOffsetUp: Float = 0f
+    var manualOffsetForward: Float = 0f
     var manualRotH: Float = 0f              // degrees around plane up axis
     var manualRotV: Float = 0f              // degrees around plane right axis
+    var manualRotRoll: Float = 0f
 
     // Plane axes stored when anchor placed, used for nudge
     var planeRight: Float3 = Float3(1f, 0f, 0f)
     var planeUp: Float3 = Float3(0f, 1f, 0f)
+    var planeDepth: Float3 = Float3(0f, 0f, 1f)
 
     // Position history (max 20, render uses avg of last 5)
     val posHistory: ArrayDeque<Float3> = ArrayDeque(20)
@@ -177,7 +180,7 @@ class ARRendering(
                 ws.isFrozen = false
                 m.isVisible = true
                 selectedModel = m
-                onShowAdjustmentUI?.invoke(true)   // main thread ✅
+                onShowAdjustmentUI?.invoke(true)
             }
         }
     }
@@ -202,6 +205,16 @@ class ARRendering(
         }
     }
 
+    fun updateZAxis(editMode: String, value: Float) {
+        val ws = selectedModel?.let { wheelStates[it] } ?: return
+        val maxPosOffset = 1f
+        val maxRotOffset = 180f
+        when (editMode) {
+            "POS" -> ws.manualOffsetForward = value * maxPosOffset
+            "ROT" -> ws.manualRotRoll = value * maxRotOffset
+        }
+    }
+
     fun finishAdjusting() {
         val m  = selectedModel ?: return
         val ws = wheelStates[m] ?: return
@@ -215,6 +228,8 @@ class ARRendering(
         ws.manualOffsetUp = 0f
         ws.manualRotH = 0f
         ws.manualRotV = 0f
+        ws.manualOffsetForward = 0f
+        ws.manualRotRoll = 0f
         selectedModel = null
         onShowAdjustmentUI?.invoke(false)
     }
@@ -226,6 +241,8 @@ class ARRendering(
         ws.manualOffsetUp = 0f
         ws.manualRotH = 0f
         ws.manualRotV = 0f
+        ws.manualOffsetForward = 0f
+        ws.manualRotRoll = 0f
         selectedModel = null
         onShowAdjustmentUI?.invoke(false)
     }
@@ -546,16 +563,20 @@ class ARRendering(
         val basePos = Float3(ap.tx(), ap.ty(), ap.tz())
         val baseRot = Quaternion(ap.qx(), ap.qy(), ap.qz(), ap.qw())
 
-        val finalPos = basePos +
-            ws.planeRight * ws.manualOffsetRight +
-            ws.planeUp * ws.manualOffsetUp
+        model.position = basePos +
+            (ws.planeRight * ws.manualOffsetRight) +
+            (ws.planeUp * ws.manualOffsetUp) +
+            (ws.planeDepth * ws.manualOffsetForward)
 
         val rotH = Quaternion.fromAxisAngle(ws.planeUp, ws.manualRotH)
         val rotV = Quaternion.fromAxisAngle(ws.planeRight, ws.manualRotV)
-        val finalRot = normalize(rotH * baseRot * rotV)
+        val rotZ = Quaternion.fromAxisAngle(ws.planeDepth, ws.manualRotRoll)
+        // model.quaternion = normalize(rotH * rotZ * rotV)
 
-        model.position = finalPos
-        model.quaternion = finalRot
+        // val rotH = Quaternion.fromAxisAngle(Float3(0f, 1f, 0f), ws.manualRotH)
+        model.childNodes.forEach { child ->
+            child.quaternion = normalize(rotH * rotZ * rotV)
+        }
     }
 
     private fun renderLockedModels() {

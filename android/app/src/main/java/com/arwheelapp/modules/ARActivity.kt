@@ -120,6 +120,7 @@ class ARActivity : ComponentActivity() {
             onSizeSelected = { inch -> arRendering.updateModelSize(inch) }
 
             onNudge = { editMode, dir -> arRendering.nudgeModel(editMode, dir) }
+            onZSliderChanged = { editMode, value -> arRendering.updateZAxis(editMode, value) }
             onAdjustConfirm = { arRendering.finishAdjusting() }
             onAdjustCancel = { arRendering.cancelAdjusting() }
         }

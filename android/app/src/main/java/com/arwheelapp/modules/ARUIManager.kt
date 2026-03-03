@@ -42,6 +42,7 @@ class ARUIManager(
     var onNudge: ((editMode: String, dir: String) -> Unit)? = null
     var onAdjustConfirm: (() -> Unit)? = null
     var onAdjustCancel: (() -> Unit)? = null
+    var onZSliderChanged: ((editMode: String, value: Float) -> Unit)? = null
 
     // ── UI refs ────────────────────────────────────────────────────────────────
     private var btnBack: AppCompatImageView? = null
@@ -58,6 +59,7 @@ class ARUIManager(
     private var currentARMode: ARMode = ARMode.DEFAULT
     /** "POS" or "ROT" — which axis the d-pad controls */
     private var editMode: String = "POS"
+    private var zSlider: SeekBar? = null
     var currentRotation = 0
         private set
     private var orientationListener: OrientationEventListener? = null
@@ -89,6 +91,7 @@ class ARUIManager(
     fun showAdjustmentPanel(show: Boolean) {
         if (show) {
             editMode = "POS"
+            zSlider?.progress = 50
             updateCenterModeBtn()
             closeSelectionMenu()
             adjustOverlay?.visibility = View.VISIBLE
@@ -298,6 +301,7 @@ class ARUIManager(
 
         inner.addView(titleRow)
         inner.addView(controlsRow)
+        inner.addView(buildZSlider())
         inner.addView(tvHint)
         adjustPanel?.addView(inner)
         rootLayout.addView(adjustPanel)
@@ -346,6 +350,46 @@ class ARUIManager(
                 setOnClickListener { toggleEditMode() }
             }
             addView(btnCenterMode)
+        }
+    }
+
+    private fun buildZSlider(): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 24.dp, 0, 0) // ห่างจาก D-pad ลงมานิดนึง
+            }
+
+            // ป้ายบอกชื่อ Slider
+            val label = TextView(context).apply {
+                text = "DEPTH / ROLL (Z-Axis)"
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 8.dp)
+            }
+            addView(label)
+
+            // ตัวแถบเลื่อน
+            zSlider = SeekBar(context).apply {
+                layoutParams = LinearLayout.LayoutParams(250.dp, LinearLayout.LayoutParams.WRAP_CONTENT) // ความกว้าง Slider
+                max = 100  // ค่า 0 ถึง 100
+                progress = 50 // เริ่มต้นที่กึ่งกลาง (50)
+                
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (fromUser) {
+                            // แปลงค่า 0-100 ให้กลายเป็น -1.0 ถึง 1.0
+                            val normalizedValue = (progress - 50) / 50f
+                            onZSliderChanged?.invoke(editMode, normalizedValue)
+                        }
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                })
+            }
+            addView(zSlider)
         }
     }
 
@@ -415,6 +459,7 @@ class ARUIManager(
     // ─────────────────────────────────────────────────────────────────────────
     private fun toggleEditMode() {
         editMode = if (editMode == "POS") "ROT" else "POS"
+        zSlider?.progress = 50
         updateCenterModeBtn()
     }
 

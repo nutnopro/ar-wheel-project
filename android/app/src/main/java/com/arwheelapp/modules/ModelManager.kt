@@ -21,9 +21,6 @@ class ModelManager(private val arSceneView: ARSceneView) {
         val rootNode = Node(arSceneView.engine).apply {
             isVisible = false       // hidden until detection hits >= 3
             isTouchable = true
-            isPositionEditable = true
-            isRotationEditable = true
-            isScaleEditable = true
         }
         scope.launch {
             val modelInstance = modelLoader.createModelInstance(modelPath)
@@ -63,9 +60,9 @@ class ModelManager(private val arSceneView: ARSceneView) {
 
         // Backplate behind the wheel
         loadBackplate(diameter)?.let { backplate ->
-            backplate.position = Float3(0f, -thickness, 0f)
-            backplate.rotation = Float3(-90f, 0f, 0f)
-            rootNode.addChildNode(backplate)
+            backplate.position = Float3(0f, 0f, -halfThickness)
+            backplate.rotation = Float3(0f, 0f, 0f)
+            wheelNode.addChildNode(backplate)
         }
         rootNode.addChildNode(wheelNode)
     }
