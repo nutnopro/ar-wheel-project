@@ -1,4 +1,4 @@
-// utils/ARActivity.kt
+// modules/ARActivity.kt
 package com.arwheelapp.modules
 
 import android.content.ContentValues
@@ -26,6 +26,7 @@ import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Session
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.loaders.EnvironmentLoader
+import io.github.sceneview.node.ModelNode
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -57,12 +58,6 @@ class ARActivity : ComponentActivity() {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (OpenCVLoader.initLocal()) Log.i(TAG, "OpenCV loaded ✅")
-        else {
-            Log.e(TAG, "OpenCV init failed!")
-            Toast.makeText(this, "Failed to load computer vision module", Toast.LENGTH_LONG).show()
-        }
         initViews()
     }
 
@@ -91,6 +86,7 @@ class ARActivity : ComponentActivity() {
 
         uiManager.setupInterface()
         wireCallbacks()
+        setNudgeListeners()
         setContentView(rootLayout)
     }
 
@@ -123,16 +119,27 @@ class ARActivity : ComponentActivity() {
 
             // Nudge: ARUIManager passes (editMode="POS"|"ROT", dir="LEFT"|"RIGHT"|"UP"|"DOWN")
             // Called from UI thread (button hold) → safe
-            onNudge = { editMode, dir -> arRendering.nudgeModel(editMode, dir) }
+            onNudge = { editMode, dir -> Log.d("AR_DEBUG_NUDGE", "UI Event: onNudge called with Mode=$editMode, Direction=$dir"); arRendering.nudgeModel(editMode, dir) }
 
-            onAdjustConfirm = { arRendering.finishAdjusting() }
-            onAdjustCancel = { arRendering.cancelAdjusting() }
+            onAdjustConfirm = { Log.d("AR_DEBUG_NUDGE", "UI Event: onAdjustConfirm called"); arRendering.finishAdjusting() }
+            onAdjustCancel = { Log.d("AR_DEBUG_NUDGE", "UI Event: onAdjustCancel called"); arRendering.cancelAdjusting() }
         }
+    }
 
-        // AR → UI: onSingleTapConfirmed fires on main thread; hide/show is always safe
-        arRendering.onShowAdjustmentUI = { show ->
-            mainHandler.post { uiManager.showAdjustmentPanel(show) }
-        }
+    private fun setNudgeListeners() {
+        arSceneView.setOnGestureListener(
+            onSingleTapUp = { e, node ->
+                Log.d("AR_DEBUG_NUDGE", "Gesture: at (${e.x}, ${e.y}). -> Parent: ${node?.parent} -> Node: ${node}")
+                if (node is ModelNode) {
+                    Log.d("AR_DEBUG_NUDGE", "Gesture: Valid Node tapped. Starting nudge process.")
+                    arRendering.startNudging(node.parent!!)
+                    arRendering.onShowAdjustmentUI = { show ->
+                        Log.d("AR_DEBUG_NUDGE", "UI Update: Toggling adjustment panel visibility to $show")
+                        mainHandler.post { uiManager.showAdjustmentPanel(show) }
+                    }
+                }
+            }
+        )
     }
 
     // ── AR Session ────────────────────────────────────────────────────────────
