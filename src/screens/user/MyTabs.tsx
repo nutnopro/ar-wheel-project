@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,13 @@ import {
   FlatList,
   Dimensions,
   Modal,
+  NativeModules,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const { ARLauncher } = NativeModules;
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2; // คำนวณความกว้างการ์ด
@@ -199,15 +204,28 @@ export function HomeScreen() {
   );
 }
 
-// หน้า Dummy อื่นๆ (ArScreen, ProfileScreen)
-export function ArScreen() {
+export function ArScreen({ navigation }: any) {
+  const openAR = useCallback(async () => {
+    try {
+      if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
+        await ARLauncher.openARActivity();
+        navigation.goBack();
+      } else {
+        console.error('❌ ARLauncher native module not available');
+      }
+    } catch (err) {
+      console.error('❌ Failed to open AR Activity:', err);
+    }
+  }, [navigation]);
+
+  useEffect(() => {
+    openAR();
+  }, [openAR]);
+
   return (
     <View style={styles.centerScreen}>
-      <Text
-        style={{ fontSize: 18, fontWeight: 'bold', color: COLORS.textDark }}
-      >
-        AR Camera View
-      </Text>
+      <ActivityIndicator size="large" color="#2563EB" />
+      <TouchableOpacity onPress={openAR}></TouchableOpacity>
     </View>
   );
 }

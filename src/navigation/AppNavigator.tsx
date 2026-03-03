@@ -1,11 +1,16 @@
 // src/navigation/AppNavigator.tsx
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  NativeModules,
+} from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { LanguageProvider, useLanguage } from '../context/LanguageContext';
@@ -17,7 +22,6 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
 import HomeScreen from '../screens/user/HomeScreen';
 import ProductDetailScreen from '../screens/user/ProductDetailScreen';
-import ArScreen from '../screens/user/ArScreen';
 import ProfileScreen from '../screens/user/ProfileScreen';
 import FavoritesScreen from '../screens/user/FavoritesScreen';
 import EditProfileScreen from '../screens/user/EditProfileScreen';
@@ -53,6 +57,27 @@ export type RootStackParamList = {
   ManageModels: undefined;
   ManageCategories: undefined;
   SystemLogs: undefined;
+};
+
+const { ARLauncher } = NativeModules;
+
+const ArScreen = () => {
+  const openAR = useCallback(async () => {
+    try {
+      if (!ARLauncher || typeof ARLauncher.openARActivity !== 'function') {
+        throw new Error('ARLauncher native module not available');
+      }
+      await ARLauncher.openARActivity();
+    } catch (err) {
+      console.error('❌ Failed to open AR Activity:', err);
+    }
+  }, []);
+
+  return (
+    <View>
+      <TouchableOpacity onPress={openAR}></TouchableOpacity>
+    </View>
+  );
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
