@@ -88,7 +88,7 @@ class ARActivity : ComponentActivity() {
         uiManager.setupInterface()
         wireCallbacks()
         setNudgeListeners()
-        setInitialModel(path)
+        setInitialModel()
         setContentView(rootLayout)
     }
 

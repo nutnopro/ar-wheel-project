@@ -53,7 +53,7 @@ const FavoritesScreen = () => {
           source={
             item.images?.[0]
               ? {uri: item.images[0]}
-              : require('../../assets/cube')
+              : require('../../assets/cube.png')
           }
           style={styles.image}
           resizeMode="contain"

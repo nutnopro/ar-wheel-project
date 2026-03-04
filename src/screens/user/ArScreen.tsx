@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useCallback} from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,13 @@ import {
   Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import {useNavigation, useRoute} from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import api from '../../services/api';
-import {setSelectedModel, setModelPaths} from '../../utils/storage';
-import {resolveModelPath} from '../../services/modelCacheService';
-import {WheelModel} from '../../utils/types';
+import { setSelectedModel, setModelPaths } from '../../utils/storage';
+import { resolveModelPath } from '../../services/modelCacheService';
+import { WheelModel } from '../../utils/types';
 
-const {ARLauncher} = NativeModules;
+const { ARLauncher } = NativeModules;
 
 const ArScreen = () => {
   const navigation = useNavigation<any>();
@@ -34,7 +34,9 @@ const ArScreen = () => {
   const [loading, setLoading] = useState(true);
 
   // 3. State สำหรับโมเดลที่กำลังโชว์
-  const [currentModel, setCurrentModel] = useState<WheelModel | null>(incomingItem || null);
+  const [currentModel, setCurrentModel] = useState<WheelModel | null>(
+    incomingItem || null,
+  );
 
   // ดึงข้อมูลจาก API
   const fetchWheels = useCallback(async () => {
@@ -119,23 +121,25 @@ const ArScreen = () => {
     }
   };
 
-  const renderModelItem = ({item}: {item: WheelModel}) => {
+  const renderModelItem = ({ item }: { item: WheelModel }) => {
     const isActive = currentModel?.id === item.id;
     return (
       <TouchableOpacity
         onPress={() => handleSelectModel(item)}
         activeOpacity={0.8}
-        style={styles.modelItem}>
+        style={styles.modelItem}
+      >
         <View
           style={[
             styles.modelImageContainer,
             isActive && styles.modelImageContainerActive,
-          ]}>
+          ]}
+        >
           <Image
             source={
               item.images?.[0]
-                ? {uri: item.images[0]}
-                : require('../../assets/cube')
+                ? { uri: item.images[0] }
+                : require('../../assets/cube.png')
             }
             style={styles.modelImage}
             resizeMode="contain"
@@ -174,7 +178,13 @@ const ArScreen = () => {
         {/* Carousel เลือกโมเดล */}
         <View style={styles.carouselContainer}>
           {loading ? (
-            <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
               <ActivityIndicator size="small" color="#2563EB" />
             </View>
           ) : (
@@ -196,7 +206,8 @@ const ArScreen = () => {
           <TouchableOpacity
             style={styles.shutterButtonOuter}
             activeOpacity={0.7}
-            onPress={handleOpenAR}>
+            onPress={handleOpenAR}
+          >
             <View style={styles.shutterButtonInner} />
           </TouchableOpacity>
 

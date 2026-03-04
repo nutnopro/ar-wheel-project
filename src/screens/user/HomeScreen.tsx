@@ -101,7 +101,8 @@ const HomeScreen = () => {
       wheel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       wheel.brand.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCategory =
-      selectedCategory === 'All' || (wheel.categories?.includes(selectedCategory) ?? false);
+      selectedCategory === 'All' ||
+      (wheel.categories?.includes(selectedCategory) ?? false);
 
     return matchSearch && matchCategory;
   });
@@ -122,7 +123,7 @@ const HomeScreen = () => {
           source={
             item.images?.[0]
               ? { uri: item.images[0] }
-              : require('../../assets/cube')
+              : require('../../assets/cube.png')
           }
           style={styles.image}
           resizeMode="contain"
@@ -135,7 +136,9 @@ const HomeScreen = () => {
         >
           {item.name}
         </Text>
-        <Text style={styles.cardPrice}>${Number(item.price)?.toLocaleString()}</Text>
+        <Text style={styles.cardPrice}>
+          ${Number(item.price)?.toLocaleString()}
+        </Text>
         <Text style={styles.cardCategory}>{item.brand}</Text>
       </View>
     </TouchableOpacity>
