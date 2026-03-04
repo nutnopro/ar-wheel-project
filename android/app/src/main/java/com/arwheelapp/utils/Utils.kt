@@ -27,12 +27,12 @@ data class Detection(
     val confidence: Float
 )
 
-class FrameYData(
-    val bytes: ByteArray,
-    val width: Int,
-    val height: Int,
-    val rowStride: Int
-)
+// class FrameYData(
+//     val bytes: ByteArray,
+//     val width: Int,
+//     val height: Int,
+//     val rowStride: Int
+// )
 
 // data class ProcessedDetection(
 //     val detection: Detection,
@@ -40,15 +40,15 @@ class FrameYData(
 // )
 
 // Result from OpenCV ellipse fitting
-data class RefinedResult(
-    val cx: Float,          // refined center X in screen pixels
-    val cy: Float,          // refined center Y in screen pixels
-    val width: Float,       // ellipse major axis in screen pixels
-    val height: Float,      // ellipse minor axis in screen pixels
-    val angle: Float,       // ellipse rotation angle in degrees
-    val circularity: Float, // minor/major ratio → 1.0 = perfect circle
-    val isFound: Boolean
-)
+// data class RefinedResult(
+//     val cx: Float,          // refined center X in screen pixels
+//     val cy: Float,          // refined center Y in screen pixels
+//     val width: Float,       // ellipse major axis in screen pixels
+//     val height: Float,      // ellipse minor axis in screen pixels
+//     val angle: Float,       // ellipse rotation angle in degrees
+//     val circularity: Float, // minor/major ratio → 1.0 = perfect circle
+//     val isFound: Boolean
+// )
 
 // ──────────────────────────────────────────────
 // Extensions
