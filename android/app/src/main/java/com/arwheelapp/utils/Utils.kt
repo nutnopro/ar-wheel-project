@@ -1,3 +1,4 @@
+// utils/Utils.kt
 package com.arwheelapp.utils
 
 import android.content.res.Resources
@@ -33,10 +34,10 @@ class FrameYData(
     val rowStride: Int
 )
 
-data class ProcessedDetection(
-    val detection: Detection,
-    val cvResult: RefinedResult
-)
+// data class ProcessedDetection(
+//     val detection: Detection,
+//     val cvResult: RefinedResult
+// )
 
 // Result from OpenCV ellipse fitting
 data class RefinedResult(

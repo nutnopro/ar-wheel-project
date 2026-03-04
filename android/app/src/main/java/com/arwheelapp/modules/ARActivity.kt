@@ -1,3 +1,4 @@
+// modules/ARActivity.kt
 package com.arwheelapp.modules
 
 import android.content.ContentValues
@@ -24,11 +25,14 @@ import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
 import com.google.ar.core.Session
 import io.github.sceneview.ar.ARSceneView
+import io.github.sceneview.loaders.EnvironmentLoader
+import io.github.sceneview.node.LightNode
+import io.github.sceneview.node.ModelNode
+import io.github.sceneview.math.Rotation
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.opencv.android.OpenCVLoader
 
 class ARActivity : ComponentActivity() {
     companion object {
@@ -40,6 +44,7 @@ class ARActivity : ComponentActivity() {
     private val rootLayout: FrameLayout by lazy { FrameLayout(this) }
     private val arRendering: ARRendering by lazy { ARRendering(this, onnxOverlay, arSceneView, lifecycleScope) }
     private val uiManager: ARUIManager by lazy { ARUIManager(this, rootLayout, onnxOverlay, lifecycleScope) }
+    private val environmentLoader: EnvironmentLoader by lazy { EnvironmentLoader(arSceneView.engine, arSceneView.context) }
 
     private var currentMode: ARMode = ARMode.DEFAULT
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -54,12 +59,6 @@ class ARActivity : ComponentActivity() {
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        if (OpenCVLoader.initLocal()) Log.i(TAG, "OpenCV loaded ✅")
-        else {
-            Log.e(TAG, "OpenCV init failed!")
-            Toast.makeText(this, "Failed to load computer vision module", Toast.LENGTH_LONG).show()
-        }
         initViews()
     }
 
@@ -74,23 +73,43 @@ class ARActivity : ComponentActivity() {
         uiManager.onPause()
     }
 
-    // ── Views ─────────────────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────────────
     private fun initViews() {
         arSceneView.onSessionCreated = { configureARSession(it) }
         arSceneView.planeRenderer.isVisible = false
-        val matchParent = FrameLayout.LayoutParams(
+        setupLighting()
+        val mp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         )
-        rootLayout.addView(arSceneView, matchParent)
-        rootLayout.addView(onnxOverlay, matchParent)
+        rootLayout.addView(arSceneView, mp)
+        rootLayout.addView(onnxOverlay, mp)
 
         uiManager.setupInterface()
         wireCallbacks()
+        setNudgeListeners()
         setContentView(rootLayout)
     }
 
-    // ── Callback wiring ───────────────────────────────────────────────────────
+    private fun setupLighting() {
+        lifecycleScope.launch {
+            try {
+                arSceneView.environment = environmentLoader.createHDREnvironment("environments/studio_lighting.hdr")!!
+                Log.d(TAG, "Environment loaded ✅")
+            } catch (e: Exception) { Log.e(TAG, "Failed to load environment", e) }
+
+            arSceneView.addChildNode(
+                LightNode(arSceneView.engine, com.google.android.filament.EntityManager.get().create())
+                .apply {
+                    intensity = 30_000f
+                    color = dev.romainguy.kotlin.math.Float4(1.0f, 1.0f, 1.0f, 1.0f)
+                    rotation = Rotation(x = -45f, y = 45f, z = 0f)
+                }
+            )
+        }
+    }
+
+    // ── Callbacks ─────────────────────────────────────────────────────────────
     private fun wireCallbacks() {
         // ── UI → AR ──────────────────────────────────────────────────────────
         uiManager.apply {
@@ -100,21 +119,24 @@ class ARActivity : ComponentActivity() {
             onModelSelected = { path -> arRendering.updateNewModel("models/$path.glb") }
             onSizeSelected = { inch -> arRendering.updateModelSize(inch) }
 
-            // Nudge: called from UI thread (button hold) → safe to forward directly
-            onNudge = { dx, dy, dz -> arRendering.nudgeSelectedModel(dx, dy, dz) }
-            // Confirm: bake offset into new anchor
+            onNudge = { editMode, dir -> arRendering.nudgeModel(editMode, dir) }
+            onZSliderChanged = { editMode, value -> arRendering.updateZAxis(editMode, value) }
             onAdjustConfirm = { arRendering.finishAdjusting() }
-
-            // Cancel: discard offset, hide panel
             onAdjustCancel = { arRendering.cancelAdjusting() }
         }
+    }
 
-        // ── AR → UI ───────────────────────────────────────────────────────────
-        // onShowAdjustmentUI is triggered from onSingleTapConfirmed (main thread)
-        // OR from mainHandler.post() in ARRendering — always main thread ✅
-        arRendering.onShowAdjustmentUI = { show ->
-            mainHandler.post { uiManager.showAdjustmentPanel(show) }
-        }
+    private fun setNudgeListeners() {
+        arSceneView.setOnGestureListener(
+            onSingleTapUp = { e, node ->
+                if (node is ModelNode) {
+                    arRendering.startNudging(node.parent!!)
+                    arRendering.onShowAdjustmentUI = { show ->
+                        mainHandler.post { uiManager.showAdjustmentPanel(show) }
+                    }
+                }
+            }
+        )
     }
 
     // ── AR Session ────────────────────────────────────────────────────────────
@@ -124,16 +146,14 @@ class ARActivity : ComponentActivity() {
             session.configure(session.config.apply {
                 updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
                 planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
+                lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
                 instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                 focusMode = Config.FocusMode.AUTO
                 if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
                     depthMode = Config.DepthMode.AUTOMATIC
             })
             arRendering.setupMarkerDatabase(session)
-        } catch (e: Exception) {
-            Log.e(TAG, "R session config error", e)
-        }
+        } catch (e: Exception) { Log.e(TAG, "AR session config error", e) }
     }
 
     private fun configureCameraFPS(session: Session) {
@@ -145,9 +165,7 @@ class ARActivity : ComponentActivity() {
         if (configs.isNotEmpty()) {
             session.cameraConfig = configs[0]
             Log.d(TAG, "60 FPS configured ✅")
-        } else {
-            Log.w(TAG, "60 FPS not supported, using default")
-        }
+        } else Log.w(TAG, "60 FPS not supported")
     }
 
     // ── Permission & render loop ──────────────────────────────────────────────

@@ -1,6 +1,6 @@
+// modules/ARUIManager.kt
 package com.arwheelapp.modules
 
-import android.animation.ObjectAnimator
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -38,9 +38,11 @@ class ARUIManager(
     var onCaptureClicked: (() -> Unit)? = null
     var onModelSelected: ((String) -> Unit)? = null
     var onSizeSelected: ((Float) -> Unit)? = null
-    var onNudge: ((dx: Float, dy: Float, dz: Float) -> Unit)? = null
+    // editMode = "POS" | "ROT", direction = "LEFT"|"RIGHT"|"UP"|"DOWN"
+    var onNudge: ((editMode: String, dir: String) -> Unit)? = null
     var onAdjustConfirm: (() -> Unit)? = null
     var onAdjustCancel: (() -> Unit)? = null
+    var onZSliderChanged: ((editMode: String, value: Float) -> Unit)? = null
 
     // ── UI refs ────────────────────────────────────────────────────────────────
     private var btnBack: AppCompatImageView? = null
@@ -49,18 +51,20 @@ class ARUIManager(
     private var selectionContainer: FrameLayout? = null
     private var tvSelectionTitle: TextView? = null
     private var selectionRecyclerView: RecyclerView? = null
-
-    // Adjustment panel (shown after anchor placed / model tapped)
     private var adjustPanel: FrameLayout? = null
-    private var adjustOverlay: View? = null         // dim background
+    private var adjustOverlay: View? = null
+    private var btnCenterMode: TextView? = null   // POS ↔ ROT toggle
+
     // ── State ──────────────────────────────────────────────────────────────────
-    private var currentMode: ARMode = ARMode.DEFAULT
+    private var currentARMode: ARMode = ARMode.DEFAULT
+    /** "POS" or "ROT" — which axis the d-pad controls */
+    private var editMode: String = "POS"
+    private var zSlider: SeekBar? = null
     var currentRotation = 0
         private set
     private var orientationListener: OrientationEventListener? = null
     private var currentOpenMenu: String? = null
 
-    // Mock data
     private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5")
     private var sizeList = listOf(14, 15, 16, 17, 18, 19, 20, 21, 22)
 
@@ -82,10 +86,13 @@ class ARUIManager(
     fun onPause() = orientationListener?.disable()
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Adjustment panel — PUBLIC entry: called from ARActivity (main thread)
+    // Show / hide adjustment panel
     // ═════════════════════════════════════════════════════════════════════════
     fun showAdjustmentPanel(show: Boolean) {
         if (show) {
+            editMode = "POS"
+            zSlider?.progress = 50
+            updateCenterModeBtn()
             closeSelectionMenu()
             adjustOverlay?.visibility = View.VISIBLE
             adjustPanel?.visibility = View.VISIBLE
@@ -120,14 +127,14 @@ class ARUIManager(
                 gravity = Gravity.TOP or Gravity.END
                 setMargins(0, sb + 8.dp, m, 0)
             }
-            setOnClickListener { toggleMode() }
+            setOnClickListener { toggleARMode() }
         }
         rootLayout.addView(btnBack)
         rootLayout.addView(btnModeToggle)
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Bottom controls bar
+    // Bottom controls
     // ═════════════════════════════════════════════════════════════════════════
     private fun setupControlsPanel() {
         controlsContainer = LinearLayout(context).apply {
@@ -151,12 +158,12 @@ class ARUIManager(
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Model/size selection overlay
+    // Selection overlay
     // ═════════════════════════════════════════════════════════════════════════
     private fun setupSelectionOverlay() {
         selectionContainer = FrameLayout(context).apply {
             visibility = View.GONE
-            setBackgroundColor(Color.parseColor("#01000000"))
+            setBackgroundColor(Color.parseColor("#01000000")) // Touch interceptor
             setOnClickListener { closeSelectionMenu() }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -171,7 +178,7 @@ class ARUIManager(
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setShadowLayer(2f, 0f, 2f, Color.BLACK)
+            setShadowLayer(4f, 0f, 2f, Color.parseColor("#80000000"))
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
@@ -185,15 +192,15 @@ class ARUIManager(
     }
 
     // ═════════════════════════════════════════════════════════════════════════
-    // Adjustment panel  ← MAIN FIX
+    // Adjustment panel
     // ═════════════════════════════════════════════════════════════════════════
     private fun setupAdjustmentPanel() {
-        // ── Semi-transparent dim overlay (full screen, does NOT steal taps
-        //    so the user can still see the AR scene behind the controls) ─────
+        // Dim overlay (non-clickable, just visual)
         adjustOverlay = View(context).apply {
             setBackgroundColor(Color.parseColor("#44000000"))
             visibility = View.GONE
-            isClickable = false
+            isClickable = true
+            setOnClickListener { onAdjustCancel?.invoke() }
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -201,25 +208,25 @@ class ARUIManager(
         }
         rootLayout.addView(adjustOverlay)
 
-        // ── Card panel pinned to bottom-center ─────────────────────────────
+        // Panel card
         adjustPanel = FrameLayout(context).apply {
             visibility = View.GONE
-            background = createRoundDrawable(Color.parseColor("#CC1A1A2E"), 28.dp.toFloat())
-            setPadding(20.dp, 16.dp, 20.dp, 24.dp)
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#E6121212")) // โปร่งแสงนิดๆ สไตล์กระจก
+                cornerRadii = floatArrayOf(
+                    36.dp.toFloat(), 36.dp.toFloat(),   // Top left
+                    36.dp.toFloat(), 36.dp.toFloat(),   // Top right
+                    0f, 0f, 0f, 0f  // Bottom square
+                )
+            }
+            setPadding(24.dp, 16.dp, 24.dp, 32.dp)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = 0
-                marginStart = 0
-                marginEnd = 0
-            }
-            // intercept touches so they don't fall through to AR scene
-            setOnTouchListener { _, _ -> true }
+            ).apply { gravity = Gravity.BOTTOM }
+            setOnTouchListener { _, _ -> true }   // intercept touches
         }
 
-        // ── Inner content (vertical stack) ────────────────────────────────
         val inner = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
@@ -229,17 +236,24 @@ class ARUIManager(
             )
         }
 
-        // ── Title row ─────────────────────────────────────────────────────
+        // Handle Bar
+        val handleBar = View(context).apply {
+            background = createRoundDrawable(Color.parseColor("#4DFFFFFF"), 4.dp.toFloat())
+            layoutParams = LinearLayout.LayoutParams(40.dp, 5.dp).apply { bottomMargin = 16.dp }
+        }
+        inner.addView(handleBar)
+
+        // Title row
         val titleRow = FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 12.dp }
+            ).apply { bottomMargin = 16.dp }
         }
-        val tvTitle = TextView(context).apply {
-            text = "ปรับตำแหน่งล้อ"
+        titleRow.addView(TextView(context).apply {
+            text = "ปรับแต่งตำแหน่ง"
             setTextColor(Color.WHITE)
-            textSize = 15f
+            textSize = 16f
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             layoutParams = FrameLayout.LayoutParams(
@@ -247,28 +261,18 @@ class ARUIManager(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 Gravity.CENTER
             )
-        }
-        val btnClose = TextView(context).apply {
-            text = "✕"
-            setTextColor(Color.parseColor("#AAAAAA"))
-            textSize = 18f
-            gravity = Gravity.CENTER
-            layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp).apply {gravity = Gravity.END }
+        })
+
+        titleRow.addView(AppCompatImageView(context).apply {
+            setImageResource(R.drawable.ic_close)
+            setColorFilter(Color.parseColor("#AAAAAA"))
+            setPadding(8.dp, 8.dp, 8.dp, 8.dp)
+            layoutParams = FrameLayout.LayoutParams(40.dp, 40.dp).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+            background = createRoundDrawable(Color.parseColor("#22FFFFFF"), 20.dp.toFloat())
             setOnClickListener { onAdjustCancel?.invoke() }
-        }
-        titleRow.addView(tvTitle)
-        titleRow.addView(btnClose)
+        })
 
-        // ── Divider ───────────────────────────────────────────────────────
-        val divider = View(context).apply {
-            setBackgroundColor(Color.parseColor("#33FFFFFF"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                1
-            ).apply { bottomMargin = 16.dp }
-        }
-
-        // ── Controls row: D-pad + depth column ────────────────────────────
+        // Controls row: D-pad | spacer | right column
         val controlsRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -277,152 +281,200 @@ class ARUIManager(
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
+        controlsRow.addView(buildDPad())
+        controlsRow.addView(Space(context).apply {
+            layoutParams = LinearLayout.LayoutParams(32.dp, 1)
+        })
+        controlsRow.addView(buildRightColumn())
 
-        val step = 0.005f   // 5 mm per tick
-
-        // D-Pad
-        val dpad = buildDPad(step)
-
-        // Spacer
-        val spacer = Space(context).apply {
-            layoutParams = LinearLayout.LayoutParams(24.dp, 1)
-        }
-
-        // Depth + OK column
-        val rightCol = buildRightColumn(step)
-
-        controlsRow.addView(dpad)
-        controlsRow.addView(spacer)
-        controlsRow.addView(rightCol)
-
-        // ── Hint text ─────────────────────────────────────────────────────
+        // Hint
         val tvHint = TextView(context).apply {
-            text = "กดค้างเพื่อขยับ  •  OK เพื่อยืนยัน"
+            text = "กดค้างที่ลูกศรเพื่อขยับ • กดปุ่มกลางเพื่อสลับโหมด"
             setTextColor(Color.parseColor("#88FFFFFF"))
-            textSize = 11f
+            textSize = 12f
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = 12.dp }
+            ).apply { topMargin = 20.dp }
         }
 
         inner.addView(titleRow)
-        inner.addView(divider)
         inner.addView(controlsRow)
+        inner.addView(buildZSlider())
         inner.addView(tvHint)
-
         adjustPanel?.addView(inner)
         rootLayout.addView(adjustPanel)
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // D-Pad builder
+    // D-Pad: ▲▼◀▶ + center POS/ROT toggle
     // ─────────────────────────────────────────────────────────────────────────
-    private fun buildDPad(step: Float): FrameLayout {
-        val size = 160.dp
+    private fun buildDPad(): FrameLayout {
+        val size = 180.dp
         val btnSz = 52.dp
 
         return FrameLayout(context).apply {
             layoutParams = LinearLayout.LayoutParams(size, size)
 
             // UP
-            addView(buildNudgeBtn("▲", Gravity.TOP or Gravity.CENTER_HORIZONTAL, btnSz) {
-                onNudge?.invoke(0f, step, 0f)
+            addView(buildDirBtn(R.drawable.ic_arrow_up, Gravity.TOP or Gravity.CENTER_HORIZONTAL, btnSz) {
+                onNudge?.invoke(editMode, "UP")
             })
             // DOWN
-            addView(buildNudgeBtn("▼", Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, btnSz) {
-                onNudge?.invoke(0f, -step, 0f)
+            addView(buildDirBtn(R.drawable.ic_arrow_down, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, btnSz) {
+                onNudge?.invoke(editMode, "DOWN")
             })
             // LEFT
-            addView(buildNudgeBtn("◀", Gravity.CENTER_VERTICAL or Gravity.START, btnSz) {
-                onNudge?.invoke(-step, 0f, 0f)
+            addView(buildDirBtn(R.drawable.ic_arrow_left, Gravity.CENTER_VERTICAL or Gravity.START, btnSz) {
+                onNudge?.invoke(editMode, "LEFT")
             })
             // RIGHT
-            addView(buildNudgeBtn("▶", Gravity.CENTER_VERTICAL or Gravity.END, btnSz) {
-                onNudge?.invoke(step, 0f, 0f)
+            addView(buildDirBtn(R.drawable.ic_arrow_right, Gravity.CENTER_VERTICAL or Gravity.END, btnSz) {
+                onNudge?.invoke(editMode, "RIGHT")
             })
 
-            // Center dot
-            addView(View(context).apply {
-                layoutParams = FrameLayout.LayoutParams(12.dp, 12.dp, Gravity.CENTER)
+            // Center mode toggle button
+            btnCenterMode = TextView(context).apply {
+                text = "POS"
+                gravity = Gravity.CENTER
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                layoutParams = FrameLayout.LayoutParams(56.dp, 56.dp, Gravity.CENTER)
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor("#44FFFFFF"))
+                    setColor(Color.parseColor("#3478F6")) // iOS Blue for POS
+                    setStroke(2, Color.parseColor("#80FFFFFF"))
                 }
-            })
+                setOnClickListener { toggleEditMode() }
+            }
+            addView(btnCenterMode)
         }
     }
 
-    private fun buildNudgeBtn(
-        label: String, gravity: Int, sizePx: Int, action: () -> Unit
-    ): TextView {
-        return TextView(context).apply {
-            text = label
-            this.gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
+    private fun buildZSlider(): LinearLayout {
+        return LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 24.dp, 0, 0) // ห่างจาก D-pad ลงมานิดนึง
+            }
+
+            // ป้ายบอกชื่อ Slider
+            val label = TextView(context).apply {
+                text = "DEPTH / ROLL (Z-Axis)"
+                setTextColor(Color.WHITE)
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 8.dp)
+            }
+            addView(label)
+
+            // ตัวแถบเลื่อน
+            zSlider = SeekBar(context).apply {
+                layoutParams = LinearLayout.LayoutParams(250.dp, LinearLayout.LayoutParams.WRAP_CONTENT) // ความกว้าง Slider
+                max = 100  // ค่า 0 ถึง 100
+                progress = 50 // เริ่มต้นที่กึ่งกลาง (50)
+                
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (fromUser) {
+                            // แปลงค่า 0-100 ให้กลายเป็น -1.0 ถึง 1.0
+                            val normalizedValue = (progress - 50) / 50f
+                            onZSliderChanged?.invoke(editMode, normalizedValue)
+                        }
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+                })
+            }
+            addView(zSlider)
+        }
+    }
+
+    private fun buildDirBtn(iconResId: Int, gravity: Int, sizePx: Int, action: () -> Unit): AppCompatImageView {
+        return AppCompatImageView(context).apply {
+            setImageResource(iconResId)
+            setColorFilter(Color.WHITE)
+            setPadding(10.dp, 10.dp, 10.dp, 10.dp)
+            scaleType = ImageView.ScaleType.FIT_CENTER 
             layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, gravity)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#55FFFFFF"))
-                setStroke(2, Color.parseColor("#80FFFFFF"))
+                setColor(Color.parseColor("#33FFFFFF"))
             }
             setContinuousClickListener(coroutineScope, action)
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Right column: Depth in/out + OK button
+    // Right column: OK button only
     // ─────────────────────────────────────────────────────────────────────────
-    private fun buildRightColumn(step: Float): LinearLayout {
+    private fun buildRightColumn(): LinearLayout {
         return LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                160.dp
+                164.dp
             )
 
-            // Z- (towards screen / push in)
-            addView(buildRectBtn("Z ◀", Color.parseColor("#55FFFFFF")) {
-                onNudge?.invoke(0f, 0f, -step)
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(80.dp, 48.dp).apply { bottomMargin = 8.dp }
-            })
-
-            // Z+ (away from screen / pull out)
-            addView(buildRectBtn("Z ▶", Color.parseColor("#55FFFFFF")) {
-                onNudge?.invoke(0f, 0f, step)
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(80.dp, 48.dp).apply { bottomMargin = 12.dp }
-            })
-
-            // OK / confirm
-            addView(buildRectBtn("✔ OK", Color.parseColor("#2E7D32")) {
+            addView(buildConfirmBtn(R.drawable.ic_check, Color.parseColor("#34C759")) {
                 onAdjustConfirm?.invoke()
-            }.apply {
-                layoutParams = LinearLayout.LayoutParams(80.dp, 52.dp)
-                (background as GradientDrawable).setStroke(2, Color.parseColor("#66A0FF66"))
+            }.apply { layoutParams = LinearLayout.LayoutParams(64.dp, 64.dp) })
+
+            addView(TextView(context).apply {
+                text = "ยืนยัน"
+                setTextColor(Color.parseColor("#34C759"))
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = 8.dp }
             })
+
         }
     }
 
-    private fun buildRectBtn(label: String, bgColor: Int, action: () -> Unit): TextView {
-        return TextView(context).apply {
-            text = label
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            typeface = Typeface.DEFAULT_BOLD
-            background = createRoundDrawable(bgColor, 12.dp.toFloat())
+    private fun buildConfirmBtn(iconResId: Int, bgColor: Int, action: () -> Unit): AppCompatImageView {
+        return AppCompatImageView(context).apply {
+            setImageResource(iconResId)
+            setColorFilter(Color.WHITE)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(16.dp, 16.dp, 16.dp, 16.dp)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(bgColor)
+                setStroke(3.dp, Color.parseColor("#4DFFFFFF"))
+            }
             setContinuousClickListener(coroutineScope, action)
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Slide animation for the panel
+    // Toggle POS ↔ ROT
+    // ─────────────────────────────────────────────────────────────────────────
+    private fun toggleEditMode() {
+        editMode = if (editMode == "POS") "ROT" else "POS"
+        zSlider?.progress = 50
+        updateCenterModeBtn()
+    }
+
+    private fun updateCenterModeBtn() {
+        if (editMode == "POS") {
+            btnCenterMode?.text = "POS"
+            (btnCenterMode?.background as? GradientDrawable)?.setColor(Color.parseColor("#3478F6"))
+        } else {
+            btnCenterMode?.text = "ROT"
+            (btnCenterMode?.background as? GradientDrawable)?.setColor(Color.parseColor("#FF9500"))
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Slide animation
     // ─────────────────────────────────────────────────────────────────────────
     private fun animatePanel(show: Boolean, onEnd: (() -> Unit)? = null) {
         val panel = adjustPanel ?: return
@@ -433,16 +485,16 @@ class ARUIManager(
             panel.animate()
                 .translationY(0f)
                 .alpha(1f)
-                .setDuration(280)
-                .setInterpolator(DecelerateInterpolator())
+                .setDuration(350)
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .withEndAction { onEnd?.invoke() }
                 .start()
         } else {
             panel.animate()
-                .translationY(screenH * 0.4f)
+                .translationY(screenH * 0.5f)
                 .alpha(0f)
-                .setDuration(220)
-                .setInterpolator(DecelerateInterpolator())
+                .setDuration(250)
+                .setInterpolator(DecelerateInterpolator(1.5f))
                 .withEndAction { onEnd?.invoke() }
                 .start()
         }
@@ -472,7 +524,8 @@ class ARUIManager(
     // ═════════════════════════════════════════════════════════════════════════
     private fun toggleMenu(menu: String) {
         if (currentOpenMenu == menu) closeSelectionMenu()
-        else { currentOpenMenu = menu
+        else {
+            currentOpenMenu = menu
             if (menu == "MODEL") showModelSelector() else showSizeSelector()
         }
     }
@@ -495,8 +548,7 @@ class ARUIManager(
             adapter = SelectionAdapter(data, isModel)
             clipToPadding = false
             val half = context.resources.displayMetrics.widthPixels / 2
-            val itemHalf = 50.dp
-            setPadding(half - itemHalf, 0, half - itemHalf, 0)
+            setPadding(half - 50.dp, 0, half - 50.dp, 0)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 100.dp
@@ -522,11 +574,11 @@ class ARUIManager(
         if (isModel) tvSelectionTitle?.text = data.first().uppercase()
     }
 
-    private fun toggleMode() {
-        currentMode = if (currentMode == ARMode.MARKERLESS) ARMode.MARKER_BASED else ARMode.MARKERLESS
-        onModeSelected?.invoke(currentMode)
+    private fun toggleARMode() {
+        currentARMode = if (currentARMode == ARMode.MARKERLESS) ARMode.MARKER_BASED else ARMode.MARKERLESS
+        onModeSelected?.invoke(currentARMode)
         btnModeToggle?.setImageResource(
-            if (currentMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
+            if (currentARMode == ARMode.MARKER_BASED) R.drawable.ic_qr_code else R.drawable.ic_layers
         )
     }
 
@@ -546,7 +598,7 @@ class ARUIManager(
                 }
                 if (newRot != currentRotation) {
                     currentRotation = newRot
-                    rotateIcons(currentRotation)
+                    rotateIcons(newRot)
                 }
             }
         }
@@ -609,15 +661,15 @@ class ARUIManager(
         layoutParams = LinearLayout.LayoutParams(72.dp, 72.dp)
         background = GradientDrawable().apply {
             shape = GradientDrawable.OVAL
-            setColor(Color.WHITE)
-            setStroke(4.dp, Color.parseColor("#DDDDDD"))
+            setColor(Color.parseColor("#F5F5F5"))
+            setStroke(5.dp, Color.parseColor("#B3FFFFFF"))
         }
     }
 
     private fun createRoundDrawable(color: Int, radius: Float) = GradientDrawable().apply {
         setColor(color)
         cornerRadius = radius
-        setStroke(2.dp, Color.parseColor("#80FFFFFF"))
+        setStroke(1.dp, Color.parseColor("#4DFFFFFF"))
     }
 
     private fun getStatusBarHeight(): Int {
@@ -629,8 +681,7 @@ class ARUIManager(
     // Selection adapter
     // ═════════════════════════════════════════════════════════════════════════
     private inner class SelectionAdapter(
-        private val items: List<String>,
-        private val isModel: Boolean
+        private val items: List<String>, private val isModel: Boolean
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, vt: Int) =
             object : RecyclerView.ViewHolder(if (isModel) makeModelIcon() else makeSizeCircle()) {}
@@ -647,12 +698,12 @@ class ARUIManager(
 
         override fun getItemCount() = items.size
 
-        private fun makeModelIcon() = ImageView(context).apply {
+        private fun makeModelIcon() = android.widget.ImageView(context).apply {
             layoutParams = ViewGroup.MarginLayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
             setImageResource(R.drawable.ic_cube)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             setPadding(15.dp, 15.dp, 15.dp, 15.dp)
-            background = createRoundDrawable(Color.parseColor("#66000000"), 16.dp.toFloat())
+            background = createRoundDrawable(Color.parseColor("#80000000"), 20.dp.toFloat())
         }
 
         private fun makeSizeCircle() = TextView(context).apply {
@@ -663,21 +714,22 @@ class ARUIManager(
             typeface = Typeface.DEFAULT_BOLD
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#66000000"))
+                setColor(Color.parseColor("#80000000"))
+                setStroke(2.dp, Color.parseColor("#4DFFFFFF"))
             }
         }
     }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Extension: hold-to-repeat button
+// Hold-to-repeat button extension
 // ─────────────────────────────────────────────────────────────────────────────
 fun View.setContinuousClickListener(scope: CoroutineScope, action: () -> Unit) {
     var job: Job? = null
     setOnTouchListener { v, event ->
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                v.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80).start()
+                v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).start()
                 job = scope.launch {
                     while (isActive) {
                         action()
@@ -688,7 +740,7 @@ fun View.setContinuousClickListener(scope: CoroutineScope, action: () -> Unit) {
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 job?.cancel()
-                v.animate().scaleX(1f).scaleY(1f).setDuration(80).start()
+                v.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
                 v.performClick()
                 true
             }
