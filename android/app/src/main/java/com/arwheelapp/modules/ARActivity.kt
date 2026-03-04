@@ -20,15 +20,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.arwheelapp.utils.ARMode
-import com.google.ar.core.Config
 import com.google.ar.core.CameraConfig
 import com.google.ar.core.CameraConfigFilter
+import com.google.ar.core.Config
 import com.google.ar.core.Session
 import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.loaders.EnvironmentLoader
+import io.github.sceneview.math.Rotation
 import io.github.sceneview.node.LightNode
 import io.github.sceneview.node.ModelNode
-import io.github.sceneview.math.Rotation
 import java.util.EnumSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -88,6 +88,7 @@ class ARActivity : ComponentActivity() {
         uiManager.setupInterface()
         wireCallbacks()
         setNudgeListeners()
+        setInitialModel(path)
         setContentView(rootLayout)
     }
 
@@ -137,6 +138,19 @@ class ARActivity : ComponentActivity() {
                 }
             }
         )
+    }
+
+    private fun setInitialModel() {
+        val path = intent.getStringExtra("initialModelPath") ?: "models/default.glb"
+        arRendering.modelPath = path
+
+        val json = intent.getStringExtra("modelPathsJson") ?: "[]"
+        val paths = try {
+            org.json.JSONArray(json).let { arr ->
+                (0 until arr.length()).map { arr.getString(it) }
+            }
+        } catch (e: Exception) { emptyList() }
+        uiManager.setModels(paths)
     }
 
     // ── AR Session ────────────────────────────────────────────────────────────

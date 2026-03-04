@@ -12,6 +12,7 @@ import {
 import {useNavigation} from '@react-navigation/native';
 import {useTheme} from '../../context/ThemeContext';
 import api from '../../services/api';
+import {WheelModel} from '../../utils/types';
 
 const {width} = Dimensions.get('window');
 const COLUMN_WIDTH = width / 2 - 24;
@@ -22,7 +23,7 @@ const FavoritesScreen = () => {
   const navigation = useNavigation<any>();
   const {theme} = useTheme();
 
-  const [favorites, setFavorites] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<WheelModel[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchFavorites = useCallback(async () => {
@@ -42,7 +43,7 @@ const FavoritesScreen = () => {
     fetchFavorites();
   }, [fetchFavorites]);
 
-  const renderItem = ({item}: {item: any}) => (
+  const renderItem = ({item}: {item: WheelModel}) => (
     <TouchableOpacity
       activeOpacity={0.9}
       style={[styles.card, {backgroundColor: theme.card}]}
@@ -50,8 +51,8 @@ const FavoritesScreen = () => {
       <View style={styles.imageContainer}>
         <Image
           source={
-            item.image
-              ? {uri: item.image}
+            item.images?.[0]
+              ? {uri: item.images[0]}
               : require('../../assets/cube')
           }
           style={styles.image}
@@ -65,7 +66,7 @@ const FavoritesScreen = () => {
           {item.name || item.id}
         </Text>
         <Text style={styles.cardPrice}>
-          ${item.price?.toLocaleString() || '0'}
+          ${Number(item.price)?.toLocaleString() || '0'}
         </Text>
         <Text style={styles.cardCategory}>{item.brand}</Text>
       </View>
@@ -83,7 +84,7 @@ const FavoritesScreen = () => {
         <FlatList
           data={favorites}
           renderItem={renderItem}
-          keyExtractor={item => item.id?.toString() || item._id?.toString()}
+          keyExtractor={item => item.id}
           numColumns={2}
           columnWrapperStyle={styles.row}
           contentContainerStyle={styles.listContent}

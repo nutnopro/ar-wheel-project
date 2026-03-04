@@ -152,7 +152,7 @@ class ARRendering(
     // private var useYBufA = true
 
     @Volatile var snapThreshold = DEFAULT_WHEEL_DIAMETER_M
-    @Volatile var modelPath = "models/wheel1.glb"   // !!Change to UI
+    @Volatile var modelPath = null
 
     var selectedModel: Node? = null
     var onShowAdjustmentUI: ((Boolean) -> Unit)? = null

@@ -12,12 +12,15 @@ class ARLauncherModule(reactContext: ReactApplicationContext) :
     override fun getName(): String = "ARLauncher"
 
     @ReactMethod
-    fun openARActivity(promise: Promise) {
+    fun openARActivity(initialModelPath: String, modelPathsJson: String, promise: Promise) {
         val activity = currentActivity
         if (activity != null) {
             try {
-                val intent = Intent(activity, ARActivity::class.java)
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                val intent = Intent(activity, ARActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra("initialModelPath", initialModelPath)
+                    putExtra("modelPathsJson", modelPathsJson)
+                }
                 activity.startActivity(intent)
                 promise.resolve(true)
             } catch (e: Exception) {

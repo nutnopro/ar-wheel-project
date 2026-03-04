@@ -1,3 +1,4 @@
+// src/utils/storage.ts
 import { MMKV } from 'react-native-mmkv';
 
 let storage: MMKV | null = null;
@@ -86,16 +87,15 @@ export const clearSession = () => {
 export interface SelectedModelData {
   id: string;
   name: string;
-  price: number;
+  price: string;
   brand: string;
-  modelUrl?: string;
-  imageUrl?: string;
+  modelUrl: string;    // Firebase Storage URL (ใช้ fallback ถ้า cache หาย)
+  localPath?: string;  // path ของไฟล์ .glb ที่ cache ไว้ในเครื่อง
+  imageUrl: string;    // images[0]
 }
 
 export const setSelectedModel = (model: SelectedModelData) => {
   if (!storage) return;
-  // บันทึกทั้งก้อนเป็น JSON string ใน key เดียว
-  // Native อ่านด้วย: MMKV.defaultMMKV().decodeString("ar_selected_model") แล้ว parse JSON
   storage.set('ar_selected_model', JSON.stringify(model));
 };
 
@@ -108,6 +108,17 @@ export const getSelectedModel = (): SelectedModelData | null => {
 export const clearSelectedModel = () => {
   if (!storage) return;
   storage.delete('ar_selected_model');
+};
+
+// --- Model Paths (list ของ localPath/modelUrl ที่ส่งไป native เป็น JSON array) ---
+export const setModelPaths = (paths: string[]) => {
+  if (storage) storage.set('ar_model_paths', JSON.stringify(paths));
+};
+
+export const getModelPaths = (): string[] => {
+  if (!storage) return [];
+  const raw = storage.getString('ar_model_paths');
+  return raw ? JSON.parse(raw) : [];
 };
 
 // --- Language ---

@@ -15,31 +15,33 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import {setSelectedModel} from '../../utils/storage';
+import {resolveModelPath} from '../../services/modelCacheService';
+import {WheelModel} from '../../utils/types';
 
 const {ARLauncher} = NativeModules;
 
 const ProductDetailScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const {item} = route.params; // รับข้อมูลสินค้า
+  const item: WheelModel = route.params.item;
 
-  // เปิด AR native พร้อม modelId + บันทึกลง MMKV
+  // เปิด AR native พร้อม localPath
   const handleTryOnAR = async () => {
-    const modelId = item.id || item._id || '';
-
-    // บันทึกข้อมูลโมเดลลง MMKV สำหรับ native
-    setSelectedModel({
-      id: modelId,
-      name: item.name || '',
-      price: item.price || 0,
-      brand: item.brand || '',
-      modelUrl: item.model_url || item.modelUrl || '',
-      imageUrl: item.image || item.imageUrl || item.image_url || '',
-    });
-
     try {
+      const localPath = await resolveModelPath(item);
+
+      setSelectedModel({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        brand: item.brand,
+        modelUrl: item.modelUrl,
+        localPath,
+        imageUrl: item.images?.[0] ?? '',
+      });
+
       if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-        await ARLauncher.openARActivity(modelId);
+        await ARLauncher.openARActivity(localPath, JSON.stringify([localPath]));
       } else {
         Alert.alert('AR', 'AR Launcher is not available on this device');
       }
@@ -62,8 +64,8 @@ const ProductDetailScreen = () => {
         <View style={styles.imageWrapper}>
           <Image
             source={
-              item.image
-                ? {uri: item.image}
+              item.images?.[0]
+                ? {uri: item.images[0]}
                 : require('../../assets/cube')
             }
             style={styles.image}
@@ -81,13 +83,17 @@ const ProductDetailScreen = () => {
         <View style={styles.detailsContainer}>
           <Text style={styles.name}>{item.name || item.id}</Text>
           <Text style={styles.price}>
-            ${item.price?.toLocaleString() || '0'}
+            ${Number(item.price)?.toLocaleString() || '0'}
+          </Text>
+          <Text style={styles.meta}>
+            {[item.brand, item.size && `Size: ${item.size}`, item.width && `Width: ${item.width}`]
+              .filter(Boolean)
+              .join('  ·  ')}
           </Text>
 
           <Text style={styles.description}>
-            The legendary {item.name || 'wheel'}. High performance forged wheel
-            designed for racing and street use. Lightweight, durable, and
-            stylish.
+            {item.description ||
+              `The legendary ${item.name || 'wheel'}. High performance forged wheel designed for racing and street use. Lightweight, durable, and stylish.`}
           </Text>
         </View>
       </ScrollView>
@@ -145,8 +151,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: '#2563EB',
-    marginBottom: 16,
+    marginBottom: 6,
   },
+  meta: {fontSize: 13, color: '#94A3B8', marginBottom: 16},
   description: {fontSize: 14, color: '#64748B', lineHeight: 22},
 
   footer: {

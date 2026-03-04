@@ -1,11 +1,23 @@
 // src/utils/types.ts
 
-export interface Wheel {
+export interface WheelModel {
   id: string;
+  owner: string;
   name: string;
-  price: number;
+  price: string;         // Firebase เก็บเป็น string
+  size: string;
+  width: string;
+  offset: string;
+  pcd: string;
   brand: string;
-  category?: string;
-  image: string;
-  model_url?: string;
+  description: string;
+  categories: string[];  // array ของ cateId
+  images: string[];      // array ของ URL รูปภาพ
+  modelUrl: string;      // full download URL ของไฟล์ .glb
+  favoriteCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
+
+// backward compat alias
+export type Wheel = WheelModel;

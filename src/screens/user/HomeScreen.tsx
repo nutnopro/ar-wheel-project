@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { Wheel } from '../../utils/types';
+import { WheelModel } from '../../utils/types';
 import api from '../../services/api';
 
 // [NEW] Import Contexts
@@ -33,7 +33,7 @@ const HomeScreen = () => {
   const { theme, isDarkMode } = useTheme();
   const { t } = useLanguage();
 
-  const [wheels, setWheels] = useState<Wheel[]>([]);
+  const [wheels, setWheels] = useState<WheelModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -73,7 +73,6 @@ const HomeScreen = () => {
   const fetchWheels = async () => {
     try {
       setLoading(true);
-      // สมมติว่า endpoint คือ /wheels หรือ /products
       const response = await api.get('/models');
       setWheels(response.data);
     } catch (error) {
@@ -102,12 +101,12 @@ const HomeScreen = () => {
       wheel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       wheel.brand.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCategory =
-      selectedCategory === 'All' || wheel.category === selectedCategory;
+      selectedCategory === 'All' || (wheel.categories?.includes(selectedCategory) ?? false);
 
     return matchSearch && matchCategory;
   });
 
-  const renderItem = ({ item }: { item: Wheel }) => (
+  const renderItem = ({ item }: { item: WheelModel }) => (
     <TouchableOpacity
       activeOpacity={0.9}
       style={[styles.card, { backgroundColor: theme.card }]} // ใช้สีจากการ์ด theme
@@ -120,8 +119,11 @@ const HomeScreen = () => {
         ]}
       >
         <Image
-          source={require('../../assets/cube')}
-          // source={{ uri: item.image }}
+          source={
+            item.images?.[0]
+              ? { uri: item.images[0] }
+              : require('../../assets/cube')
+          }
           style={styles.image}
           resizeMode="contain"
         />
@@ -131,10 +133,9 @@ const HomeScreen = () => {
           style={[styles.cardTitle, { color: theme.text }]}
           numberOfLines={1}
         >
-          {item.id}
-          {/* {item.name} */}
+          {item.name}
         </Text>
-        <Text style={styles.cardPrice}>${item.price.toLocaleString()}</Text>
+        <Text style={styles.cardPrice}>${Number(item.price)?.toLocaleString()}</Text>
         <Text style={styles.cardCategory}>{item.brand}</Text>
       </View>
     </TouchableOpacity>

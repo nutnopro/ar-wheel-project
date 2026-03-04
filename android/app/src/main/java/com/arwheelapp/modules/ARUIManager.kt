@@ -65,7 +65,7 @@ class ARUIManager(
     private var orientationListener: OrientationEventListener? = null
     private var currentOpenMenu: String? = null
 
-    private var modelList = listOf("wheel1", "wheel2", "wheel3", "wheel4", "wheel5")
+    private var modelList: List<String> = listOf()
     private var sizeList = listOf(14, 15, 16, 17, 18, 19, 20, 21, 22)
 
     fun setModels(models: List<String>) { modelList = models }

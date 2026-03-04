@@ -16,7 +16,9 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useNavigation, useRoute} from '@react-navigation/native';
 import api from '../../services/api';
-import {setSelectedModel} from '../../utils/storage';
+import {setSelectedModel, setModelPaths} from '../../utils/storage';
+import {resolveModelPath} from '../../services/modelCacheService';
+import {WheelModel} from '../../utils/types';
 
 const {ARLauncher} = NativeModules;
 
@@ -25,24 +27,25 @@ const ArScreen = () => {
   const route = useRoute<any>();
 
   // 1. รับค่า item ที่ส่งมาจากหน้า ProductDetail (ถ้ามี)
-  const incomingItem = route.params?.item;
+  const incomingItem: WheelModel | undefined = route.params?.item;
 
   // 2. State สำหรับข้อมูลจาก API
-  const [wheels, setWheels] = useState<any[]>([]);
+  const [wheels, setWheels] = useState<WheelModel[]>([]);
   const [loading, setLoading] = useState(true);
 
   // 3. State สำหรับโมเดลที่กำลังโชว์
-  const [currentModel, setCurrentModel] = useState<any>(incomingItem || null);
+  const [currentModel, setCurrentModel] = useState<WheelModel | null>(incomingItem || null);
 
   // ดึงข้อมูลจาก API
   const fetchWheels = useCallback(async () => {
     try {
       setLoading(true);
       const response = await api.get('/models');
-      setWheels(response.data);
+      const data: WheelModel[] = response.data;
+      setWheels(data);
       // ถ้าไม่มี incomingItem ให้ใช้ตัวแรกจาก API
-      if (!currentModel && response.data.length > 0) {
-        setCurrentModel(response.data[0]);
+      if (!currentModel && data.length > 0) {
+        setCurrentModel(data[0]);
       }
     } catch (error) {
       console.error('Fetch wheels error:', error);
@@ -63,15 +66,15 @@ const ArScreen = () => {
   }, [incomingItem]);
 
   // เลือกโมเดล → บันทึกลง MMKV + อัปเดต state
-  const handleSelectModel = (item: any) => {
+  const handleSelectModel = (item: WheelModel) => {
     setCurrentModel(item);
     setSelectedModel({
-      id: item.id || item._id || '',
-      name: item.name || '',
-      price: item.price || 0,
-      brand: item.brand || '',
-      modelUrl: item.model_url || item.modelUrl || '',
-      imageUrl: item.image || item.imageUrl || item.image_url || '',
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      brand: item.brand,
+      modelUrl: item.modelUrl,
+      imageUrl: item.images?.[0] ?? '',
     });
   };
 
@@ -83,32 +86,40 @@ const ArScreen = () => {
     }
   };
 
-  // เปิด AR native พร้อม modelId
+  // เปิด AR native พร้อม localPath (หรือ modelUrl ถ้า resolve ไม่ได้)
   const handleOpenAR = async () => {
-    const modelId = currentModel?.id || currentModel?._id || '';
-    // บันทึกโมเดลทั้งก้อนลง MMKV ก่อนเปิด AR
-    if (currentModel) {
-      setSelectedModel({
-        id: modelId,
-        name: currentModel.name || '',
-        price: currentModel.price || 0,
-        brand: currentModel.brand || '',
-        modelUrl: currentModel.model_url || currentModel.modelUrl || '',
-        imageUrl: currentModel.image || currentModel.imageUrl || currentModel.image_url || '',
-      });
-    }
+    if (!currentModel) return;
+
     try {
+      // resolve localPath ของโมเดลที่เลือก (download + cache ถ้ายังไม่มี)
+      const localPath = await resolveModelPath(currentModel);
+
+      // resolve paths ของโมเดลทั้งหมดใน list สำหรับ carousel ใน AR native
+      const allPaths = await Promise.all(wheels.map(w => resolveModelPath(w)));
+      setModelPaths(allPaths);
+
+      setSelectedModel({
+        id: currentModel.id,
+        name: currentModel.name,
+        price: currentModel.price,
+        brand: currentModel.brand,
+        modelUrl: currentModel.modelUrl,
+        localPath,
+        imageUrl: currentModel.images?.[0] ?? '',
+      });
+
       if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-        await ARLauncher.openARActivity(modelId);
+        await ARLauncher.openARActivity(localPath, JSON.stringify(allPaths));
       } else {
         Alert.alert('AR', 'AR Launcher is not available on this device');
       }
     } catch (err) {
       console.error('❌ Failed to open AR Activity:', err);
+      Alert.alert('Error', 'Failed to prepare model for AR');
     }
   };
 
-  const renderModelItem = ({item}: {item: any}) => {
+  const renderModelItem = ({item}: {item: WheelModel}) => {
     const isActive = currentModel?.id === item.id;
     return (
       <TouchableOpacity
@@ -122,8 +133,8 @@ const ArScreen = () => {
           ]}>
           <Image
             source={
-              item.image
-                ? {uri: item.image}
+              item.images?.[0]
+                ? {uri: item.images[0]}
                 : require('../../assets/cube')
             }
             style={styles.modelImage}
@@ -172,7 +183,7 @@ const ArScreen = () => {
               horizontal
               showsHorizontalScrollIndicator={false}
               renderItem={renderModelItem}
-              keyExtractor={item => item.id?.toString() || item._id?.toString()}
+              keyExtractor={item => item.id}
               contentContainerStyle={styles.carouselContent}
             />
           )}
