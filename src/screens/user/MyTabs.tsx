@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
   View,
   Text,
@@ -12,10 +12,12 @@ import {
   NativeModules,
   Platform,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import api from '../../services/api';
 
-const { ARLauncher } = NativeModules;
+const {ARLauncher} = NativeModules;
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = (width - 48) / 2; // คำนวณความกว้างการ์ด
@@ -30,20 +32,30 @@ const COLORS = {
   overlay: 'rgba(37, 99, 235, 0.2)',
 };
 
-// ข้อมูลจำลอง
-const MOCK_DATA = [
-  { id: '1', name: 'Alloy Wheel S1', price: '$999.99', category: 'Sport' },
-  { id: '2', name: 'Matte Black Rim', price: '$850.00', category: 'Luxury' },
-  { id: '3', name: 'Chrome Spoke', price: '$1,200.00', category: 'Classic' },
-  { id: '4', name: 'Racing Tire X', price: '$400.00', category: 'Sport' },
-  { id: '5', name: 'Carbon Fiber Kit', price: '$2,500.00', category: 'Sport' },
-  { id: '6', name: 'Vintage Hubcap', price: '$150.00', category: 'Classic' },
-];
+// ลบ MOCK_DATA — ใช้ API แทน
 
 export function HomeScreen() {
   const [isFilterVisible, setFilterVisible] = useState(false);
   const [minPrice, setMinPrice] = useState('0');
   const [maxPrice, setMaxPrice] = useState('999');
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/models');
+      setProducts(response.data);
+    } catch (error) {
+      console.error('Fetch products error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const renderItem = ({ item }: any) => (
     <View style={styles.cardContainer}>
@@ -114,8 +126,13 @@ export function HomeScreen() {
       </View>
 
       {/* --- Product Grid --- */}
+      {loading ? (
+        <View style={styles.centerScreen}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      ) : (
       <FlatList
-        data={MOCK_DATA}
+        data={products}
         renderItem={renderItem}
         keyExtractor={item => item.id}
         numColumns={2}
@@ -126,6 +143,7 @@ export function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
         showsVerticalScrollIndicator={false}
       />
+      )}
 
       {/* --- Filter Modal (Popup) --- */}
       <Modal
@@ -204,14 +222,14 @@ export function HomeScreen() {
   );
 }
 
-export function ArScreen({ navigation }: any) {
+export function ArScreen({navigation}: any) {
   const openAR = useCallback(async () => {
     try {
       if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-        await ARLauncher.openARActivity();
+        await ARLauncher.openARActivity('');
         navigation.goBack();
       } else {
-        console.error('❌ ARLauncher native module not available');
+        Alert.alert('AR', 'AR Launcher is not available on this device');
       }
     } catch (err) {
       console.error('❌ Failed to open AR Activity:', err);

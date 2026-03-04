@@ -1,11 +1,12 @@
 // src/navigation/AppNavigator.tsx
-import React, { useCallback } from 'react';
+import React, {useCallback} from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   NativeModules,
+  Alert,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -59,23 +60,13 @@ export type RootStackParamList = {
   SystemLogs: undefined;
 };
 
-const { ARLauncher } = NativeModules;
+const {ARLauncher} = NativeModules;
 
-const ArScreen = () => {
-  const openAR = useCallback(async () => {
-    try {
-      if (!ARLauncher || typeof ARLauncher.openARActivity !== 'function') {
-        throw new Error('ARLauncher native module not available');
-      }
-      await ARLauncher.openARActivity();
-    } catch (err) {
-      console.error('❌ Failed to open AR Activity:', err);
-    }
-  }, []);
-
+// AR tab screen — placeholder, actual AR opens via native launcher
+const ArScreenPlaceholder = () => {
   return (
-    <View>
-      <TouchableOpacity onPress={openAR}></TouchableOpacity>
+    <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+      <Text>Opening AR...</Text>
     </View>
   );
 };
@@ -124,13 +115,30 @@ function MainTabNavigator() {
       />
       <Tab.Screen
         name="AR"
-        component={ArScreen}
+        component={ArScreenPlaceholder}
+        listeners={({navigation}) => ({
+          tabPress: (e: any) => {
+            e.preventDefault(); // ไม่ navigate ไปหน้า AR
+            // เปิด native AR launcher แทน
+            (async () => {
+              try {
+                if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
+                  await ARLauncher.openARActivity('');
+                } else {
+                  Alert.alert('AR', 'AR Launcher is not available on this device');
+                }
+              } catch (err) {
+                console.error('❌ Failed to open AR Activity:', err);
+              }
+            })();
+          },
+        })}
         options={{
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: {display: 'none'},
           tabBarIcon: () => (
             <View style={styles.arButtonWrapper}>
               <View style={styles.diamondShape}>
-                <View style={{ transform: [{ rotate: '-45deg' }] }}>
+                <View style={{transform: [{rotate: '-45deg'}]}}>
                   <Icon name="cube-scan" size={30} color="white" />
                 </View>
               </View>

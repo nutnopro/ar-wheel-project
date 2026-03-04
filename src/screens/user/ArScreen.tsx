@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, {useState, useEffect, useCallback} from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,16 @@ import {
   Image,
   Platform,
   StatusBar,
+  NativeModules,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { MOCK_WHEELS } from '../../data/mockData'; // ตรวจสอบ path นี้ว่าถูกต้อง
+import {useNavigation, useRoute} from '@react-navigation/native';
+import api from '../../services/api';
+import {setSelectedModel} from '../../utils/storage';
+
+const {ARLauncher} = NativeModules;
 
 const ArScreen = () => {
   const navigation = useNavigation<any>();
@@ -21,10 +27,33 @@ const ArScreen = () => {
   // 1. รับค่า item ที่ส่งมาจากหน้า ProductDetail (ถ้ามี)
   const incomingItem = route.params?.item;
 
-  // 2. State สำหรับโมเดลที่กำลังโชว์
-  const [currentModel, setCurrentModel] = useState(
-    incomingItem || MOCK_WHEELS[0],
-  );
+  // 2. State สำหรับข้อมูลจาก API
+  const [wheels, setWheels] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // 3. State สำหรับโมเดลที่กำลังโชว์
+  const [currentModel, setCurrentModel] = useState<any>(incomingItem || null);
+
+  // ดึงข้อมูลจาก API
+  const fetchWheels = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/models');
+      setWheels(response.data);
+      // ถ้าไม่มี incomingItem ให้ใช้ตัวแรกจาก API
+      if (!currentModel && response.data.length > 0) {
+        setCurrentModel(response.data[0]);
+      }
+    } catch (error) {
+      console.error('Fetch wheels error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchWheels();
+  }, [fetchWheels]);
 
   // อัปเดต state ถ้ามีการส่งค่าใหม่เข้ามา
   useEffect(() => {
@@ -33,39 +62,76 @@ const ArScreen = () => {
     }
   }, [incomingItem]);
 
+  // เลือกโมเดล → บันทึกลง MMKV + อัปเดต state
+  const handleSelectModel = (item: any) => {
+    setCurrentModel(item);
+    setSelectedModel({
+      id: item.id || item._id || '',
+      name: item.name || '',
+      price: item.price || 0,
+      brand: item.brand || '',
+      modelUrl: item.model_url || item.modelUrl || '',
+      imageUrl: item.image || item.imageUrl || item.image_url || '',
+    });
+  };
+
   const handleBack = () => {
-    // ถ้าเข้ามาจาก ProductDetail ให้ย้อนกลับได้
     if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      // ถ้ากดจาก Tab Bar ให้กลับไปหน้า Home
       navigation.navigate('Home');
     }
   };
 
-  const renderModelItem = ({ item }: { item: any }) => {
+  // เปิด AR native พร้อม modelId
+  const handleOpenAR = async () => {
+    const modelId = currentModel?.id || currentModel?._id || '';
+    // บันทึกโมเดลทั้งก้อนลง MMKV ก่อนเปิด AR
+    if (currentModel) {
+      setSelectedModel({
+        id: modelId,
+        name: currentModel.name || '',
+        price: currentModel.price || 0,
+        brand: currentModel.brand || '',
+        modelUrl: currentModel.model_url || currentModel.modelUrl || '',
+        imageUrl: currentModel.image || currentModel.imageUrl || currentModel.image_url || '',
+      });
+    }
+    try {
+      if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
+        await ARLauncher.openARActivity(modelId);
+      } else {
+        Alert.alert('AR', 'AR Launcher is not available on this device');
+      }
+    } catch (err) {
+      console.error('❌ Failed to open AR Activity:', err);
+    }
+  };
+
+  const renderModelItem = ({item}: {item: any}) => {
     const isActive = currentModel?.id === item.id;
     return (
       <TouchableOpacity
-        onPress={() => setCurrentModel(item)}
+        onPress={() => handleSelectModel(item)}
         activeOpacity={0.8}
-        style={styles.modelItem}
-      >
-        {/* ใช้ Array styles เพื่อเปลี่ยนสีขอบเมื่อถูกเลือก */}
+        style={styles.modelItem}>
         <View
           style={[
             styles.modelImageContainer,
             isActive && styles.modelImageContainerActive,
-          ]}
-        >
+          ]}>
           <Image
-            source={{ uri: item.image }}
+            source={
+              item.image
+                ? {uri: item.image}
+                : require('../../assets/cube')
+            }
             style={styles.modelImage}
             resizeMode="contain"
           />
         </View>
         <Text style={styles.modelName} numberOfLines={1}>
-          {item.name}
+          {item.name || item.id}
         </Text>
       </TouchableOpacity>
     );
@@ -73,7 +139,6 @@ const ArScreen = () => {
 
   return (
     <View style={styles.container}>
-      {/* ทำให้ Status Bar โปร่งใสเพื่อให้กล้องเต็มจอ */}
       <StatusBar
         barStyle="light-content"
         backgroundColor="transparent"
@@ -83,7 +148,6 @@ const ArScreen = () => {
       {/* --- ส่วนแสดงผลกล้อง (Mockup) --- */}
       <View style={styles.cameraPlaceholder}>
         <Text style={styles.cameraText}>view of camera</Text>
-        {/* แสดงชื่อรุ่นที่กำลังลองอยู่กลางจอ */}
         <Text style={styles.previewText}>{currentModel?.name}</Text>
       </View>
 
@@ -98,14 +162,20 @@ const ArScreen = () => {
       <View style={styles.footerArea}>
         {/* Carousel เลือกโมเดล */}
         <View style={styles.carouselContainer}>
-          <FlatList
-            data={MOCK_WHEELS}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            renderItem={renderModelItem}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.carouselContent}
-          />
+          {loading ? (
+            <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+              <ActivityIndicator size="small" color="#2563EB" />
+            </View>
+          ) : (
+            <FlatList
+              data={wheels}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              renderItem={renderModelItem}
+              keyExtractor={item => item.id?.toString() || item._id?.toString()}
+              contentContainerStyle={styles.carouselContent}
+            />
+          )}
         </View>
 
         {/* ปุ่ม Shutter & Menu */}
@@ -115,7 +185,7 @@ const ArScreen = () => {
           <TouchableOpacity
             style={styles.shutterButtonOuter}
             activeOpacity={0.7}
-          >
+            onPress={handleOpenAR}>
             <View style={styles.shutterButtonInner} />
           </TouchableOpacity>
 
@@ -135,7 +205,7 @@ const styles = StyleSheet.create({
   },
   cameraPlaceholder: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#F8F9FA', // สีเทาอ่อนจำลองกล้อง
+    backgroundColor: '#F8F9FA',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -163,7 +233,7 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.8)', // เพิ่มพื้นหลังให้ปุ่มมองเห็นชัด
+    backgroundColor: 'rgba(255,255,255,0.8)',
     borderRadius: 22,
   },
   footerArea: {
@@ -201,7 +271,7 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   modelImageContainerActive: {
-    borderColor: '#2563EB', // สีขอบสีฟ้าเมื่อเลือก
+    borderColor: '#2563EB',
     backgroundColor: '#fff',
   },
   modelImage: {

@@ -1,4 +1,8 @@
 import React, { createContext, useState, useContext } from 'react';
+import {
+  setLanguage as saveLanguage,
+  getLanguage as loadLanguage,
+} from '../utils/storage';
 
 // 1. กำหนดคำแปล (Dictionary)
 const translations = {
@@ -106,10 +110,13 @@ export const LanguageProvider = ({
 }: {
   children: React.ReactNode;
 }) => {
-  const [language, setLanguage] = useState<'en' | 'th'>('en');
+  // อ่านภาษาจาก MMKV storage (persist ข้ามเปิดแอป)
+  const savedLang = loadLanguage() as 'en' | 'th';
+  const [language, setLanguageState] = useState<'en' | 'th'>(savedLang);
 
   const changeLanguage = (lang: 'en' | 'th') => {
-    setLanguage(lang);
+    setLanguageState(lang);
+    saveLanguage(lang); // บันทึกลง MMKV (ar_language) สำหรับ native
   };
 
   const t = translations[language];

@@ -9,6 +9,9 @@ import {
   setUserData as setStorageUser,
   getUserData,
   removeUserData,
+  setSession,
+  clearSession,
+  clearSelectedModel,
 } from '../utils/storage';
 
 export type UserRole = 'visitor' | 'user' | 'store' | 'admin' | null;
@@ -64,6 +67,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setToken(access_token);
       setStorageUser(user);
 
+      // บันทึก session สำหรับ native (ar_ prefix)
+      setSession({
+        token: access_token,
+        userId: user.id || user.uid || '',
+        role: user.role || 'user',
+        username: user.username || user.email || '',
+      });
+
       // อัปเดต State
       setUserData(user);
       setUserRole(user.role || 'user');
@@ -82,6 +93,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setUserRole('visitor');
       setUserData(null);
       setStorageUser({ role: 'visitor' });
+      setSession({ token: '', userId: '', role: 'visitor', username: 'Guest' });
       setIsLoading(false);
     }, 500);
   };
@@ -89,6 +101,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = () => {
     removeToken();
     removeUserData();
+    clearSession();
+    clearSelectedModel();
     setUserRole(null);
     setUserData(null);
   };
