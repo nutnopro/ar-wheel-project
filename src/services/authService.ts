@@ -2,35 +2,45 @@ import api from './api';
 
 export const authService = {
   // ===== LOGIN =====
-  login: async (username: string, pass: string) => {
-    // 1. เตรียมข้อมูล Payload (ชื่อ key ต้องตรงกับที่ Backend คาดหวัง)
+  login: async (emailOrUsername: string, pass: string) => {
     const payload = {
-      usernameOrEmail: username,
+      usernameOrEmail: emailOrUsername,
       password: pass,
     };
-
-    // (Log ดูว่ากำลังส่งอะไรไป และส่งไปที่ไหน)
     console.log('🚀 Sending Login Payload:', payload);
-    console.log('👉 Target URL:', api.defaults.baseURL + '/Auth/login');
-
-    // 2. ส่งข้อมูลไปที่ /Auth/login
-    // ผลลัพธ์จะเป็น: https://ar-alloy-api.onrender.com/Auth/login
+    // Response: { access_token, user, categories }
     const response = await api.post('/Auth/login', payload);
-
-    // 3. Log ดูสิ่งที่ Server ตอบกลับมา (สำคัญมากสำหรับการ Debug)
     console.log('📦 SERVER RESPONSE:', JSON.stringify(response.data, null, 2));
-
-    // 4. ส่งข้อมูล (เช่น Token, User Data) กลับไปให้หน้าจอ UI ใช้งาน
-    return response; // return ทั้ง response object เพื่อให้ดึง response.data ได้
+    return response;
   },
 
   // ===== REGISTER =====
-  register: async (userData: any) => {
+  register: async (userData: {
+    displayName: string;
+    email: string;
+    password: string;
+    phoneNumber: string;
+    dateOfBirth: string;
+  }) => {
     console.log('🚀 Sending Register Payload:', userData);
-
-    // ส่งไปที่ /Auth/register
     const response = await api.post('/Auth/register', userData);
+    return response.data;
+  },
 
+  // ===== FORGOT PASSWORD =====
+  forgotPassword: async (email: string) => {
+    const response = await api.post('/Auth/Forgotpassword-auth', { Email: email });
+    return response.data;
+  },
+
+  // ===== CHANGE PASSWORD =====
+  changePassword: async (email: string, oldPassword: string, newPassword: string) => {
+    const response = await api.post('/Auth/Changepassword', {
+      email,
+      oldPassword,
+      newPassword,
+    });
+    // Response: { message, access_token }
     return response.data;
   },
 };

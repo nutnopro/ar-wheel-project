@@ -12,6 +12,9 @@ import {
   setSession,
   clearSession,
   clearSelectedModel,
+  setCategories as setStorageCategories,
+  getCategories as getStorageCategories,
+  removeCategories,
 } from '../utils/storage';
 
 export type UserRole = 'visitor' | 'user' | 'store' | 'admin' | null;
@@ -23,6 +26,7 @@ interface AuthContextType {
   loginAsVisitor: () => void;
   logout: () => void;
   userData: any | null;
+  categories: any[];
   updateProfile: (newData: any) => void;
 }
 
@@ -31,15 +35,16 @@ const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userRole, setUserRole] = useState<UserRole>(null);
   const [userData, setUserData] = useState<any | null>(null);
+  const [categories, setCategoriesState] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  // 1. ตรวจสอบ Session เก่าตอนเปิดแอป (Auto Login)
+  // 1. Auto-login check
   useEffect(() => {
     const checkLogin = () => {
       const token = getToken();
       const savedUser = getUserData();
 
-      // ✅ ตรวจสอบสถานะ Visitor
+      // Check visitor
       if (savedUser?.role === 'visitor') {
         setUserRole('visitor');
         return;
@@ -47,37 +52,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
       if (token && savedUser) {
         setUserData(savedUser);
-        // ถ้า backend ส่ง role มา: 'visitor' | 'user' | 'store' | 'admin'
-        // ถ้าไม่มี ให้ default = 'user'
         setUserRole(savedUser.role || 'user');
+        // Load saved categories
+        const savedCategories = getStorageCategories();
+        if (savedCategories) setCategoriesState(savedCategories);
       }
     };
     checkLogin();
   }, []);
 
-  // 2. ฟังก์ชัน Login จริง
+  // 2. Login
   const login = async (emailOrUser: string, pass: string) => {
     setIsLoading(true);
     try {
       const response = await authService.login(emailOrUser, pass);
-      const { access_token, user } = response.data;
+      const { access_token, user, categories: cats } = response.data;
       if (!access_token) throw new Error('No access token received');
 
-      // บันทึกลงเครื่อง
+      // Save to storage
       setToken(access_token);
       setStorageUser(user);
+      if (cats) setStorageCategories(cats);
 
-      // บันทึก session สำหรับ native (ar_ prefix)
+      // Save session for native AR
       setSession({
         token: access_token,
-        userId: user.id || user.uid || '',
+        userId: user.uid || '',
         role: user.role || 'user',
-        username: user.username || user.email || '',
+        username: user.displayName || user.email || '',
       });
 
-      // อัปเดต State
+      // Update state
       setUserData(user);
       setUserRole(user.role || 'user');
+      if (cats) setCategoriesState(cats);
     } catch (error: any) {
       console.error('Login Error:', error);
       const msg = error?.response?.data?.message || 'Invalid email or password';
@@ -101,10 +109,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const logout = () => {
     removeToken();
     removeUserData();
+    removeCategories();
     clearSession();
     clearSelectedModel();
     setUserRole(null);
     setUserData(null);
+    setCategoriesState([]);
   };
 
   const updateProfile = (newData: any) => {
@@ -124,6 +134,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         loginAsVisitor,
         logout,
         userData,
+        categories,
         updateProfile,
       }}
     >

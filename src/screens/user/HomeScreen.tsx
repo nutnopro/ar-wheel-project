@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -18,99 +18,121 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { WheelModel } from '../../utils/types';
 import api from '../../services/api';
-
-// [NEW] Import Contexts
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = width / 2 - 24;
 
 const HomeScreen = () => {
   const navigation = useNavigation<any>();
-
-  // เรียกใช้ Hooks
   const { theme, isDarkMode } = useTheme();
   const { t } = useLanguage();
+  const { categories: storedCategories } = useAuth();
 
   const [wheels, setWheels] = useState<WheelModel[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [lastVisibleId, setLastVisibleId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterVisible, setFilterVisible] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedBrand, setSelectedBrand] = useState('All');
-  const [selectedSize, setSelectedSize] = useState('All');
-  const [minPrice, setMinPrice] = useState('0');
-  const [maxPrice, setMaxPrice] = useState('999');
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
 
-  const categories = [
-    'All',
-    'Sport',
-    'Luxury',
-    'Minimal',
-    'Classic',
-    'Off-road',
+  // Build category list from stored categories
+  const categoryList = [
+    { id: 'All', name: 'All' },
+    ...(storedCategories || []).filter((c: any) => c.isActive !== false),
   ];
-  const brands = ['All', 'BBS', 'Vossen', 'Rays', 'Enkei', 'HRE', 'OZ Racing'];
-  const sizes = ['All', '17"', '18"', '19"', '20"', '21"', '22"'];
 
+  const fetchWheels = useCallback(async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setLoading(true);
+        setLastVisibleId(null);
+        setHasMore(true);
+      }
+
+      const params: any = {};
+      if (searchQuery) params.searchTerm = searchQuery;
+      if (selectedCategory !== 'All') params.categoryId = selectedCategory;
+      if (minPrice) params.minPrice = Number(minPrice);
+      if (maxPrice) params.maxPrice = Number(maxPrice);
+      if (!isRefresh && lastVisibleId) params.lastVisibleId = lastVisibleId;
+
+      // Add OS filter
+      params.os = Platform.OS;
+
+      const response = await api.get('/models', { params });
+      const data: WheelModel[] = response.data;
+
+      if (isRefresh) {
+        setWheels(data);
+      } else {
+        setWheels(prev => [...prev, ...data]);
+      }
+
+      // Track last visible ID for pagination
+      if (data.length > 0) {
+        setLastVisibleId(data[data.length - 1].id);
+      }
+      if (data.length < 10) {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error('Fetch wheels error:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+      setLoadingMore(false);
+    }
+  }, [searchQuery, selectedCategory, minPrice, maxPrice, lastVisibleId]);
+
+  // Initial load
+  useEffect(() => {
+    fetchWheels(true);
+  }, []);
+
+  // Refresh
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchWheels(true);
+  };
+
+  // Load more (lazy loading)
+  const onEndReached = () => {
+    if (!loadingMore && hasMore && !loading) {
+      setLoadingMore(true);
+      fetchWheels(false);
+    }
+  };
+
+  // Apply filters
   const handleApplyFilter = () => {
-    // ตอนนี้เป็นเพียง UI mock ตามดีไซน์
-    // สามารถเพิ่ม logic filter จริงภายหลังได้
     setFilterVisible(false);
+    fetchWheels(true);
   };
 
   const handleResetFilter = () => {
     setSelectedCategory('All');
-    setSelectedBrand('All');
-    setSelectedSize('All');
-    setMinPrice('0');
-    setMaxPrice('999');
+    setMinPrice('');
+    setMaxPrice('');
   };
 
-  const fetchWheels = async () => {
-    try {
-      setLoading(true);
-      const response = await api.get('/models');
-      setWheels(response.data);
-    } catch (error) {
-      console.error('Fetch wheels error:', error);
-      // คุณอาจจะเพิ่ม Alert.alert('Error', 'Cannot fetch data');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  // Search with debounce
+  const handleSearchSubmit = () => {
+    fetchWheels(true);
   };
-
-  // ดึงข้อมูลครั้งแรกเมื่อหน้าจอโหลด
-  useEffect(() => {
-    fetchWheels();
-  }, []);
-
-  // ฟังก์ชัน Pull to Refresh
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchWheels();
-  };
-
-  // --- Filter Logic (แบบง่าย) ---
-  const filteredWheels = wheels.filter(wheel => {
-    const matchSearch =
-      wheel.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      wheel.brand.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchCategory =
-      selectedCategory === 'All' ||
-      (wheel.categories?.includes(selectedCategory) ?? false);
-
-    return matchSearch && matchCategory;
-  });
 
   const renderItem = ({ item }: { item: WheelModel }) => (
     <TouchableOpacity
       activeOpacity={0.9}
-      style={[styles.card, { backgroundColor: theme.card }]} // ใช้สีจากการ์ด theme
+      style={[styles.card, { backgroundColor: theme.card }]}
       onPress={() => navigation.navigate('ProductDetail', { item })}
     >
       <View
@@ -137,12 +159,21 @@ const HomeScreen = () => {
           {item.name}
         </Text>
         <Text style={styles.cardPrice}>
-          ${Number(item.price)?.toLocaleString()}
+          ฿{Number(item.price)?.toLocaleString()}
         </Text>
         <Text style={styles.cardCategory}>{item.brand}</Text>
       </View>
     </TouchableOpacity>
   );
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={{ paddingVertical: 20 }}>
+        <ActivityIndicator size="small" color="#2563EB" />
+      </View>
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -182,6 +213,8 @@ const HomeScreen = () => {
               style={[styles.searchInput, { color: theme.text }]}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              onSubmitEditing={handleSearchSubmit}
+              returnKeyType="search"
             />
           </View>
           <TouchableOpacity
@@ -197,23 +230,27 @@ const HomeScreen = () => {
 
         <View style={styles.quickCategoryContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {categories.slice(0, 5).map(cat => (
+            {categoryList.map((cat: any) => (
               <TouchableOpacity
-                key={cat}
-                onPress={() => setSelectedCategory(cat)}
+                key={cat.id}
+                onPress={() => {
+                  setSelectedCategory(cat.id === 'All' ? 'All' : cat.id);
+                  // Auto refresh when category changes
+                  setTimeout(() => fetchWheels(true), 100);
+                }}
                 style={[
                   styles.quickCatPill,
                   { backgroundColor: isDarkMode ? '#334155' : '#F1F5F9' },
-                  selectedCategory === cat && styles.quickCatPillActive,
+                  (selectedCategory === cat.id || (selectedCategory === 'All' && cat.id === 'All')) && styles.quickCatPillActive,
                 ]}
               >
                 <Text
                   style={[
                     styles.quickCatText,
-                    selectedCategory === cat && styles.quickCatTextActive,
+                    (selectedCategory === cat.id || (selectedCategory === 'All' && cat.id === 'All')) && styles.quickCatTextActive,
                   ]}
                 >
-                  {cat}
+                  {cat.name}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -222,19 +259,12 @@ const HomeScreen = () => {
       </View>
 
       {loading ? (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color="#2563EB" />
         </View>
       ) : (
-        // Product List
         <FlatList
-          data={filteredWheels}
+          data={wheels}
           renderItem={renderItem}
           keyExtractor={item => item.id.toString()}
           numColumns={2}
@@ -243,7 +273,9 @@ const HomeScreen = () => {
           showsVerticalScrollIndicator={false}
           onRefresh={onRefresh}
           refreshing={refreshing}
-          // กรณีไม่มีข้อมูล
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={renderFooter}
           ListEmptyComponent={
             <Text
               style={{
@@ -272,12 +304,10 @@ const HomeScreen = () => {
               { backgroundColor: theme.background },
             ]}
           >
-            {/* ชื่อหัวข้อใหญ่ตรงกลางเหมือนดีไซน์ตัวอย่าง */}
             <Text style={[styles.filterTitle, { color: theme.text }]}>
               Filter
             </Text>
 
-            {/* การ์ดด้านในสำหรับตัวเลือก Category / Brand / Size / Price */}
             <View style={[styles.filterCard, { backgroundColor: theme.card }]}>
               {/* Category */}
               <TouchableOpacity
@@ -289,39 +319,9 @@ const HomeScreen = () => {
                 </Text>
                 <View style={styles.filterRowRight}>
                   <Text style={[styles.filterValue, { color: theme.subText }]}>
-                    {selectedCategory}
-                  </Text>
-                  <Icon name="chevron-right" size={20} color={theme.subText} />
-                </View>
-              </TouchableOpacity>
-
-              {/* Brand */}
-              <TouchableOpacity
-                style={[styles.filterRow, { borderBottomColor: theme.border }]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterLabel, { color: theme.text }]}>
-                  Brand
-                </Text>
-                <View style={styles.filterRowRight}>
-                  <Text style={[styles.filterValue, { color: theme.subText }]}>
-                    {selectedBrand}
-                  </Text>
-                  <Icon name="chevron-right" size={20} color={theme.subText} />
-                </View>
-              </TouchableOpacity>
-
-              {/* Size */}
-              <TouchableOpacity
-                style={[styles.filterRow, { borderBottomColor: theme.border }]}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.filterLabel, { color: theme.text }]}>
-                  Size
-                </Text>
-                <View style={styles.filterRowRight}>
-                  <Text style={[styles.filterValue, { color: theme.subText }]}>
-                    {selectedSize}
+                    {selectedCategory === 'All'
+                      ? 'All'
+                      : categoryList.find((c: any) => c.id === selectedCategory)?.name || selectedCategory}
                   </Text>
                   <Icon name="chevron-right" size={20} color={theme.subText} />
                 </View>
@@ -339,8 +339,8 @@ const HomeScreen = () => {
                     value={minPrice}
                     onChangeText={setMinPrice}
                     keyboardType="numeric"
-                    style={styles.priceInput}
-                    placeholder="$ 0"
+                    style={[styles.priceInput, { color: theme.text }]}
+                    placeholder="Min ฿"
                     placeholderTextColor={theme.subText}
                   />
                 </View>
@@ -357,15 +357,14 @@ const HomeScreen = () => {
                     value={maxPrice}
                     onChangeText={setMaxPrice}
                     keyboardType="numeric"
-                    style={styles.priceInput}
-                    placeholder="$ 999"
+                    style={[styles.priceInput, { color: theme.text }]}
+                    placeholder="Max ฿"
                     placeholderTextColor={theme.subText}
                   />
                 </View>
               </View>
             </View>
 
-            {/* ปุ่มด้านล่างสองข้าง "Clear All" */}
             <View style={styles.modalButtonsRow}>
               <TouchableOpacity
                 style={[styles.clearOutlineButton, { borderColor: '#2563EB' }]}
@@ -385,7 +384,7 @@ const HomeScreen = () => {
                 onPress={handleApplyFilter}
                 activeOpacity={0.8}
               >
-                <Text style={styles.clearSolidText}>Clear All</Text>
+                <Text style={styles.clearSolidText}>Apply</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -505,18 +504,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  filterLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  filterRowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  filterValue: {
-    fontSize: 14,
-    marginRight: 6,
-  },
+  filterLabel: { fontSize: 16, fontWeight: '500' },
+  filterRowRight: { flexDirection: 'row', alignItems: 'center' },
+  filterValue: { fontSize: 14, marginRight: 6 },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -531,14 +521,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     justifyContent: 'center',
   },
-  priceInput: {
-    fontSize: 14,
-  },
-  priceSeparator: {
-    marginHorizontal: 12,
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  priceInput: { fontSize: 14 },
+  priceSeparator: { marginHorizontal: 12, fontSize: 16, fontWeight: '600' },
   modalButtonsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -554,10 +538,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
     backgroundColor: '#E5EDFF',
   },
-  clearOutlineText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
+  clearOutlineText: { fontSize: 15, fontWeight: '600' },
   clearSolidButton: {
     flex: 1,
     height: 48,
@@ -566,11 +547,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginLeft: 10,
   },
-  clearSolidText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#fff',
-  },
+  clearSolidText: { fontSize: 15, fontWeight: '700', color: '#fff' },
 });
 
 export default HomeScreen;

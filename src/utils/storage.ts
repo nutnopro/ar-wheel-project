@@ -4,50 +4,54 @@ import { MMKV } from 'react-native-mmkv';
 let storage: MMKV | null = null;
 
 try {
-  // ใส่ try-catch ดักไว้ ถ้าสร้างไม่ได้ ให้ข้ามไปเลย แอปจะไม่พัง
   storage = new MMKV();
   console.log('✅ MMKV Initialized');
 } catch (e) {
   console.log('⚠️ MMKV Failed to load (Remote Debugging might be on)');
 }
 
-// --- ฟังก์ชันใช้งาน (เขียนแบบปลอดภัย) ---
-
+// --- Token ---
 export const getToken = () => {
-  if (!storage) return null; // ถ้า storage พัง ให้คืนค่า null
+  if (!storage) return null;
   return storage.getString('userToken');
 };
-
 export const setToken = (token: string) => {
   if (storage) storage.set('userToken', token);
 };
-
 export const removeToken = () => {
   if (storage) storage.delete('userToken');
 };
 
+// --- User Data ---
 export const getUserData = () => {
   if (!storage) return null;
   const json = storage.getString('userData');
   return json ? JSON.parse(json) : null;
 };
-
 export const setUserData = (user: any) => {
   if (storage) storage.set('userData', JSON.stringify(user));
 };
-
 export const removeUserData = () => {
   if (storage) storage.delete('userData');
 };
 
+// --- Categories ---
+export const getCategories = () => {
+  if (!storage) return [];
+  const json = storage.getString('categories');
+  return json ? JSON.parse(json) : [];
+};
+export const setCategories = (categories: any[]) => {
+  if (storage) storage.set('categories', JSON.stringify(categories));
+};
+export const removeCategories = () => {
+  if (storage) storage.delete('categories');
+};
+
 // ============================================================
 // Native Bridge Storage (ar_ prefix keys)
-// ใช้ MMKV key แยกแต่ละ field เพื่อให้ native อ่านง่าย
-// Android: MMKV.defaultMMKV().decodeString("ar_token")
-// iOS:     MMKV.default()?.string(forKey: "ar_token")
 // ============================================================
 
-// --- Session ---
 export interface SessionData {
   token: string;
   userId: string;
@@ -83,38 +87,35 @@ export const clearSession = () => {
   storage.delete('ar_username');
 };
 
-// --- Selected Model (สำหรับ AR native) ---
+// --- Selected Model (for AR native) ---
 export interface SelectedModelData {
   id: string;
   name: string;
   price: string;
   brand: string;
-  modelUrl: string;    // Firebase Storage URL (ใช้ fallback ถ้า cache หาย)
-  localPath?: string;  // path ของไฟล์ .glb ที่ cache ไว้ในเครื่อง
-  imageUrl: string;    // images[0]
+  modelUrl: string;
+  localPath?: string;
+  imageUrl: string;
 }
 
 export const setSelectedModel = (model: SelectedModelData) => {
   if (!storage) return;
   storage.set('ar_selected_model', JSON.stringify(model));
 };
-
 export const getSelectedModel = (): SelectedModelData | null => {
   if (!storage) return null;
   const json = storage.getString('ar_selected_model');
   return json ? JSON.parse(json) : null;
 };
-
 export const clearSelectedModel = () => {
   if (!storage) return;
   storage.delete('ar_selected_model');
 };
 
-// --- Model Paths (list ของ localPath/modelUrl ที่ส่งไป native เป็น JSON array) ---
+// --- Model Paths ---
 export const setModelPaths = (paths: string[]) => {
   if (storage) storage.set('ar_model_paths', JSON.stringify(paths));
 };
-
 export const getModelPaths = (): string[] => {
   if (!storage) return [];
   const raw = storage.getString('ar_model_paths');
@@ -125,7 +126,6 @@ export const getModelPaths = (): string[] => {
 export const setLanguage = (lang: string) => {
   if (storage) storage.set('ar_language', lang);
 };
-
 export const getLanguage = (): string => {
   if (!storage) return 'en';
   return storage.getString('ar_language') || 'en';

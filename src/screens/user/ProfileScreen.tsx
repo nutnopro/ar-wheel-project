@@ -23,12 +23,14 @@ const ProfileScreen = () => {
   const { userRole, userData, logout } = useAuth();
 
   const isVisitor = userRole === 'visitor';
+  const isUser = userRole === 'user';
+  const isStore = userRole === 'store';
   const isAdmin = userRole === 'admin';
 
   const user = userData || {
-    name: 'Guest User',
+    displayName: 'Guest User',
     email: 'Sign in to access features',
-    avatar: 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+    profileImg: null,
   };
 
   const handleRestrictedAction = () => {
@@ -133,12 +135,17 @@ const ProfileScreen = () => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <Image source={{ uri: user.avatar }} style={styles.avatar} />
+            <Image
+              source={{
+                uri: user.profileImg || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+              }}
+              style={styles.avatar}
+            />
             <Text style={[styles.name, { color: theme.text }]}>
-              {user.name}
+              {user.displayName || 'Guest User'}
             </Text>
             <Text style={styles.email}>
-              {isAdmin ? 'Administrator' : user.email}
+              {isAdmin ? 'Administrator' : isStore ? 'Store' : user.email || ''}
             </Text>
             {!isVisitor && (
               <TouchableOpacity
@@ -150,13 +157,14 @@ const ProfileScreen = () => {
             )}
           </View>
 
+          {/* Visitor: Login/Register buttons */}
           {isVisitor && (
             <TouchableOpacity style={styles.visitorLoginBox} onPress={logout}>
               <Text style={styles.visitorLoginText}>Sign In / Register</Text>
             </TouchableOpacity>
           )}
 
-          {/* ✅ ส่วนเมนู Admin (เฉพาะ Admin ถึงเห็น) */}
+          {/* Admin: System Management */}
           {isAdmin && (
             <View
               style={[
@@ -169,7 +177,7 @@ const ProfileScreen = () => {
               ]}
             >
               <Text style={[styles.sectionTitle, { color: '#2563EB' }]}>
-                Admin Management
+                System Management
               </Text>
               <MenuItem
                 icon="account-group"
@@ -177,9 +185,9 @@ const ProfileScreen = () => {
                 onPress={() => navigation.navigate('ManageUsers')}
               />
               <MenuItem
-                icon="store"
-                title="Manage Stores"
-                onPress={() => navigation.navigate('ManageStores')}
+                icon="cube"
+                title="Manage Models"
+                onPress={() => navigation.navigate('ManageModels')}
               />
               <MenuItem
                 icon="shape"
@@ -187,32 +195,68 @@ const ProfileScreen = () => {
                 onPress={() => navigation.navigate('ManageCategories')}
               />
               <MenuItem
+                icon="file-document-outline"
+                title="System Logs"
+                onPress={() => navigation.navigate('SystemLogs')}
+              />
+              <MenuItem
+                icon="chart-bar"
+                title="System Statistics"
+                onPress={() => navigation.navigate('AdminDashboard')}
+              />
+            </View>
+          )}
+
+          {/* Store: Store Management */}
+          {isStore && (
+            <View
+              style={[
+                styles.section,
+                {
+                  backgroundColor: theme.card,
+                  borderColor: '#10B981',
+                  borderWidth: 1,
+                },
+              ]}
+            >
+              <Text style={[styles.sectionTitle, { color: '#10B981' }]}>
+                Store Management
+              </Text>
+              <MenuItem
                 icon="cube"
                 title="Manage Models"
                 onPress={() => navigation.navigate('ManageModels')}
               />
               <MenuItem
-                icon="file-document-outline"
-                title="System Logs"
-                onPress={() => navigation.navigate('SystemLogs')}
+                icon="chart-bar"
+                title="Store Statistics"
+                onPress={() => navigation.navigate('AdminDashboard')}
               />
             </View>
           )}
 
+          {/* Account Section */}
           <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={styles.sectionTitle}>Account</Text>
-            <MenuItem
-              icon="heart-outline"
-              title="Favorites"
-              restricted={true}
-              onPress={() => navigation.navigate('Favorites')}
-            />
-            <MenuItem
-              icon="lock-outline"
-              title="Change Password"
-              restricted={true}
-              onPress={() => navigation.navigate('ChangePassword')}
-            />
+
+            {/* Favorites — user role only */}
+            {isUser && (
+              <MenuItem
+                icon="heart-outline"
+                title="Favorites"
+                onPress={() => navigation.navigate('Favorites')}
+              />
+            )}
+
+            {/* Change Password — all logged-in roles */}
+            {!isVisitor && (
+              <MenuItem
+                icon="lock-outline"
+                title="Change Password"
+                onPress={() => navigation.navigate('ChangePassword')}
+              />
+            )}
+
             <MenuItem
               icon="translate"
               title="Language"
@@ -227,7 +271,7 @@ const ProfileScreen = () => {
             />
             <MenuItem
               icon="cube-scan"
-              title="AR Preferences"
+              title="AR Configuration"
               onPress={() => navigation.navigate('ARPreferences')}
             />
           </View>
@@ -250,7 +294,6 @@ const ProfileScreen = () => {
             </Text>
           </TouchableOpacity>
 
-          {/* Bottom padding to ensure logout button is visible */}
           <View style={{ height: 30 }} />
         </ScrollView>
       </SafeAreaView>
@@ -263,7 +306,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight! + 10 : 0,
   },
-  scrollContent: { padding: 20, paddingBottom: 140 }, // Increased for logout button spacing
+  scrollContent: { padding: 20, paddingBottom: 140 },
   header: { alignItems: 'center', marginBottom: 20, marginTop: 10 },
   avatar: {
     width: 100,

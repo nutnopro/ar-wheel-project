@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import {useNavigation, useRoute} from '@react-navigation/native';
 import {setSelectedModel} from '../../utils/storage';
 import {resolveModelPath} from '../../services/modelCacheService';
 import {WheelModel} from '../../utils/types';
+import {useAuth} from '../../context/AuthContext';
+import {favoritesService} from '../../services/favoritesService';
 
 const {ARLauncher} = NativeModules;
 
@@ -24,18 +26,22 @@ const ProductDetailScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const item: WheelModel = route.params.item;
+  const {userRole, userData} = useAuth();
+  const [isFavorited, setIsFavorited] = useState(false);
+  const [favLoading, setFavLoading] = useState(false);
 
   // เปิด AR native พร้อม localPath
   const handleTryOnAR = async () => {
     try {
       const localPath = await resolveModelPath(item);
 
+      const modelUrl = Platform.OS === 'ios' ? item.iosModelUrl : item.androidModelUrl;
       setSelectedModel({
         id: item.id,
         name: item.name,
-        price: item.price,
+        price: String(item.price),
         brand: item.brand,
-        modelUrl: item.modelUrl,
+        modelUrl: modelUrl || '',
         localPath,
         imageUrl: item.images?.[0] ?? '',
       });
@@ -83,7 +89,7 @@ const ProductDetailScreen = () => {
         <View style={styles.detailsContainer}>
           <Text style={styles.name}>{item.name || item.id}</Text>
           <Text style={styles.price}>
-            ${Number(item.price)?.toLocaleString() || '0'}
+            ฿{Number(item.price)?.toLocaleString() || '0'}
           </Text>
           <Text style={styles.meta}>
             {[item.brand, item.size && `Size: ${item.size}`, item.width && `Width: ${item.width}`]
@@ -113,9 +119,34 @@ const ProductDetailScreen = () => {
           <Text style={styles.arButtonText}>Try on AR</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.favButton}>
-          <Icon name="heart-outline" size={28} color="#2563EB" />
-        </TouchableOpacity>
+        {userRole === 'user' && (
+          <TouchableOpacity
+            style={styles.favButton}
+            onPress={async () => {
+              if (favLoading || !userData?.uid) return;
+              setFavLoading(true);
+              try {
+                if (isFavorited) {
+                  await favoritesService.remove(userData.uid, item.id);
+                  setIsFavorited(false);
+                } else {
+                  await favoritesService.add(userData.uid, {
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    images: item.images?.[0] || '',
+                  });
+                  setIsFavorited(true);
+                }
+              } catch (err) {
+                console.error('Fav error:', err);
+              } finally {
+                setFavLoading(false);
+              }
+            }}>
+            <Icon name={isFavorited ? 'heart' : 'heart-outline'} size={28} color="#2563EB" />
+          </TouchableOpacity>
+        )}
       </View>
     </SafeAreaView>
   );

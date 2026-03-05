@@ -459,7 +459,6 @@ class ARUIManager(
     // ─────────────────────────────────────────────────────────────────────────
     private fun toggleEditMode() {
         editMode = if (editMode == "POS") "ROT" else "POS"
-        zSlider?.progress = 50
         updateCenterModeBtn()
     }
 

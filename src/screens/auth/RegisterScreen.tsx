@@ -44,11 +44,11 @@ const RegisterScreen = () => {
       // 🛠️ แปลงข้อมูล (Mapping) ให้ตรงกับที่ Backend ต้องการ
       // Form เราใช้ชื่อ 'dob' แต่ Backend น่าจะรอรับ 'dateOfBirth'
       const newUser = {
-        username: data.username,
+        displayName: data.displayName,
         password: data.password,
         email: data.email,
         phoneNumber: data.phoneNumber,
-        dateOfBirth: data.dob, // 👈 ส่งค่า dob ไปในชื่อ dateOfBirth
+        dateOfBirth: data.dob,
       };
 
       console.log('🚀 Sending Registration to Backend:', newUser);
@@ -101,11 +101,11 @@ const RegisterScreen = () => {
         <Text style={styles.title}>New Account</Text>
 
         <CustomInput
-          name="username"
-          label="Username"
-          placeholder="Username"
+          name="displayName"
+          label="Display Name"
+          placeholder="Display Name"
           control={control}
-          rules={{ required: 'Username is required' }}
+          rules={{ required: 'Display Name is required' }}
         />
 
         <CustomInput

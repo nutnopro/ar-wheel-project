@@ -1,5 +1,5 @@
 // src/navigation/AppNavigator.tsx
-import React, {useCallback} from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -32,7 +32,6 @@ import ARPreferencesScreen from '../screens/user/ARPreferencesScreen';
 
 // Admin Screens
 import ManageUsersScreen from '../screens/admin/ManageUsersScreen';
-import ManageStoresScreen from '../screens/admin/ManageStoresScreen';
 import ManageCategoriesScreen from '../screens/admin/ManageCategoriesScreen';
 import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
 import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
@@ -51,10 +50,9 @@ export type RootStackParamList = {
   Language: undefined;
   ARPreferences: undefined;
 
-  // Admin
+  // Admin / Store
   AdminDashboard: undefined;
   ManageUsers: undefined;
-  ManageStores: undefined;
   ManageModels: undefined;
   ManageCategories: undefined;
   SystemLogs: undefined;
@@ -62,7 +60,7 @@ export type RootStackParamList = {
 
 const {ARLauncher} = NativeModules;
 
-// AR tab screen — placeholder, actual AR opens via native launcher
+// AR tab screen — placeholder
 const ArScreenPlaceholder = () => {
   return (
     <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
@@ -118,8 +116,7 @@ function MainTabNavigator() {
         component={ArScreenPlaceholder}
         listeners={({navigation}) => ({
           tabPress: (e: any) => {
-            e.preventDefault(); // ไม่ navigate ไปหน้า AR
-            // เปิด native AR launcher แทน
+            e.preventDefault();
             (async () => {
               try {
                 if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
@@ -189,7 +186,7 @@ const AppNavigationWrapper = () => {
     </TouchableOpacity>
   );
 
-  const adminSubPageOptions = ({ navigation, route }: any) => ({
+  const subPageOptions = ({ navigation, route }: any) => ({
     headerShown: true,
     title: route.name.replace(/([A-Z])/g, ' $1').trim(),
     headerStyle: { backgroundColor: theme.card },
@@ -209,58 +206,64 @@ const AppNavigationWrapper = () => {
           <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="SignIn" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
-          <Stack.Screen
-            name="ForgotPassword"
-            component={ForgotPasswordScreen}
-          />
+          <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </>
       ) : (
         <>
+          {/* Main app — accessible by ALL roles including visitor */}
           <Stack.Screen name="MainApp" component={MainTabNavigator} />
 
-          {/* User Screens */}
+          {/* Shared screens */}
           <Stack.Screen name="ProductDetail" component={ProductDetailScreen} />
-          <Stack.Screen name="Favorites" component={FavoritesScreen} />
-          <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-          <Stack.Screen
-            name="ChangePassword"
-            component={ChangePasswordScreen}
-          />
           <Stack.Screen name="Language" component={LanguageScreen} />
           <Stack.Screen name="ARPreferences" component={ARPreferencesScreen} />
 
-          {/* Admin Screens: แสดงเฉพาะเมื่อ role === 'admin' */}
+          {/* Logged-in user screens (user, store, admin) */}
+          {userRole !== 'visitor' && (
+            <>
+              <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+              <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+            </>
+          )}
+
+          {/* User-only: Favorites */}
+          {userRole === 'user' && (
+            <Stack.Screen name="Favorites" component={FavoritesScreen} />
+          )}
+
+          {/* Store: Manage own models + statistics */}
+          {(userRole === 'store' || userRole === 'admin') && (
+            <>
+              <Stack.Screen
+                name="ManageModels"
+                component={ManageModelsScreen}
+                options={subPageOptions}
+              />
+            </>
+          )}
+
+          {/* Admin: Full system management */}
           {userRole === 'admin' && (
             <>
               <Stack.Screen
                 name="AdminDashboard"
                 component={AdminDashboardScreen}
-                options={adminSubPageOptions}
+                options={subPageOptions}
               />
               <Stack.Screen
                 name="ManageUsers"
                 component={ManageUsersScreen}
-                options={adminSubPageOptions}
-              />
-              <Stack.Screen
-                name="ManageStores"
-                component={ManageStoresScreen}
-                options={adminSubPageOptions}
+                options={subPageOptions}
               />
               <Stack.Screen
                 name="ManageCategories"
                 component={ManageCategoriesScreen}
-                options={adminSubPageOptions}
-              />
-              <Stack.Screen
-                name="ManageModels"
-                component={ManageModelsScreen}
-                options={adminSubPageOptions}
+                options={subPageOptions}
               />
               <Stack.Screen
                 name="SystemLogs"
                 component={SystemLogsScreen}
-                options={adminSubPageOptions}
+                options={subPageOptions}
               />
             </>
           )}

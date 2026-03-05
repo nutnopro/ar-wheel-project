@@ -46,7 +46,7 @@ private class WheelState {
     var manualOffsetForward: Float = 0f
     var manualRotH: Float = 0f              // degrees around plane up axis
     var manualRotV: Float = 0f              // degrees around plane right axis
-    var manualRotRoll: Float = 0f
+    var manualRotZ: Float = 0f
 
     // Plane axes stored when anchor placed, used for nudge
     var planeRight: Float3 = Float3(1f, 0f, 0f)
@@ -150,10 +150,6 @@ class ARRendering(
     private var anyMotionThisFrame = false
     private var sessionStartTime = 0L
 
-    // private var yBufA: ByteArray? = null
-    // private var yBufB: ByteArray? = null
-    // private var useYBufA = true
-
     @Volatile var snapThreshold = DEFAULT_WHEEL_DIAMETER_M
     @Volatile var modelPath = "models/default.glb"
 
@@ -214,7 +210,7 @@ class ARRendering(
         val maxRotOffset = 180f
         when (editMode) {
             "POS" -> ws.manualOffsetForward = value * maxPosOffset
-            "ROT" -> ws.manualRotRoll = value * maxRotOffset
+            "ROT" -> ws.manualRotZ = value * maxRotOffset
         }
     }
 
@@ -232,7 +228,7 @@ class ARRendering(
         ws.manualRotH = 0f
         ws.manualRotV = 0f
         ws.manualOffsetForward = 0f
-        ws.manualRotRoll = 0f
+        ws.manualRotZ = 0f
         selectedModel = null
         onShowAdjustmentUI?.invoke(false)
     }
@@ -245,7 +241,7 @@ class ARRendering(
         ws.manualRotH = 0f
         ws.manualRotV = 0f
         ws.manualOffsetForward = 0f
-        ws.manualRotRoll = 0f
+        ws.manualRotZ = 0f
         selectedModel = null
         onShowAdjustmentUI?.invoke(false)
     }
@@ -376,11 +372,9 @@ class ARRendering(
 
         try {
             val tensor = frameConverter.convertFrameToTensor(frame, deviceRotation)
-            // val yData = extractYPlane(frame)
             val vw = arSceneView.width.toFloat()
             val vh = arSceneView.height.toFloat()
             mlHandler.runInferenceAsync(tensor, deviceRotation, vw, vh) { results ->
-            // mlHandler.runInferenceAsync(tensor, deviceRotation, yData, vw, vh) { results ->
                 latestDetections = results
                 isNewDetection = true
                 onnxOverlayView.updateDetections(results)
@@ -417,12 +411,6 @@ class ARRendering(
         bboxCountHistory.addLast(latestDetections.size)
         val targetCount = getModeBboxCount()
 
-        // Anchored models don't count toward the free slot limit
-        // val frozenAnchoredCount = markerlessActiveModels.count {
-        //     val ws = wheelStates[it]; ws?.anchor != null && !ws.isFrozen
-        // }
-        // val freeSlots = (targetCount - frozenAnchoredCount).coerceAtLeast(0)
-
         val workDets = if (latestDetections.size > targetCount)
             latestDetections.sortedByDescending { it.confidence }.take(targetCount)
         else latestDetections
@@ -431,14 +419,10 @@ class ARRendering(
         anyMotionThisFrame = false
 
         for (det in workDets) {
-        // for (pd in workDets) {
-            // val det = pd.detection
-            // val cv = pd.cvResult
             val bbox = det.boundingBox
 
             // 1. Hit points + outlier removal
             val rawPts = collectHitPoints(frame, bbox, vw, vh)
-            // val rawPts = collectHitPoints(frame, cv, bbox, vw, vh)
             if (rawPts.isEmpty()) continue
             val hitPts = removeOutliers(rawPts)
             if (hitPts.isEmpty()) continue
@@ -461,10 +445,6 @@ class ARRendering(
             val minGap = snapThreshold * SNAP_MULTIPLIER
             val model = snapToModel(center, claimed, minGap)
                 ?: run {
-                    // if (claimed.count { wheelStates[it]?.anchor == null } >= freeSlots &&
-                    //     freeSlots > 0
-                    // ) null
-                    // ห้ามสร้าง model เกิน targetCount รวมทั้ง claimed + ที่มีอยู่แล้ว
                     val existingActive = markerlessActiveModels.count { n ->
                         n !in claimed &&
                         (n.isVisible || wheelStates[n]?.anchor != null)
@@ -532,11 +512,9 @@ class ARRendering(
 
             // 13. Auto-upgrade anchor when quality improves (gated by 20s warmup)
             val confirmed = confirmDetection(ratio)
-            // val confirmed = confirmDetection(cv.circularity, ratio, cv.isFound)
             val warmupElapsed = (now - sessionStartTime) >= WARMUP_MS
             if (confirmed && warmupElapsed) {
                 val quality = AnchorQuality(ratio)
-                // val quality = AnchorQuality(cv.circularity, ratio)
                 val existingQ = ws.anchorQuality
                 if (existingQ == null || quality.score() > existingQ.score() + ANCHOR_UPGRADE_MARGIN) {
                     ws.anchor?.detach()
@@ -579,10 +557,8 @@ class ARRendering(
 
         val rotH = Quaternion.fromAxisAngle(ws.planeUp, ws.manualRotH)
         val rotV = Quaternion.fromAxisAngle(ws.planeRight, ws.manualRotV)
-        val rotZ = Quaternion.fromAxisAngle(ws.planeDepth, ws.manualRotRoll)
-        // model.quaternion = normalize(rotH * rotZ * rotV)
+        val rotZ = Quaternion.fromAxisAngle(ws.planeDepth, ws.manualRotZ)
 
-        // val rotH = Quaternion.fromAxisAngle(Float3(0f, 1f, 0f), ws.manualRotH)
         model.childNodes.forEach { child ->
             child.quaternion = normalize(rotH * rotZ * rotV)
         }
@@ -699,22 +675,12 @@ class ARRendering(
         val cy = bbox.centerY() * vh
 
         frame.hitTest(cx, cy)
-        // frame.hitTest(cv.cx, cv.cy)
             .firstOrNull { it.trackable is Plane || it.trackable is Point }
             ?.let { pts.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz())) }
-        // val radius = if (cv.isFound && cv.width > 0f && cv.height > 0f)
-        //     max(cv.width, cv.height) / 2f
         val radius = min(bbox.width() * vw, bbox.height() * vh) * DONUT_RADIUS_PCT / 2f
-        // else max(bbox.width() * vw, bbox.height() * vh) * DONUT_RADIUS_FALLBACK / 2f
-        // val aRad = Math.toRadians(cv.angle.toDouble()).toFloat()
-        // val cosA = cos(aRad)
-        // val sinA = sin(aRad)
         for (i in 0 until DONUT_POINTS) {
             val t = (2f * kotlin.math.PI.toFloat() * i) / DONUT_POINTS
-            // val lx = radius * cos(t)
-            // val ly = radius * sin(t)
             frame.hitTest(cx + radius * cos(t), cy + radius * sin(t))
-            // frame.hitTest(cv.cx + lx * cosA - ly * sinA, cv.cy + lx * sinA + ly * cosA)
                 .firstOrNull { it.trackable is Plane || it.trackable is Point }
                 ?.let { pts.add(Float3(it.hitPose.tx(), it.hitPose.ty(), it.hitPose.tz())) }
         }
@@ -752,7 +718,6 @@ class ARRendering(
             }
         val xAxis = normalize(cross(zAxis, yAxis))
         val zFinal = normalize(cross(yAxis, xAxis))
-        // Matrix: col0=xAxis, col1=yAxis, col2=zFinal
         val tr = xAxis.x + yAxis.y + zFinal.z
         return when {
             tr > 0f -> {
@@ -784,10 +749,6 @@ class ARRendering(
     // Confirmation
     // ─────────────────────────────────────────────────────────────────────────
     private fun confirmDetection(bboxRatio: Float) = bboxRatio >= MIN_BBOX_RATIO
-    // private fun confirmDetection(circularity: Float, bboxRatio: Float, hasOpenCV: Boolean): Boolean {
-    //     val circOk  = if (hasOpenCV) circularity >= MIN_CIRCULARITY else bboxRatio >= MIN_CIRCULARITY
-    //     return circOk && bboxRatio >= MIN_BBOX_RATIO
-    // }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Model pool + tap handler
@@ -871,27 +832,4 @@ class ARRendering(
         for (i in 1 until qs.size) avg = slerp(avg, qs[i], 1f / (i + 1f))
         return avg
     }
-
-    // private fun extractYPlane(frame: Frame): FrameYData? {
-    //     val img = try { frame.acquireCameraImage() } catch (e: Exception) { return null }
-    //     return try {
-    //         val yp = img.planes[0].buffer.apply { rewind() }
-    //         val w = img.width
-    //         val h = img.height
-    //         val stride = img.planes[0].rowStride
-    //         val size = w * h
-    //         if (yBufA == null || yBufA!!.size != size) {
-    //             yBufA = ByteArray(size)
-    //             yBufB = ByteArray(size)
-    //         }
-    //         val buf = if (useYBufA) yBufA!! else yBufB!!
-    //         useYBufA = !useYBufA
-    //         if (stride == w) yp.get(buf)
-    //         else for (r in 0 until h) {
-    //             yp.position(r * stride)
-    //             yp.get(buf, r * w, w)
-    //         }
-    //         FrameYData(buf, w, h, w)
-    //     } catch (e: Exception) { null } finally { img.close() }
-    // }
 }

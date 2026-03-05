@@ -1,29 +1,44 @@
 import api from './api';
 
 export const productService = {
-  // Get All (ดูรายการทั้งหมด)
-  getAll: async () => {
-    return api.get('/wheels'); // เปลี่ยน /wheels เป็น path ของจริง
+  // Get models with pagination (10 per page)
+  getAll: async (params?: {
+    searchTerm?: string;
+    lastVisibleId?: string;
+    categoryId?: string;
+    minPrice?: number;
+    maxPrice?: number;
+    os?: string;
+  }) => {
+    return api.get('/models', { params });
   },
 
-  // Get One (ดูรายละเอียดตาม ID)
+  // Get single model by ID
   getById: async (id: string) => {
-    return api.get(`/wheels/${id}`);
+    return api.get(`/models/${id}`);
   },
 
-  // Create (เพิ่มสินค้าใหม่ - ต้องมี Token ถึงทำได้)
+  // Create model (store/admin)
   create: async (data: any) => {
-    // ไม่ต้องใส่ Header เอง เพราะ Interceptor ในข้อ 1 ทำให้แล้ว!
-    return api.post('/wheels', data);
+    return api.post('/models', data);
   },
 
-  // Update (แก้ไข)
+  // Update model (store/admin)
   update: async (id: string, data: any) => {
-    return api.put(`/wheels/${id}`, data);
+    return api.patch(`/models/${id}`, data);
   },
 
-  // Delete (ลบ)
+  // Delete model (store/admin)
   delete: async (id: string) => {
-    return api.delete(`/wheels/${id}`);
+    return api.delete(`/models/${id}`);
+  },
+
+  // Upload file to model (store/admin)
+  uploadFile: async (id: string, file: any) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`/models/upload/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   },
 };
