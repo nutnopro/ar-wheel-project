@@ -104,6 +104,8 @@ class ARRendering(
         private const val POS_STABLE_M = 0.025f
         private const val ROT_STABLE_DEG = 4f
 
+        private const val WARMUP_MS = 20_000L
+
         private const val MIN_CIRCULARITY = 0.45f
         private const val MIN_BBOX_RATIO = 0.45f
         private const val ANCHOR_UPGRADE_MARGIN = 0.05f
@@ -146,6 +148,7 @@ class ARRendering(
 
     private val bboxCountHistory = ArrayDeque<Int>(BBOX_HISTORY_SIZE)
     private var anyMotionThisFrame = false
+    private var sessionStartTime = 0L
 
     // private var yBufA: ByteArray? = null
     // private var yBufB: ByteArray? = null
@@ -336,6 +339,7 @@ class ARRendering(
             onnxOverlayView.clear()
             bboxCountHistory.clear()
         }
+        sessionStartTime = SystemClock.uptimeMillis()
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -439,17 +443,17 @@ class ARRendering(
             val hitPts = removeOutliers(rawPts)
             if (hitPts.isEmpty()) continue
 
-            // 2. Center
-            val center = hitPts.average3()
+            // 2. Center (use latest hit point as the primary position)
+            val center = hitPts.last()
 
             // 3. Back-project → must be inside bbox
             val screenPt = arSceneView.view.worldToScreen(center)
             val bboxAbs = RectF(bbox.left * vw, bbox.top * vh, bbox.right * vw, bbox.bottom * vh)
             if (!bboxAbs.contains(screenPt.x, screenPt.y)) continue
 
-            // 4. Plane normal + rotation
+            // 4. Plane normal + rotation (use camPos for correct facing)
             val normal = planeNormal(hitPts, center, camPos)
-            val planeRot = lookRotationForward(normal)
+            val planeRot = lookRotationForward(normal, camPos, center)
             val planeRight = buildPlaneRight(normal)
             val planeUp = normalize(cross(normal, planeRight))
 
@@ -485,7 +489,11 @@ class ARRendering(
             val bboxH = bbox.height() * vh
             val ratio = if (max(bboxW, bboxH) > 0f) min(bboxW, bboxH) / max(bboxW, bboxH) else 0f
 
-            // 8. Update position history
+            // 8. Update position history — if jump > snapThreshold, treat as different wheel
+            val prevPos = ws.posHistory.lastOrNull()
+            if (prevPos != null && dist(prevPos, center) > snapThreshold) {
+                resetUnanchoredState(ws)
+            }
             if (ws.posHistory.size >= POS_HISTORY_SIZE) ws.posHistory.removeFirst()
             ws.posHistory.addLast(center)
 
@@ -494,8 +502,8 @@ class ARRendering(
             ws.rotHistory.addLast(planeRot)
             val bestRot = adaptiveRotAverage(ws)
 
-            // 10. Render position = avg of last 5
-            val renderPos = ws.posHistory.takeLast(POS_RENDER_SIZE).average3()
+            // 10. Render position = latest position always
+            val renderPos = ws.posHistory.last()
 
             // 11. worldToScreen visibility: model must be inside some bbox
             val modelScreen = arSceneView.view.worldToScreen(renderPos)
@@ -522,10 +530,11 @@ class ARRendering(
             ws.lastCenter = center
             ws.lastRot = planeRot
 
-            // 13. Auto-upgrade anchor when quality improves
+            // 13. Auto-upgrade anchor when quality improves (gated by 20s warmup)
             val confirmed = confirmDetection(ratio)
             // val confirmed = confirmDetection(cv.circularity, ratio, cv.isFound)
-            if (confirmed) {
+            val warmupElapsed = (now - sessionStartTime) >= WARMUP_MS
+            if (confirmed && warmupElapsed) {
                 val quality = AnchorQuality(ratio)
                 // val quality = AnchorQuality(cv.circularity, ratio)
                 val existingQ = ws.anchorQuality
@@ -729,30 +738,38 @@ class ARRendering(
     // lookRotationForward: build rotation so model +Y aligns with normal
     // (ModelManager sets wheel front = +Y, so +Y must point along plane normal)
     // ─────────────────────────────────────────────────────────────────────────
-    private fun lookRotationForward(normal: Float3): Quaternion {
+    private fun lookRotationForward(normal: Float3, camPos: Float3, center: Float3): Quaternion {
         val yAxis = normalize(normal)
-        val ref = if (abs(dot(yAxis, Float3(0f, 0f, 1f))) < 0.99f) Float3(0f, 0f, 1f)
-            else Float3(1f, 0f, 0f)
-        val xAxis = normalize(cross(ref, yAxis))
-        val zAxis = normalize(cross(yAxis, xAxis))
-        // Matrix: col0=xAxis, col1=yAxis, col2=zAxis
-        val tr = xAxis.x + yAxis.y + zAxis.z
+        // Project camera direction onto the plane to get a stable "up" reference
+        val camDir = normalize(camPos - center)
+        val projected = normalize(camDir - yAxis * dot(camDir, yAxis))
+        // Use world up as fallback when camera is nearly aligned with normal
+        val zAxis = if (length(projected) > 0.01f) projected
+            else {
+                val worldUp = Float3(0f, 1f, 0f)
+                val proj2 = normalize(worldUp - yAxis * dot(worldUp, yAxis))
+                if (length(proj2) > 0.01f) proj2 else Float3(0f, 0f, 1f)
+            }
+        val xAxis = normalize(cross(zAxis, yAxis))
+        val zFinal = normalize(cross(yAxis, xAxis))
+        // Matrix: col0=xAxis, col1=yAxis, col2=zFinal
+        val tr = xAxis.x + yAxis.y + zFinal.z
         return when {
             tr > 0f -> {
                 val s = sqrt(tr + 1f) * 2f
-                Quaternion((yAxis.z - zAxis.y) / s, (zAxis.x - xAxis.z) / s, (xAxis.y - yAxis.x) / s, 0.25f * s)
+                Quaternion((yAxis.z - zFinal.y) / s, (zFinal.x - xAxis.z) / s, (xAxis.y - yAxis.x) / s, 0.25f * s)
             }
-            xAxis.x > yAxis.y && xAxis.x > zAxis.z -> {
-                val s = sqrt(1f + xAxis.x - yAxis.y - zAxis.z) * 2f
-                Quaternion(0.25f * s, (xAxis.y + yAxis.x) / s, (zAxis.x + xAxis.z) / s, (yAxis.z - zAxis.y) / s)
+            xAxis.x > yAxis.y && xAxis.x > zFinal.z -> {
+                val s = sqrt(1f + xAxis.x - yAxis.y - zFinal.z) * 2f
+                Quaternion(0.25f * s, (xAxis.y + yAxis.x) / s, (zFinal.x + xAxis.z) / s, (yAxis.z - zFinal.y) / s)
             }
-            yAxis.y > zAxis.z -> {
-                val s = sqrt(1f + yAxis.y - xAxis.x - zAxis.z) * 2f
-                Quaternion((xAxis.y + yAxis.x) / s, 0.25f * s, (yAxis.z + zAxis.y) / s, (zAxis.x - xAxis.z) / s)
+            yAxis.y > zFinal.z -> {
+                val s = sqrt(1f + yAxis.y - xAxis.x - zFinal.z) * 2f
+                Quaternion((xAxis.y + yAxis.x) / s, 0.25f * s, (yAxis.z + zFinal.y) / s, (zFinal.x - xAxis.z) / s)
             }
             else -> {
-                val s = sqrt(1f + zAxis.z - xAxis.x - yAxis.y) * 2f
-                Quaternion((zAxis.x + xAxis.z) / s, (yAxis.z + zAxis.y) / s, 0.25f * s, (xAxis.y - yAxis.x) / s)
+                val s = sqrt(1f + zFinal.z - xAxis.x - yAxis.y) * 2f
+                Quaternion((zFinal.x + xAxis.z) / s, (yAxis.z + zFinal.y) / s, 0.25f * s, (xAxis.y - yAxis.x) / s)
             }
         }
     }

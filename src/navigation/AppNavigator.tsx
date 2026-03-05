@@ -123,7 +123,7 @@ function MainTabNavigator() {
             (async () => {
               try {
                 if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-                  await ARLauncher.openARActivity('');
+                  await ARLauncher.openARActivity('', '[]');
                 } else {
                   Alert.alert('AR', 'AR Launcher is not available on this device');
                 }
