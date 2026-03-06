@@ -1,5 +1,6 @@
 package com.arwheelapp.modules
 
+import android.view.View
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.NativeModule
