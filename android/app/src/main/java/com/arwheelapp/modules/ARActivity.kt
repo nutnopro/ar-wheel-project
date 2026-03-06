@@ -152,7 +152,7 @@ class ARActivity : ComponentActivity() {
             org.json.JSONArray(json).let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }
             }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) { listOf("models/default.glb") }
         uiManager.setModels(paths)
     }
 

@@ -66,7 +66,7 @@ class ARUIManager(
     private var currentOpenMenu: String? = null
 
     private var modelList: List<String> = listOf()
-    private var sizeList = listOf(14, 15, 16, 17, 18, 19, 20, 21, 22)
+    private var sizeList = listOf(13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
     fun setModels(models: List<String>) { modelList = models }
 

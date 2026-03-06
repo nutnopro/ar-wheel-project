@@ -25,8 +25,18 @@ class ARViewController: UIViewController {
     // MARK: - Entry
     static func create(initialModelPath: String, modelPathsJson: String) -> ARViewController {
         let vc = ARViewController()
-        vc.initialModelPath = initialModelPath
-        vc.modelPaths = (try? JSONSerialization.jsonObject(with: modelPathsJson.data(using: .utf8) ?? Data()) as? [String]) ?? []
+        vc.initialModelPath = initialModelPath.isEmpty ? "models/default.glb" : initialModelPath
+
+        var paths: [String] = []
+        let jsonStr = modelPathsJson.isEmpty ? "[]" : modelPathsJson
+        
+        if let data = jsonStr.data(using: .utf8),
+           let jsonArray = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            paths = jsonArray
+        }
+
+        vc.modelPaths = paths.isEmpty ? ["models/default.glb"] : paths
+
         return vc
     }
 
