@@ -26,9 +26,9 @@ private class WheelState {
     var manualOffsetRight: Float = 0
     var manualOffsetUp: Float = 0
     var manualOffsetForward: Float = 0
-    var manualRotH: Float = 0   // degrees around planeUp
-    var manualRotV: Float = 0   // degrees around planeRight
-    var manualRotRoll: Float = 0
+    var manualRotH: Float = 0   // degrees around plane up axis
+    var manualRotV: Float = 0   // degrees around plane right axis
+    var manualRotZ: Float = 0
 
     // Plane axes stored when anchor placed
     var planeRight: SIMD3<Float> = SIMD3<Float>(1, 0, 0)
@@ -166,10 +166,7 @@ class ARRendering {
         guard let model = selectedModel,
               let ws = wheelStates[ObjectIdentifier(model)] else { return }
         switch editMode {
-        case "POS": ws.manualOffsetForward = value * 1.0
-        case "ROT": ws.manualRotRoll       = value * 180.0
-        default: break
-        }
+        case "ROT": ws.manualRotZ       = value * 180.0
     }
 
     func finishAdjusting() {
@@ -182,8 +179,12 @@ class ARRendering {
         let newAnchor = AnchorEntity(world: transform)
         arView?.scene.addAnchor(newAnchor)
         ws.anchor = newAnchor
-        ws.manualOffsetRight = 0; ws.manualOffsetUp = 0; ws.manualOffsetForward = 0
-        ws.manualRotH = 0; ws.manualRotV = 0; ws.manualRotRoll = 0
+        ws.manualOffsetRight = 0
+        ws.manualOffsetUp = 0
+        ws.manualOffsetForward = 0
+        ws.manualRotH = 0
+        ws.manualRotV = 0
+        ws.manualRotZ = 0
         selectedModel = nil
         onShowAdjustmentUI?(false)
     }
@@ -192,8 +193,12 @@ class ARRendering {
         guard let model = selectedModel,
               let ws = wheelStates[ObjectIdentifier(model)] else { return }
         ws.isManuallyLocked = false
-        ws.manualOffsetRight = 0; ws.manualOffsetUp = 0; ws.manualOffsetForward = 0
-        ws.manualRotH = 0; ws.manualRotV = 0; ws.manualRotRoll = 0
+        ws.manualOffsetRight = 0
+        ws.manualOffsetUp = 0
+        ws.manualOffsetForward = 0
+        ws.manualRotH = 0
+        ws.manualRotV = 0
+        ws.manualRotZ = 0
         selectedModel = nil
         onShowAdjustmentUI?(false)
     }
@@ -375,7 +380,8 @@ class ARRendering {
 
             // Plane normal + rotation
             let normal   = planeNormal(pts: hitPts, center: center, camPos: camPos)
-            let planeRot = lookRotationForward(normal: normal)
+            let planeRot = lookRotationForward(normal: normal, camPos: camPos, center: center)
+
             let planeRight = buildPlaneRight(normal: normal)
             let planeUp    = simd_normalize(simd_cross(normal, planeRight))
 
@@ -387,7 +393,11 @@ class ARRendering {
 
             let id = ObjectIdentifier(model)
             claimed.insert(id)
-            let ws = wheelStates[id] ?? { let s = WheelState(); wheelStates[id] = s; return s }()
+            let ws = wheelStates[id] ?? {
+                let s = WheelState()
+                wheelStates[id] = s
+                return s
+            }()
 
             if ws.isManuallyLocked { continue }
 
@@ -416,7 +426,8 @@ class ARRendering {
                 ws.lastScreenBounds = CGRect(x: modelScreen.x - halfW, y: modelScreen.y - halfH,
                                              width: CGFloat(bboxW), height: CGFloat(bboxH))
                 if !bboxAbs.contains(modelScreen), ws.anchor == nil {
-                    model.isEnabled = false; continue
+                    model.isEnabled = false
+                    continue
                 }
             }
 
@@ -427,9 +438,11 @@ class ARRendering {
                 ws.stableFrames += 1
                 if ws.stableFrames >= ARRendering.stableFramesRequired { ws.isReadyToAnchor = true }
             } else {
-                ws.stableFrames = 0; ws.isReadyToAnchor = false
+                ws.stableFrames = 0
+                ws.isReadyToAnchor = false
             }
-            ws.lastCenter = center; ws.lastRot = planeRot
+            ws.lastCenter = center
+            ws.lastRot = planeRot
 
             // Auto-upgrade anchor
             if confirmDetection(bboxRatio: ratio) {
@@ -473,7 +486,7 @@ class ARRendering {
 
         let rotH = simd_quatf(angle: ws.manualRotH * .pi / 180, axis: ws.planeUp)
         let rotV = simd_quatf(angle: ws.manualRotV * .pi / 180, axis: ws.planeRight)
-        let rotZ = simd_quatf(angle: ws.manualRotRoll * .pi / 180, axis: ws.planeDepth)
+        let rotZ = simd_quatf(angle: ws.manualRotZ * .pi / 180, axis: ws.planeDepth)
 
         model.setPosition(newPos, relativeTo: nil)
         model.children.forEach { child in
@@ -499,7 +512,8 @@ class ARRendering {
                 if !ws.isFrozen && !ws.isManuallyLocked {
                     ws.missFrames += 1
                     if ws.missFrames >= ARRendering.anchorMissLimit {
-                        ws.isFrozen = true; model.isEnabled = false
+                        ws.isFrozen = true
+                        model.isEnabled = false
                     }
                 }
                 if !ws.isManuallyLocked {
@@ -609,15 +623,28 @@ class ARRendering {
         return simd_dot(n, simd_normalize(camPos - center)) < 0 ? -n : n
     }
 
-    // MARK: - lookRotationForward: +Y aligns with plane normal
-    private func lookRotationForward(normal: SIMD3<Float>) -> simd_quatf {
+    // MARK: - lookRotationForward: +Y aligns with plane normal, Z projects camera up
+    // Translated strictly from Android Math library fallback structure
+    private func lookRotationForward(normal: SIMD3<Float>, camPos: SIMD3<Float>, center: SIMD3<Float>) -> simd_quatf {
         let yAxis = simd_normalize(normal)
-        let ref: SIMD3<Float> = abs(simd_dot(yAxis, SIMD3<Float>(0, 0, 1))) < 0.99
-                                ? SIMD3<Float>(0, 0, 1) : SIMD3<Float>(1, 0, 0)
-        let xAxis = simd_normalize(simd_cross(ref, yAxis))
-        let zAxis = simd_normalize(simd_cross(yAxis, xAxis))
-        // Build from 3×3 rotation matrix columns: [xAxis | yAxis | zAxis]
-        let m = float3x3(xAxis, yAxis, zAxis)
+        let camDir = simd_normalize(camPos - center)
+        
+        let projected = simd_normalize(camDir - yAxis * simd_dot(camDir, yAxis))
+        
+        let zAxis: SIMD3<Float>
+        if simd_length(projected) > 0.01 {
+            zAxis = projected
+        } else {
+            let worldUp = SIMD3<Float>(0, 1, 0)
+            let proj2 = simd_normalize(worldUp - yAxis * simd_dot(worldUp, yAxis))
+            zAxis = simd_length(proj2) > 0.01 ? proj2 : SIMD3<Float>(0, 0, 1)
+        }
+        
+        let xAxis = simd_normalize(simd_cross(zAxis, yAxis))
+        let zFinal = simd_normalize(simd_cross(yAxis, xAxis))
+        
+        // Build rotation matrix [xAxis | yAxis | zFinal] -> Quaternion
+        let m = float3x3(xAxis, yAxis, zFinal)
         return simd_quaternion(m)
     }
 
@@ -636,7 +663,11 @@ class ARRendering {
         if let recycled = markerlessActiveModels.first(where: {
             !$0.isEnabled && wheelStates[ObjectIdentifier($0)]?.anchor == nil
         }) {
-            let ws = wheelStates[ObjectIdentifier(recycled)] ?? { let s = WheelState(); wheelStates[ObjectIdentifier(recycled)] = s; return s }()
+            let ws = wheelStates[ObjectIdentifier(recycled)] ?? {
+                let s = WheelState()
+                wheelStates[ObjectIdentifier(recycled)] = s
+                return s
+            }()
             resetUnanchoredState(ws)
             return recycled
         }
@@ -649,7 +680,8 @@ class ARRendering {
 
         guard let mp = modelPath else { return nil }
         // Create placeholder synchronously, model loads async into it
-        let placeholder = Entity(); placeholder.isEnabled = false
+        let placeholder = Entity()
+        placeholder.isEnabled = false
         modelManager.createNewModel(modelPath: mp) { [weak self] loaded in
             guard let self else { return }
             placeholder.addChild(loaded)
@@ -670,12 +702,18 @@ class ARRendering {
 
     // MARK: - State reset
     private func resetUnanchoredState(_ ws: WheelState) {
-        ws.posHistory.removeAll(); ws.rotHistory.removeAll()
-        ws.stableFrames = 0; ws.isReadyToAnchor = false
-        ws.detectionHits = 0; ws.lastCenter = nil; ws.lastRot = nil
+        ws.posHistory.removeAll()
+        ws.rotHistory.removeAll()
+        ws.stableFrames = 0
+        ws.isReadyToAnchor = false
+        ws.detectionHits = 0
+        ws.lastCenter = nil
+        ws.lastRot = nil
         ws.missFrames = 0
-        ws.manualOffsetRight = 0; ws.manualOffsetUp = 0
-        ws.manualRotH = 0; ws.manualRotV = 0
+        ws.manualOffsetRight = 0
+        ws.manualOffsetUp = 0
+        ws.manualRotH = 0
+        ws.manualRotV = 0
         ws.rotWindowSize = ARRendering.rotHistorySize
     }
 

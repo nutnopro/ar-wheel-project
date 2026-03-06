@@ -78,6 +78,20 @@ class ARViewController: UIViewController {
         } catch {
             print("[ARViewController] HDR environment load failed: \(error)")
         }
+
+        // Filament replica: DirectionalLight, intensity 30,000, rotated x=-45, y=45
+        let lightEntity = Entity()
+        var dirLight = DirectionalLightComponent()
+        dirLight.intensity = 30000
+        dirLight.color = .white
+        // RealityKit DirectionalLight casts along its local -Z axis.
+        // To get x=-45, y=45 (Filament convention), we apply those rotations to the entity:
+        let rotX = simd_quatf(angle: -45 * .pi / 180, axis: SIMD3<Float>(1, 0, 0))
+        let rotY = simd_quatf(angle: 45 * .pi / 180, axis: SIMD3<Float>(0, 1, 0))
+        
+        lightEntity.components.set(dirLight)
+        lightEntity.orientation = rotY * rotX
+        arView.scene.addAnchor(AnchorEntity(world: .identity).apply { $0.addChild(lightEntity) })
     }
 
     // MARK: - Callbacks
