@@ -36,6 +36,8 @@ import ManageCategoriesScreen from '../screens/admin/ManageCategoriesScreen';
 import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
 import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
+import { resolveModelPath } from '../services/modelCacheService';
+import { getSelectedModel, getModelPaths } from '../utils/storage';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -120,7 +122,10 @@ function MainTabNavigator() {
             (async () => {
               try {
                 if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-                  await ARLauncher.openARActivity('', '[]');
+                  const savedModel = getSelectedModel();
+                  const savedPaths = getModelPaths();
+                  const initialPath = savedModel?.localPath || '';
+                  await ARLauncher.openARActivity(initialPath, JSON.stringify(savedPaths && savedPaths.length > 0 ? savedPaths : []));
                 } else {
                   Alert.alert('AR', 'AR Launcher is not available on this device');
                 }

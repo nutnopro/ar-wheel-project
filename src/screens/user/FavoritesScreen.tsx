@@ -18,6 +18,7 @@ const {width} = Dimensions.get('window');
 const COLUMN_WIDTH = width / 2 - 24;
 
 import Header from '../../components/Header';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const FavoritesScreen = () => {
   const navigation = useNavigation<any>();
@@ -49,15 +50,15 @@ const FavoritesScreen = () => {
       style={[styles.card, {backgroundColor: theme.card}]}
       onPress={() => navigation.navigate('ProductDetail', {item})}>
       <View style={styles.imageContainer}>
-        <Image
-          source={
-            item.images?.[0]
-              ? {uri: item.images[0]}
-              : require('../../assets/cube.png')
-          }
-          style={styles.image}
-          resizeMode="contain"
-        />
+        {item.images?.[0] ? (
+          <Image
+            source={{ uri: item.images[0] }}
+            style={styles.image}
+            resizeMode="contain"
+          />
+        ) : (
+          <MaterialCommunityIcons name="cube-outline" size={40} color="#9CA3AF" />
+        )}
       </View>
       <View style={styles.cardContent}>
         <Text

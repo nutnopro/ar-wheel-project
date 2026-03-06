@@ -19,6 +19,7 @@ import {resolveModelPath} from '../../services/modelCacheService';
 import {WheelModel} from '../../utils/types';
 import {useAuth} from '../../context/AuthContext';
 import {favoritesService} from '../../services/favoritesService';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const {ARLauncher} = NativeModules;
 
@@ -68,15 +69,16 @@ const ProductDetailScreen = () => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* ส่วนแสดงรูปโมเดลล้อ + ปุ่ม Back ซ้ายบนซ้อนทับเหมือนดีไซน์ */}
         <View style={styles.imageWrapper}>
-          <Image
-            source={
-              item.images?.[0]
-                ? {uri: item.images[0]}
-                : require('../../assets/cube.png')
-            }
-            style={styles.image}
-            resizeMode="contain"
-          />
+          {item.images?.[0] ? (
+            <Image
+              source={{ uri: item.images[0] }}
+              style={styles.image}
+              resizeMode="contain"
+            />
+          ) : (
+            <MaterialCommunityIcons name="cube-outline" size={40} color="#9CA3AF" />
+          )}
+          
 
           <TouchableOpacity
             onPress={() => navigation.goBack()}

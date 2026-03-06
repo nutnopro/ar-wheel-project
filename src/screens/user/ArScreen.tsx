@@ -19,6 +19,7 @@ import api from '../../services/api';
 import { setSelectedModel, setModelPaths } from '../../utils/storage';
 import { resolveModelPath } from '../../services/modelCacheService';
 import { WheelModel } from '../../utils/types';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const { ARLauncher } = NativeModules;
 
@@ -135,15 +136,15 @@ const ArScreen = () => {
             isActive && styles.modelImageContainerActive,
           ]}
         >
-          <Image
-            source={
-              item.images?.[0]
-                ? { uri: item.images[0] }
-                : require('../../assets/cube.png')
-            }
-            style={styles.modelImage}
-            resizeMode="contain"
-          />
+          {item.images?.[0] ? (
+            <Image
+              source={{ uri: item.images[0] }}
+              style={styles.modelImage}
+              resizeMode="contain"
+            />
+          ) : (
+            <MaterialCommunityIcons name="cube-outline" size={40} color="#9CA3AF" />
+          )}
         </View>
         <Text style={styles.modelName} numberOfLines={1}>
           {item.name || item.id}

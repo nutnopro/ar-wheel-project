@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import api from '../../services/api';
+import { getSelectedModel, getModelPaths } from '../../utils/storage';
 
 const {ARLauncher} = NativeModules;
 
@@ -226,7 +227,10 @@ export function ArScreen({navigation}: any) {
   const openAR = useCallback(async () => {
     try {
       if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-        await ARLauncher.openARActivity('', '[]');
+        const savedModel = getSelectedModel();
+        const savedPaths = getModelPaths();
+        const initialPath = savedModel?.localPath || '';
+        await ARLauncher.openARActivity(initialPath, JSON.stringify(savedPaths && savedPaths.length > 0 ? savedPaths : []));
         navigation.goBack();
       } else {
         Alert.alert('AR', 'AR Launcher is not available on this device');

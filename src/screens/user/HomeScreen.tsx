@@ -21,6 +21,7 @@ import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
 const { width } = Dimensions.get('window');
 const COLUMN_WIDTH = width / 2 - 24;
@@ -141,15 +142,15 @@ const HomeScreen = () => {
           { backgroundColor: isDarkMode ? '#334155' : '#fff' },
         ]}
       >
-        <Image
-          source={
-            item.images?.[0]
-              ? { uri: item.images[0] }
-              : require('../../assets/cube.png')
-          }
-          style={styles.image}
-          resizeMode="contain"
-        />
+        {item.images?.[0] ? (
+          <Image
+            source={{ uri: item.images[0] }}
+            style={styles.image}
+            resizeMode="contain"
+          />
+        ) : (
+          <MaterialCommunityIcons name="cube-outline" size={40} color="#9CA3AF" />
+        )}
       </View>
       <View style={styles.cardContent}>
         <Text

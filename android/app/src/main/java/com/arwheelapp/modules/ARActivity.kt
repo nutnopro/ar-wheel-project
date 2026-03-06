@@ -141,10 +141,13 @@ class ARActivity : ComponentActivity() {
     }
 
     private fun setInitialModel() {
-        val path = intent.getStringExtra("initialModelPath") ?: "models/default.glb"
+        val pathStr = intent.getStringExtra("initialModelPath")
+        val path = if (pathStr.isNullOrEmpty()) "models/default.glb" else pathStr
         arRendering.modelPath = path
 
-        val json = intent.getStringExtra("modelPathsJson") ?: "[]"
+        val jsonStr = intent.getStringExtra("modelPathsJson")
+        val json = if (jsonStr.isNullOrEmpty()) "[]" else jsonStr
+
         val paths = try {
             org.json.JSONArray(json).let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }
