@@ -12,12 +12,13 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
 import { productService } from '../../services/productService'; // เรียก Service
-import { useFocusEffect } from '@react-navigation/native'; // เพื่อให้โหลดใหม่ทุกครั้งที่เข้าหน้า
+import { useFocusEffect, useNavigation } from '@react-navigation/native'; // เพื่อให้โหลดใหม่ทุกครั้งที่เข้าหน้า
 
 import Header from '../../components/Header';
 
 const ManageModelsScreen = () => {
   const { theme } = useTheme();
+  const navigation = useNavigation<any>();
   const [models, setModels] = useState<any[]>([]); // เก็บข้อมูลจริง
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -153,7 +154,7 @@ const ManageModelsScreen = () => {
       >
         <TouchableOpacity
           style={[styles.addButton, { backgroundColor: '#F59E0B' }]}
-          onPress={() => Alert.alert('Add', 'Feature coming soon')}
+          onPress={() => navigation.navigate('ManageAddModel')}
         >
           <Icon name="plus" size={24} color="#fff" />
           <Text style={styles.addText}>Add Model</Text>

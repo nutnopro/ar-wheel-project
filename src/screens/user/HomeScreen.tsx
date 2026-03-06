@@ -15,7 +15,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { MMKV } from 'react-native-mmkv';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+
+const storage = new MMKV();
 import { WheelModel } from '../../utils/types';
 import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
@@ -74,6 +77,14 @@ const HomeScreen = () => {
 
       if (isRefresh) {
         setWheels(data);
+        // Cache the first page of results
+        if (!searchQuery && selectedCategory === 'All' && !minPrice && !maxPrice) {
+          try {
+            storage.set('@cached_wheels', JSON.stringify(data));
+          } catch (err) {
+            console.log('Cache save err:', err);
+          }
+        }
       } else {
         setWheels(prev => [...prev, ...data]);
       }
@@ -88,15 +99,35 @@ const HomeScreen = () => {
     } catch (error) {
       console.error('Fetch wheels error:', error);
     } finally {
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
+      // Small delay on removing loading to prevent flash if cache was fast
+      setTimeout(() => {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+      }, 300);
     }
   }, [searchQuery, selectedCategory, minPrice, maxPrice, lastVisibleId]);
 
   // Initial load
   useEffect(() => {
-    fetchWheels(true);
+    const loadCacheThenFetch = () => {
+      try {
+        const cached = storage.getString('@cached_wheels');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.length > 0) {
+            setWheels(parsed);
+            setLoading(false); // Display cache immediately
+          }
+        }
+      } catch (e) {
+        console.log('Cache load err:', e);
+      }
+      // Always fetch fresh data on mount
+      fetchWheels(true);
+    };
+    
+    loadCacheThenFetch();
   }, []);
 
   // Refresh

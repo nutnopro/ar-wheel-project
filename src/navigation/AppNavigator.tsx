@@ -34,6 +34,7 @@ import ARPreferencesScreen from '../screens/user/ARPreferencesScreen';
 import ManageUsersScreen from '../screens/admin/ManageUsersScreen';
 import ManageCategoriesScreen from '../screens/admin/ManageCategoriesScreen';
 import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
+import ManageAddModelScreen from '../screens/admin/ManageAddModelScreen';
 import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import { resolveModelPath } from '../services/modelCacheService';
@@ -56,6 +57,7 @@ export type RootStackParamList = {
   AdminDashboard: undefined;
   ManageUsers: undefined;
   ManageModels: undefined;
+  ManageAddModel: undefined;
   ManageCategories: undefined;
   SystemLogs: undefined;
 };
@@ -242,7 +244,12 @@ const AppNavigationWrapper = () => {
               <Stack.Screen
                 name="ManageModels"
                 component={ManageModelsScreen}
-                options={subPageOptions}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="ManageAddModel"
+                component={ManageAddModelScreen}
+                options={{ headerShown: false }}
               />
             </>
           )}

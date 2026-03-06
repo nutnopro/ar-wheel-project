@@ -41,4 +41,29 @@ export const productService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  // Create model with metadata and files
+  createWithFile: async (data: any, modelFile?: any, imageFile?: any) => {
+    const formData = new FormData();
+    // Append all metadata fields
+    Object.keys(data).forEach(key => {
+      if (Array.isArray(data[key])) {
+        // e.g. categories
+        data[key].forEach((val: string) => formData.append(`${key}[]`, val));
+      } else {
+        formData.append(key, data[key]);
+      }
+    });
+
+    if (modelFile) {
+      formData.append('modelFile', modelFile);
+    }
+    if (imageFile) {
+      formData.append('imageFile', imageFile);
+    }
+
+    return api.post('/models/with-file', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };
