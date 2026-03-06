@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import DocumentPicker, { DocumentPickerResponse } from 'react-native-document-picker';
+import { pick, types, isErrorWithCode, errorCodes, DocumentPickerResponse } from '@react-native-documents/picker';
 import { useTheme } from '../../context/ThemeContext';
 import { useNavigation } from '@react-navigation/native';
 import { productService } from '../../services/productService';
@@ -35,8 +35,8 @@ const ManageAddModelScreen = () => {
 
   const handlePickModel = async () => {
     try {
-      const res = await DocumentPicker.pickSingle({
-        type: [DocumentPicker.types.allFiles],
+      const [res] = await pick({
+        type: [types.allFiles],
       });
       console.log(res);
       // Validate extension
@@ -47,7 +47,7 @@ const ManageAddModelScreen = () => {
       }
       setModelFile(res);
     } catch (err) {
-      if (!DocumentPicker.isCancel(err)) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         console.error(err);
         Alert.alert('Error', 'Failed to pick model file');
       }
@@ -56,13 +56,13 @@ const ManageAddModelScreen = () => {
 
   const handlePickImages = async () => {
     try {
-      const results = await DocumentPicker.pick({
+      const results = await pick({
         allowMultiSelection: true,
-        type: [DocumentPicker.types.images],
+        type: [types.images],
       });
       setImageFiles(prev => [...prev, ...results]);
     } catch (err) {
-      if (!DocumentPicker.isCancel(err)) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         console.error(err);
         Alert.alert('Error', 'Failed to pick image files');
       }
