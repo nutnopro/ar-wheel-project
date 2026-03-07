@@ -117,7 +117,7 @@ class ARActivity : ComponentActivity() {
             onBackClicked = { finish() }
             onModeSelected = { mode -> currentMode = mode }
             onCaptureClicked = { takePhoto() }
-            onModelSelected = { path -> arRendering.updateNewModel("models/$path.glb") }
+            onModelSelected = { path -> arRendering.updateNewModel("$path.glb") }
             onSizeSelected = { inch -> arRendering.updateModelSize(inch) }
 
             onNudge = { editMode, dir -> arRendering.nudgeModel(editMode, dir) }

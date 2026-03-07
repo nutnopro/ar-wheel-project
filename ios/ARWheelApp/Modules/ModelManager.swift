@@ -69,8 +69,8 @@ class ModelManager {
     }
 
     private func loadBackplate(diameter: Float) -> ModelEntity? {
-        guard let entity = try? Entity.load(named: "models/backplate", in: nil) as? ModelEntity
-                       ?? loadSync(path: "models/backplate") else { return nil }
+        guard let entity = try? Entity.load(named: "Resources/models/backplate", in: nil) as? ModelEntity
+                       ?? loadSync(path: "Resources/models/backplate") else { return nil }
         entity.scale = SIMD3<Float>(diameter, diameter, 1)
         return entity
     }
@@ -78,12 +78,20 @@ class ModelManager {
     // MARK: - Loading helpers
 
     private func loadModelEntity(path: String, completion: @escaping (ModelEntity?) -> Void) {
-        // Strip leading "models/" prefix if present — Resource name is relative to bundle
-        let resourceName = path.hasPrefix("models/") ? String(path.dropFirst(7)) : path
-        // Strip extension for Entity.loadAsync(named:)
-        let nameNoExt = (resourceName as NSString).deletingPathExtension
+        let loadRequest: LoadRequest<Entity>
 
-        Entity.loadAsync(named: nameNoExt, in: nil)
+        if path.hasPrefix("/") || path.hasPrefix("file://") {
+            // กรณีโหลดจาก Cache / Internal Storage (Absolute Path)
+            let fileURL = path.hasPrefix("file://") ? URL(string: path)! : URL(fileURLWithPath: path)
+            loadRequest = Entity.loadAsync(contentsOf: fileURL)
+        } else {
+            // กรณีโหลดจาก Assets (Bundle) เช่น "Resources/models/default.usdz"
+            let resourceName = path.hasPrefix("Resources/models/") ? String(path.dropFirst(15)) : path
+            let nameNoExt = (resourceName as NSString).deletingPathExtension
+            loadRequest = Entity.loadAsync(named: nameNoExt, in: nil)
+        }
+
+        loadRequest
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { result in
@@ -93,7 +101,14 @@ class ModelManager {
                     }
                 },
                 receiveValue: { entity in
-                    completion(entity as? ModelEntity ?? entity.children.first(where: { $0 is ModelEntity }) as? ModelEntity)
+                    if let modelEntity = entity as? ModelEntity {
+                        completion(modelEntity)
+                    } else if let modelEntity = entity.children.first(where: { $0 is ModelEntity }) as? ModelEntity {
+                        completion(modelEntity)
+                    } else {
+                        print("[ModelManager] Entity loaded but contains no ModelEntity")
+                        completion(nil)
+                    }
                 }
             )
             .store(in: &cancellables)

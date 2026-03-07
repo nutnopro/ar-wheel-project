@@ -6,7 +6,7 @@ import onnxruntime_objc
 /// Runs YOLOv11 inference via ONNX Runtime (onnxruntime-objc).
 /// Mirrors Android MLHandler exactly — same confidence threshold, output shape, rotation correction.
 class MLHandler {
-    private static let modelName   = "yolov11n"
+    private static let modelName   = "Resources/yolov11n"
     private static let inputSize   = 320
     private static let confidence: Float = 0.4
 

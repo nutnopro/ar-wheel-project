@@ -6,6 +6,7 @@ import io.github.sceneview.ar.ARSceneView
 import io.github.sceneview.loaders.ModelLoader
 import io.github.sceneview.node.ModelNode
 import io.github.sceneview.node.Node
+import java.io.File
 import java.lang.Float.max
 import kotlinx.coroutines.*
 import android.util.Log
@@ -23,7 +24,11 @@ class ModelManager(private val arSceneView: ARSceneView) {
             isTouchable = true
         }
         scope.launch {
-            val modelInstance = modelLoader.createModelInstance(modelPath)
+            val modelInstance = if (modelPath.startsWith("/")) {
+                modelLoader.createModelInstance(File(modelPath))
+            } else {
+                modelLoader.createModelInstance(modelPath)
+            }
             withContext(Dispatchers.Main) {
                 modelInstance?.let { setupWheelSystem(rootNode, ModelNode(modelInstance = it)) }
             }
@@ -83,7 +88,11 @@ class ModelManager(private val arSceneView: ARSceneView) {
     // ─────────────────────────────────────────────────────────────────────────
     fun changeModel(rootNode: Node, modelPath: String, scope: CoroutineScope) {
         scope.launch {
-            val modelInstance = modelLoader.createModelInstance(modelPath)
+            val modelInstance = if (modelPath.startsWith("/")) {
+                modelLoader.createModelInstance(File(modelPath))
+            } else {
+                modelLoader.createModelInstance(modelPath)
+            }
             withContext(Dispatchers.Main) {
                 rootNode.childNodes.forEach { it.destroy() }
                 rootNode.clearChildNodes()

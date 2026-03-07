@@ -115,7 +115,7 @@ class ARViewController: UIViewController {
         }
         uiManager.onCaptureClicked = { [weak self] in self?.takePhoto() }
         uiManager.onModelSelected = { [weak self] path in
-            self?.arRendering.updateNewModel(path: "models/\(path).glb")
+            self?.arRendering.updateNewModel(path: "\(path).glb")
         }
         uiManager.onSizeSelected = { [weak self] inch in
             self?.arRendering.updateModelSize(sizeInch: inch)
