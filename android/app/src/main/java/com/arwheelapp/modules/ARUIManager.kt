@@ -561,8 +561,10 @@ class ARUIManager(
                     val cv = snap.findSnapView(rv.layoutManager) ?: return
                     val pos = rv.getChildAdapterPosition(cv).takeIf { it != -1 } ?: return
                     if (isModel) {
-                        tvSelectionTitle?.text = data[pos].uppercase()
-                        onModelSelected?.invoke(data[pos])
+                        val fullPath = data[pos]
+                        val displayName = fullPath.substringAfterLast("/").substringBeforeLast(".")
+                        tvSelectionTitle?.text = displayName.uppercase()
+                        onModelSelected?.invoke(fullPath)
                     }
                     else { onSizeSelected?.invoke(data[pos].toFloat()) }
                 }
@@ -570,7 +572,11 @@ class ARUIManager(
         })
 
         selectionContainer?.addView(selectionRecyclerView)
-        if (isModel) tvSelectionTitle?.text = data.firstOrNull()?.uppercase() ?: "NO MODELS"
+        if (isModel) {
+            val firstItem = data.firstOrNull()
+            val initialDisplayName = firstItem?.substringAfterLast("/")?.substringBeforeLast(".") ?: "NO MODELS"
+            tvSelectionTitle?.text = initialDisplayName.uppercase()
+        }
     }
 
     private fun toggleARMode() {

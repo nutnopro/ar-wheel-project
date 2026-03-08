@@ -150,9 +150,16 @@ class ARActivity : ComponentActivity() {
 
         val paths = try {
             org.json.JSONArray(json).let { arr ->
-                (0 until arr.length()).map { arr.getString(it) }
+                val parsedList = (0 until arr.length()).map { arr.getString(it) }
+                if (parsedList.isEmpty()) {
+                    listOf("models/default.glb")
+                } else {
+                    parsedList
+                }
             }
-        } catch (e: Exception) { mutableListOf("models/default.glb") }
+        } catch (e: Exception) { 
+            listOf("models/default.glb") 
+        }
         uiManager.setModels(paths)
     }
 
