@@ -37,6 +37,7 @@ import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
 import ManageAddModelScreen from '../screens/admin/ManageAddModelScreen';
 import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
+import SystemStatsScreen from '../screens/admin/SystemStatsScreen';
 import { resolveModelPath } from '../services/modelCacheService';
 import { getSelectedModel, getModelPaths } from '../utils/storage';
 
@@ -60,6 +61,7 @@ export type RootStackParamList = {
   ManageAddModel: undefined;
   ManageCategories: undefined;
   SystemLogs: undefined;
+  SystemStats: undefined;
 };
 
 const {ARLauncher} = NativeModules;
@@ -127,7 +129,12 @@ function MainTabNavigator() {
                   const savedModel = getSelectedModel();
                   const savedPaths = getModelPaths();
                   const initialPath = savedModel?.localPath || '';
-                  await ARLauncher.openARActivity(initialPath, JSON.stringify(savedPaths && savedPaths.length > 0 ? savedPaths : []));
+                  
+                  import('../utils/storage').then(({ storage }) => {
+                    const sizeStr = storage?.getString('@ar_marker_size') || '15';
+                    const markerSize = parseFloat(sizeStr) || 15.0;
+                    ARLauncher.openARActivity(initialPath, JSON.stringify(savedPaths && savedPaths.length > 0 ? savedPaths : []), markerSize);
+                  });
                 } else {
                   Alert.alert('AR', 'AR Launcher is not available on this device');
                 }
@@ -261,22 +268,27 @@ const AppNavigationWrapper = () => {
               <Stack.Screen
                 name="AdminDashboard"
                 component={AdminDashboardScreen}
-                options={subPageOptions}
+                options={{ headerShown: false }}
               />
               <Stack.Screen
                 name="ManageUsers"
                 component={ManageUsersScreen}
-                options={subPageOptions}
+                options={{ headerShown: false }}
               />
               <Stack.Screen
                 name="ManageCategories"
                 component={ManageCategoriesScreen}
-                options={subPageOptions}
+                options={{ headerShown: false }}
               />
               <Stack.Screen
                 name="SystemLogs"
                 component={SystemLogsScreen}
-                options={subPageOptions}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="SystemStats"
+                component={SystemStatsScreen}
+                options={{ headerShown: false }}
               />
             </>
           )}

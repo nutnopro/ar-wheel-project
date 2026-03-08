@@ -236,8 +236,17 @@ const ProfileScreen = () => {
           )}
 
           {/* Account Section */}
-          <View style={[styles.section, { backgroundColor: theme.card }]}>
-            <Text style={styles.sectionTitle}>Account</Text>
+          <View
+            style={[
+              styles.section,
+              {
+                backgroundColor: theme.card,
+                borderColor: '#2563EB',
+                borderWidth: 1,
+              },
+            ]}
+          >
+            <Text style={[styles.sectionTitle, { color: '#2563EB' }]}>Account</Text>
 
             {/* Favorites — user role only */}
             {isUser && (

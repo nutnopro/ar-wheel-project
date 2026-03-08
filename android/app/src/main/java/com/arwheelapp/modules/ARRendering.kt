@@ -87,15 +87,14 @@ class ARRendering(
         private const val TAG = "ARRendering"
 
         private const val DONUT_POINTS = 8
-        private const val DONUT_RADIUS_PCT = 0.75f
-        // private const val DONUT_RADIUS_FALLBACK = 0.70f
+        private const val DONUT_RADIUS_PCT = 0.72f
 
         private const val POS_HISTORY_SIZE = 20
         private const val POS_RENDER_SIZE = 5
         private const val ROT_HISTORY_SIZE = 20
         private const val ROT_RECENT_SIZE = 6
         private const val ROT_DIVERGE_DEG = 20f
-        private const val BBOX_HISTORY_SIZE = 12
+        private const val BBOX_HISTORY_SIZE = 15
 
         private const val DEFAULT_WHEEL_DIAMETER_M = 0.4572f    // 18 inch
         private const val SNAP_MULTIPLIER = 1.2f
@@ -163,8 +162,7 @@ class ARRendering(
     fun startNudging(m: Node) {
         val ws = wheelStates[m]
         if (ws != null) {
-            if (ws.anchor == null) {
-                // Ignore isReadyToAnchor when requested from UI (user tap). Immediately anchor at current rendering pos/rot
+            if (ws.anchor == null && ws.isReadyToAnchor) {
                 val pos = ws.posHistory.takeLast(POS_RENDER_SIZE)
                     .takeIf { it.isNotEmpty() }?.average3() ?: m.position
                 val rot = adaptiveRotAverage(ws)
@@ -431,14 +429,10 @@ class ARRendering(
             // 2. Center (use latest hit point as the primary position)
             val center = hitPts.last()
 
-            // 3. Back-project → must be inside bbox (center +/- 25% width/height)
+            // 3. Back-project → must be inside bbox
             val screenPt = arSceneView.view.worldToScreen(center)
             val bboxAbs = RectF(bbox.left * vw, bbox.top * vh, bbox.right * vw, bbox.bottom * vh)
-            val bboxCenterX = bboxAbs.centerX()
-            val bboxCenterY = bboxAbs.centerY()
-            val quarterW = bboxAbs.width() * 0.25f
-            val quarterH = bboxAbs.height() * 0.25f
-            if (abs(screenPt.x - bboxCenterX) > quarterW || abs(screenPt.y - bboxCenterY) > quarterH) continue
+            if (!bboxAbs.contains(screenPt.x, screenPt.y)) continue
 
             // 4. Plane normal + rotation (use camPos for correct facing)
             val normal = planeNormal(hitPts, center, camPos)
@@ -490,15 +484,14 @@ class ARRendering(
             // 10. Render position = latest position always
             val renderPos = ws.posHistory.last()
 
-            // 11. worldToScreen visibility: model must be near the bbox center (25% threshold)
+            // 11. worldToScreen visibility: model must be inside some bbox
             val modelScreen = arSceneView.view.worldToScreen(renderPos)
             ws.lastScreenCenter = Float2(modelScreen.x, modelScreen.y)
             ws.lastScreenBounds = RectF(
                 modelScreen.x - bboxW / 2f, modelScreen.y - bboxH / 2f,
                 modelScreen.x + bboxW / 2f, modelScreen.y + bboxH / 2f
             )
-            val outsideBbox = abs(modelScreen.x - bboxCenterX) > quarterW || abs(modelScreen.y - bboxCenterY) > quarterH
-            if (outsideBbox && ws.anchor == null) {
+            if (!bboxAbs.contains(modelScreen.x, modelScreen.y) && ws.anchor == null) {
                 model.isVisible = false
                 continue
             }
@@ -516,21 +509,13 @@ class ARRendering(
             ws.lastCenter = center
             ws.lastRot = planeRot
 
-            // 13. Auto-upgrade anchor when quality improves or jump > 10cm (gated by 20s warmup)
+            // 13. Auto-upgrade anchor when quality improves (gated by 20s warmup)
             val confirmed = confirmDetection(ratio)
             val warmupElapsed = (now - sessionStartTime) >= WARMUP_MS
             if (confirmed && warmupElapsed) {
                 val quality = AnchorQuality(ratio)
                 val existingQ = ws.anchorQuality
-
-                val isBigJump = ws.anchor != null && dist(
-                        Float3(ws.anchor!!.pose.tx(), ws.anchor!!.pose.ty(), ws.anchor!!.pose.tz()),
-                        renderPos
-                    ) > 0.10f
-
-                val isBetterQuality = existingQ == null || quality.score() > existingQ.score() + ANCHOR_UPGRADE_MARGIN
-
-                if (isBetterQuality || isBigJump) {
+                if (existingQ == null || quality.score() > existingQ.score() + ANCHOR_UPGRADE_MARGIN) {
                     ws.anchor?.detach()
                     ws.anchor = arSceneView.session?.createAnchor(
                         Pose(
@@ -787,8 +772,8 @@ class ARRendering(
     // ─────────────────────────────────────────────────────────────────────────
     private fun getModeBboxCount(): Int {
         if (bboxCountHistory.isEmpty()) return 1
-        val frequencies = bboxCountHistory.groupingBy { it }.eachCount()
-        return frequencies.maxByOrNull { it.value }?.key ?: 1
+        val sorted = bboxCountHistory.sorted()
+        return sorted[sorted.size / 2].coerceAtLeast(1)
     }
 
     private fun resetUnanchoredState(ws: WheelState) {

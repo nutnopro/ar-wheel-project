@@ -10,10 +10,12 @@ import {
   Modal,
   RefreshControl,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
 import api from '../../services/api';
+import Header from '../../components/Header';
 
 interface User {
   id: string;
@@ -23,6 +25,7 @@ interface User {
   role: 'visitor' | 'user' | 'store' | 'admin';
   status?: string;
   isActive?: boolean;
+  phoneNumber?: string;
 }
 
 const ROLES = [
@@ -32,8 +35,6 @@ const ROLES = [
   { value: 'admin', label: 'Admin', color: '#EF4444' },
 ];
 
-import Header from '../../components/Header';
-
 const ManageUsersScreen = () => {
   const { theme } = useTheme();
   const [users, setUsers] = useState<User[]>([]);
@@ -41,20 +42,30 @@ const ManageUsersScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [selectedRole, setSelectedRole] = useState<string>('');
 
-  // Fetch users from backend
+  // Edit Form State
+  const [editFormData, setEditFormData] = useState({
+    displayName: '',
+    email: '',
+    phoneNumber: '',
+    role: '',
+    isActive: true,
+  });
+
+  const [saving, setSaving] = useState(false);
+
   const fetchUsers = useCallback(async () => {
     try {
       const response = await api.get('/users');
       const usersData = response.data.map((user: any) => ({
         id: user.id || user.uid,
         uid: user.id || user.uid,
-        username: user.username || 'Unknown',
+        username: user.displayName || user.username || 'Unknown',
         email: user.email || 'No email',
         role: user.role || 'user',
         status: user.status || 'active',
         isActive: user.isActive !== false,
+        phoneNumber: user.phoneNumber || '',
       }));
       setUsers(usersData);
     } catch (error: any) {
@@ -75,56 +86,74 @@ const ManageUsersScreen = () => {
     fetchUsers();
   };
 
-  const handleEditRole = (user: User) => {
+  const handleEditOpen = (user: User) => {
     setSelectedUser(user);
-    setSelectedRole(user.role);
+    setEditFormData({
+      displayName: user.username,
+      email: user.email,
+      phoneNumber: user.phoneNumber || '',
+      role: user.role,
+      isActive: user.isActive !== false,
+    });
     setModalVisible(true);
   };
 
-  const handleUpdateRole = async () => {
-    if (!selectedUser || !selectedRole) return;
-
+  const handleUpdateUser = async () => {
+    if (!selectedUser) return;
+    setSaving(true);
     try {
-      const response = await api.patch(`/users/${selectedUser.uid}/role`, {
-        role: selectedRole,
+      await api.patch(`/users/profile/${selectedUser.uid}`, {
+        displayName: editFormData.displayName,
+        email: editFormData.email,
+        phoneNumber: editFormData.phoneNumber,
+        role: editFormData.role,
+        isActive: editFormData.isActive,
       });
 
-      Alert.alert('Success', `User role updated to ${selectedRole}`);
-
-      // Update local state
-      setUsers(prev =>
-        prev.map(u =>
-          u.uid === selectedUser.uid ? { ...u, role: selectedRole as any } : u,
-        ),
-      );
-
+      Alert.alert('Success', 'User profile updated successfully.');
       setModalVisible(false);
-      setSelectedUser(null);
+      fetchUsers();
     } catch (error: any) {
-      console.error('Error updating role:', error);
-      Alert.alert('Error', 'Failed to update role: ' + error.message);
+      console.error('Error updating user:', error);
+      Alert.alert('Error', 'Failed to update user: ' + error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const getRoleColor = (role: string) => {
-    const roleObj = ROLES.find(r => r.value === role);
-    return roleObj?.color || '#94A3B8';
+  const handleDeleteUser = (user: User) => {
+    Alert.alert(
+      'Delete User',
+      `Are you sure you want to permanently delete ${user.email}? This action cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+             setLoading(true);
+             try {
+                await api.delete(`/users/${user.uid}`);
+                Alert.alert('Success', 'User deleted successfully.');
+                fetchUsers();
+             } catch (error: any) {
+                setLoading(false);
+                Alert.alert('Error', 'Failed to delete user: ' + error.message);
+             }
+          },
+        },
+      ]
+    );
   };
 
-  const getRoleLabel = (role: string) => {
-    const roleObj = ROLES.find(r => r.value === role);
-    return roleObj?.label || role;
-  };
+  const getRoleColor = (role: string) => ROLES.find(r => r.value === role)?.color || '#94A3B8';
+  const getRoleLabel = (role: string) => ROLES.find(r => r.value === role)?.label || role;
 
   if (loading) {
     return (
-      <View
-        style={[styles.loadingContainer, { backgroundColor: theme.background }]}
-      >
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
         <ActivityIndicator size="large" color="#2563EB" />
-        <Text style={[styles.loadingText, { color: theme.text }]}>
-          Loading users...
-        </Text>
+        <Text style={[styles.loadingText, { color: theme.text }]}>Loading users...</Text>
       </View>
     );
   }
@@ -137,98 +166,48 @@ const ManageUsersScreen = () => {
         keyExtractor={item => item.uid || item.id}
         contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={['#2563EB']}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2563EB']} />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Icon name="account-off" size={64} color={theme.subText} />
-            <Text style={[styles.emptyText, { color: theme.subText }]}>
-              No users found
-            </Text>
+            <Text style={[styles.emptyText, { color: theme.subText }]}>No users found</Text>
           </View>
         }
         renderItem={({ item }) => {
-          const isDeleted =
-            item.status === 'deleted' || item.status === 'Deleted';
+          const isDeleted = item.status === 'deleted' || item.status === 'Deleted';
           const isInactive = item.isActive === false;
-          const disabled = isDeleted || isInactive;
+          const disabled = isDeleted;
 
           return (
-            <View
-              style={[
-                styles.card,
-                { backgroundColor: theme.card, opacity: disabled ? 0.6 : 1 },
-              ]}
-            >
-              <View style={[styles.iconBox, { backgroundColor: '#EFF6FF' }]}>
-                <Icon name="account" size={24} color="#2563EB" />
+            <View style={[styles.card, { backgroundColor: theme.card, opacity: disabled ? 0.6 : 1 }]}>
+              <View style={[styles.iconBox, { backgroundColor: getRoleColor(item.role) + '20' }]}>
+                <Icon
+                  name={item.role === 'admin' ? 'shield-account' : item.role === 'store' ? 'store' : 'account'}
+                  size={24}
+                  color={getRoleColor(item.role)}
+                />
               </View>
               <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.title,
-                    {
-                      color: theme.text,
-                      textDecorationLine: disabled ? 'line-through' : 'none',
-                    },
-                  ]}
-                >
+                <Text style={[styles.title, { color: theme.text, textDecorationLine: disabled ? 'line-through' : 'none' }]}>
                   {item.username}
                 </Text>
-                <Text
-                  style={{ color: theme.subText, fontSize: 12, marginTop: 2 }}
-                >
-                  {item.email}
-                </Text>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginTop: 4,
-                  }}
-                >
-                  <View
-                    style={[
-                      styles.roleBadge,
-                      { backgroundColor: getRoleColor(item.role) + '20' },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: getRoleColor(item.role),
-                        fontSize: 11,
-                        fontWeight: '600',
-                      }}
-                    >
-                      {getRoleLabel(item.role)}
-                    </Text>
-                  </View>
-                  <Text
-                    style={{
-                      color: disabled ? '#EF4444' : '#10B981',
-                      fontSize: 11,
-                      marginLeft: 8,
-                    }}
-                  >
-                    • {item.status || 'active'}
+                <Text style={{ color: theme.subText, fontSize: 12, marginTop: 2 }}>{item.email}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                  <Text style={{ color: getRoleColor(item.role), fontSize: 11, fontWeight: '600' }}>
+                    {getRoleLabel(item.role).toUpperCase()}
+                  </Text>
+                  <Text style={{ color: disabled ? '#EF4444' : isInactive ? '#F59E0B' : '#10B981', fontSize: 11, marginLeft: 8 }}>
+                    • {disabled ? 'Deleted' : isInactive ? 'Inactive' : 'Active'}
                   </Text>
                 </View>
               </View>
               <View style={styles.actions}>
-                <TouchableOpacity
-                  onPress={() => handleEditRole(item)}
-                  disabled={disabled}
-                  style={styles.actionBtn}
-                >
-                  <Icon
-                    name="shield-edit-outline"
-                    size={24}
-                    color={disabled ? theme.subText : '#2563EB'}
-                  />
+                <TouchableOpacity onPress={() => handleEditOpen(item)} disabled={disabled} style={styles.actionBtn}>
+                  <Icon name="pencil" size={22} color={disabled ? theme.subText : '#2563EB'} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteUser(item)} disabled={disabled} style={styles.actionBtn}>
+                  <Icon name="delete" size={22} color={disabled ? theme.subText : '#EF4444'} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -236,95 +215,94 @@ const ManageUsersScreen = () => {
         }}
       />
 
-      {/* Role Edit Modal */}
+      {/* Edit User Modal */}
       <Modal
         visible={modalVisible}
         transparent={true}
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setModalVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalVisible(false)}
-        >
-          <TouchableOpacity
-            activeOpacity={1}
-            onPress={e => e.stopPropagation()}
-          >
-            <View
-              style={[styles.modalContent, { backgroundColor: theme.card }]}
-            >
-              <Text style={[styles.modalTitle, { color: theme.text }]}>
-                Change User Role
-              </Text>
-              <Text style={[styles.modalSubtitle, { color: theme.subText }]}>
-                {selectedUser?.username} ({selectedUser?.email})
-              </Text>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()} style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Edit User</Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%', maxHeight: 400 }}>
+               <Text style={[styles.inputLabel, { color: theme.subText }]}>Display Name</Text>
+               <TextInput
+                 style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                 value={editFormData.displayName}
+                 onChangeText={v => setEditFormData({ ...editFormData, displayName: v })}
+               />
 
-              <View style={styles.roleOptions}>
-                {ROLES.map(role => (
+               <Text style={[styles.inputLabel, { color: theme.subText }]}>Email</Text>
+               <TextInput
+                 style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                 value={editFormData.email}
+                 onChangeText={v => setEditFormData({ ...editFormData, email: v })}
+                 keyboardType="email-address"
+                 autoCapitalize="none"
+               />
+
+               <Text style={[styles.inputLabel, { color: theme.subText }]}>Phone Number</Text>
+               <TextInput
+                 style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                 value={editFormData.phoneNumber}
+                 onChangeText={v => setEditFormData({ ...editFormData, phoneNumber: v })}
+                 keyboardType="phone-pad"
+               />
+
+               <Text style={[styles.inputLabel, { color: theme.subText, marginTop: 10 }]}>Role</Text>
+               <View style={styles.roleOptions}>
+                 {ROLES.map(role => (
+                   <TouchableOpacity
+                     key={role.value}
+                     style={[
+                       styles.roleOption,
+                       {
+                         borderColor: editFormData.role === role.value ? role.color : theme.border,
+                         backgroundColor: editFormData.role === role.value ? role.color + '10' : 'transparent',
+                       },
+                     ]}
+                     onPress={() => setEditFormData({ ...editFormData, role: role.value })}
+                   >
+                     <Icon
+                       name={editFormData.role === role.value ? 'radiobox-marked' : 'radiobox-blank'}
+                       size={20}
+                       color={editFormData.role === role.value ? role.color : theme.subText}
+                     />
+                     <Text style={[styles.roleOptionText, { color: editFormData.role === role.value ? role.color : theme.text }]}>
+                       {role.label}
+                     </Text>
+                   </TouchableOpacity>
+                 ))}
+               </View>
+
+               <Text style={[styles.inputLabel, { color: theme.subText, marginTop: 10 }]}>Account Status</Text>
+               <View style={styles.roleOptions}>
                   <TouchableOpacity
-                    key={role.value}
-                    style={[
-                      styles.roleOption,
-                      {
-                        borderColor:
-                          selectedRole === role.value
-                            ? role.color
-                            : theme.border,
-                        backgroundColor:
-                          selectedRole === role.value
-                            ? role.color + '10'
-                            : 'transparent',
-                      },
-                    ]}
-                    onPress={() => setSelectedRole(role.value)}
+                    style={[styles.roleOption, { borderColor: editFormData.isActive ? '#10B981' : theme.border }]}
+                    onPress={() => setEditFormData({ ...editFormData, isActive: true })}
                   >
-                    <Icon
-                      name={
-                        selectedRole === role.value
-                          ? 'radiobox-marked'
-                          : 'radiobox-blank'
-                      }
-                      size={24}
-                      color={
-                        selectedRole === role.value ? role.color : theme.subText
-                      }
-                    />
-                    <Text
-                      style={[
-                        styles.roleOptionText,
-                        {
-                          color:
-                            selectedRole === role.value
-                              ? role.color
-                              : theme.text,
-                          fontWeight:
-                            selectedRole === role.value ? 'bold' : 'normal',
-                        },
-                      ]}
-                    >
-                      {role.label}
-                    </Text>
+                     <Icon name={editFormData.isActive ? 'radiobox-marked' : 'radiobox-blank'} size={20} color={editFormData.isActive ? '#10B981' : theme.subText}/>
+                     <Text style={[styles.roleOptionText, { color: editFormData.isActive ? '#10B981' : theme.text }]}>Active</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                  <TouchableOpacity
+                    style={[styles.roleOption, { borderColor: !editFormData.isActive ? '#F59E0B' : theme.border }]}
+                    onPress={() => setEditFormData({ ...editFormData, isActive: false })}
+                  >
+                     <Icon name={!editFormData.isActive ? 'radiobox-marked' : 'radiobox-blank'} size={20} color={!editFormData.isActive ? '#F59E0B' : theme.subText}/>
+                     <Text style={[styles.roleOptionText, { color: !editFormData.isActive ? '#F59E0B' : theme.text }]}>Inactive</Text>
+                  </TouchableOpacity>
+               </View>
+            </ScrollView>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.cancelButton]}
-                  onPress={() => setModalVisible(false)}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.saveButton]}
-                  onPress={handleUpdateRole}
-                >
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                </TouchableOpacity>
-              </View>
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)} disabled={saving}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleUpdateUser} disabled={saving}>
+                <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save'}</Text>
+              </TouchableOpacity>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -359,42 +337,17 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   title: { fontSize: 16, fontWeight: '600' },
-  roleBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
   actions: { flexDirection: 'row' },
   actionBtn: { padding: 8 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '85%',
-    borderRadius: 16,
-    padding: 24,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-  },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 8 },
-  modalSubtitle: { fontSize: 14, marginBottom: 20 },
-  roleOptions: { marginBottom: 24 },
-  roleOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 2,
-    marginBottom: 10,
-  },
-  roleOptionText: { fontSize: 16, marginLeft: 12 },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', borderRadius: 16, padding: 24, elevation: 5, maxHeight: '80%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  inputLabel: { fontSize: 13, marginBottom: 5, marginTop: 10 },
+  input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 15, marginBottom: 5 },
+  roleOptions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  roleOption: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 8, borderWidth: 1, marginBottom: 10, width: '48%' },
+  roleOptionText: { fontSize: 14, marginLeft: 8 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 },
   modalButton: { flex: 1, padding: 14, borderRadius: 10, alignItems: 'center' },
   cancelButton: { backgroundColor: '#F1F5F9', marginRight: 8 },
   cancelButtonText: { color: '#64748B', fontWeight: '600', fontSize: 16 },

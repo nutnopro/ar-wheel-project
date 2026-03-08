@@ -8,10 +8,11 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import CustomInput from '../../components/CustomInput';
 import { COLORS } from '../../constants/colors';
@@ -27,6 +28,7 @@ type RegisterScreenProp = NativeStackNavigationProp<
 const RegisterScreen = () => {
   const navigation = useNavigation<RegisterScreenProp>();
   const [showPassword, setShowPassword] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   // เพิ่ม loading state เผื่อตอนเน็ตช้าหรือ Server ประมวลผล
   const [isLoading, setIsLoading] = useState(false);
@@ -48,7 +50,7 @@ const RegisterScreen = () => {
         password: data.password,
         email: data.email,
         phoneNumber: data.phoneNumber,
-        dateOfBirth: data.dob,
+        dateOfBirth: data.dob.toISOString().split('T')[0], // format to YYYY-MM-DD
       };
 
       console.log('🚀 Sending Registration to Backend:', newUser);
@@ -144,18 +146,38 @@ const RegisterScreen = () => {
           rules={{ required: 'Phone Number is required' }}
         />
 
-        <CustomInput
+        <Controller
           name="dob"
-          label="Date Of Birth"
-          placeholder="DD/MM/YYYY"
           control={control}
-          rules={{
-            required: 'Date of Birth is required',
-            pattern: {
-              value: /^\d{2}\/\d{2}\/\d{4}$/,
-              message: 'Format: DD/MM/YYYY',
-            },
-          }}
+          rules={{ required: 'Date of Birth is required' }}
+          render={({ field: { onChange, value }, fieldState: { error } }) => (
+            <View style={styles.datePickerContainer}>
+              <Text style={styles.dateLabel}>Date Of Birth</Text>
+              <TouchableOpacity
+                style={[styles.dateButton, error && styles.dateButtonError]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={[styles.dateText, !value && { color: '#999' }]}>
+                  {value ? value.toLocaleDateString() : 'Select Date of Birth'}
+                </Text>
+                <Icon name="calendar" size={20} color={COLORS.primary} />
+              </TouchableOpacity>
+              
+              {showDatePicker && (
+                <DateTimePicker
+                  value={value || new Date()}
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={(event: any, selectedDate?: Date) => {
+                    setShowDatePicker(false);
+                    if (selectedDate) onChange(selectedDate);
+                  }}
+                />
+              )}
+              {error && <Text style={styles.errorText}>{error.message}</Text>}
+            </View>
+          )}
         />
 
         {/* ปุ่ม Sign Up */}
@@ -220,6 +242,39 @@ const styles = StyleSheet.create({
   footer: { flexDirection: 'row', justifyContent: 'center' },
   footerText: { color: '#888', fontSize: 12 },
   linkText: { color: COLORS.primary, fontWeight: 'bold', fontSize: 12 },
+  datePickerContainer: {
+    marginBottom: 15,
+  },
+  dateLabel: {
+    fontSize: 14,
+    color: '#333',
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    paddingHorizontal: 15,
+    paddingVertical: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#F5F5F5',
+  },
+  dateButtonError: {
+    borderColor: 'red',
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
+  },
 });
 
 export default RegisterScreen;

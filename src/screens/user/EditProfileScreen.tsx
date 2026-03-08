@@ -14,6 +14,8 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
+import { authService } from '../../services/authService';
 
 import Header from '../../components/Header';
 
@@ -25,6 +27,8 @@ const EditProfileScreen = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   // โหลดข้อมูลเดิมมาใส่ใน Input เมื่อเข้าหน้านี้
@@ -36,21 +40,67 @@ const EditProfileScreen = () => {
     }
   }, [userData]);
 
-  const handleSave = () => {
+  const handlePickImage = async () => {
+    try {
+      const [result] = await pick({
+        presentationStyle: 'fullScreen',
+        copyTo: 'cachesDirectory',
+        type: [types.images],
+      });
+      if (result) {
+        setAvatarUri((result as any).fileCopyUri || result.uri);
+        setAvatarFile(result);
+      }
+    } catch (err: any) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
+        Alert.alert('Error', 'Failed to pick image');
+      }
+    }
+  };
+
+  const handleSave = async () => {
     if (!name.trim()) {
       Alert.alert('Error', 'Name cannot be empty');
       return;
     }
+    if (!userData?.id) {
+      Alert.alert('Error', 'User ID not found');
+      return;
+    }
 
     setLoading(true);
-    // จำลองการบันทึกข้อมูล (Delay 1 วิ)
-    setTimeout(() => {
-      updateProfile({ name, email, phone }); // อัปเดตข้อมูลใน Context
-      setLoading(false);
+    try {
+      if (avatarFile) {
+         await authService.uploadProfileImage(userData.id, {
+           uri: (avatarFile as any).fileCopyUri || avatarFile.uri,
+           type: avatarFile.type || 'image/jpeg',
+           name: avatarFile.name || 'avatar.jpg',
+         });
+      }
+
+      const updatedInfo = await authService.updateProfile(userData.id, {
+        displayName: name,
+        email,
+        phoneNumber: phone,
+      });
+
+      // อัปเดตข้อมูลใน Context
+      updateProfile({ 
+        name, 
+        email, 
+        phone, 
+        avatar: updatedInfo.avatar || avatarUri || userData?.avatar 
+      }); 
+      
       Alert.alert('Success', 'Profile updated successfully', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-    }, 1000);
+    } catch (err: any) {
+      console.error('Update Profile Error:', err);
+      Alert.alert('Error', err.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -59,8 +109,8 @@ const EditProfileScreen = () => {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Avatar Edit Section */}
         <View style={styles.avatarContainer}>
-          <Image source={{ uri: userData?.avatar }} style={styles.avatar} />
-          <TouchableOpacity style={styles.cameraButton}>
+          <Image source={{ uri: avatarUri || userData?.avatar || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+          <TouchableOpacity style={styles.cameraButton} onPress={handlePickImage} disabled={loading}>
             <Icon name="camera" size={20} color="#fff" />
           </TouchableOpacity>
         </View>

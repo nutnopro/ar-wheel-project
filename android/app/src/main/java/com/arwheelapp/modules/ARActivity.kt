@@ -176,7 +176,9 @@ class ARActivity : ComponentActivity() {
                 if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC))
                     depthMode = Config.DepthMode.AUTOMATIC
             })
-            arRendering.setupMarkerDatabase(session)
+            val markerSizeCm = intent.getDoubleExtra("markerSize", 15.0)
+            val markerSizeMeters = (markerSizeCm / 100.0).toFloat()
+            arRendering.setupMarkerDatabase(session, markerSizeMeters)
         } catch (e: Exception) { Log.e(TAG, "AR session config error", e) }
     }
 

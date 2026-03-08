@@ -43,4 +43,25 @@ export const authService = {
     // Response: { message, access_token }
     return response.data;
   },
+
+  // ===== UPDATE PROFILE =====
+  updateProfile: async (uid: string, data: any) => {
+    const response = await api.patch(`/users/profile/${uid}`, data);
+    return response.data;
+  },
+
+  // ===== UPLOAD PROFILE IMAGE =====
+  uploadProfileImage: async (uid: string, fileData: { uri: string; type: string; name: string }) => {
+    const formData = new FormData();
+    formData.append('file', {
+      uri: fileData.uri,
+      type: fileData.type,
+      name: fileData.name,
+    } as any);
+
+    const response = await api.post(`/users/profile/${uid}/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
 };

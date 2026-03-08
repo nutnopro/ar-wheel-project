@@ -30,10 +30,11 @@ const ManageAddModelScreen = () => {
     categories: '',
   });
 
-  const [modelFile, setModelFile] = useState<DocumentPickerResponse | null>(null);
+  const [glbFile, setGlbFile] = useState<DocumentPickerResponse | null>(null);
+  const [usdzFile, setUsdzFile] = useState<DocumentPickerResponse | null>(null);
   const [imageFiles, setImageFiles] = useState<DocumentPickerResponse[]>([]);
 
-  const handlePickModel = async () => {
+  const handlePickGlb = async () => {
     try {
       const [res] = await pick({
         type: [types.allFiles],
@@ -41,15 +42,35 @@ const ManageAddModelScreen = () => {
       console.log(res);
       // Validate extension
       const ext = res.name?.split('.').pop()?.toLowerCase();
-      if (ext !== 'glb' && ext !== 'usdz') {
-        Alert.alert('Invalid File', 'Please select a .glb or .usdz file for the 3D model.');
+      if (ext !== 'glb') {
+        Alert.alert('Invalid File', 'Please select a .glb file.');
         return;
       }
-      setModelFile(res);
+      setGlbFile(res);
     } catch (err) {
       if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
         console.error(err);
         Alert.alert('Error', 'Failed to pick model file');
+      }
+    }
+  };
+
+  const handlePickUsdz = async () => {
+    try {
+      const [res] = await pick({
+        type: [types.allFiles],
+      });
+      // Validate extension
+      const ext = res.name?.split('.').pop()?.toLowerCase();
+      if (ext !== 'usdz') {
+        Alert.alert('Invalid File', 'Please select a .usdz file.');
+        return;
+      }
+      setUsdzFile(res);
+    } catch (err) {
+      if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
+        console.error(err);
+        Alert.alert('Error', 'Failed to pick usdz file');
       }
     }
   };
@@ -70,8 +91,8 @@ const ManageAddModelScreen = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.price || !modelFile || imageFiles.length === 0) {
-      Alert.alert('Validation Check', 'Please fill name, price, select a model file, and at least 1 image.');
+    if (!formData.name || !formData.price || (!glbFile && !usdzFile) || imageFiles.length === 0) {
+      Alert.alert('Validation Check', 'Please fill name, price, select at least one model file (GLB or USDZ), and at least 1 image.');
       return;
     }
 
@@ -86,11 +107,23 @@ const ManageAddModelScreen = () => {
         categories: formData.categories ? formData.categories.split(',').map(c => c.trim()) : [],
       };
 
-      const modelFileObj = {
-        uri: modelFile.uri,
-        type: modelFile.type || 'application/octet-stream',
-        name: modelFile.name,
-      };
+      let glbObj = null;
+      if (glbFile) {
+        glbObj = {
+          uri: glbFile.uri,
+          type: glbFile.type || 'model/gltf-binary',
+          name: glbFile.name,
+        };
+      }
+
+      let usdzObj = null;
+      if (usdzFile) {
+        usdzObj = {
+          uri: usdzFile.uri,
+          type: usdzFile.type || 'model/vnd.usdz+zip',
+          name: usdzFile.name,
+        };
+      }
 
       const primaryImageObj = {
         uri: imageFiles[0].uri,
@@ -98,9 +131,17 @@ const ManageAddModelScreen = () => {
         name: imageFiles[0].name,
       };
 
-      // Create model and upload first file and image directly
-      const response = await productService.createWithFile(payload, modelFileObj, primaryImageObj);
-      const newModelId = response.data?.id;
+      // Create model and upload primary file and image directly.
+      // We pass glbObj if available, else usdzObj as the primary file. 
+      const primaryFileObj = glbObj || usdzObj;
+      const response = await productService.createWithFile(payload, primaryFileObj, primaryImageObj);
+      const newModelId = response.data?.id || response.data?._id;
+
+      // If both files were provided, upload the secondary one
+      if (newModelId && glbObj && usdzObj) {
+         // primary was glbObj, upload usdzObj
+         await productService.uploadFile(newModelId, usdzObj);
+      }
 
       // Upload remaining images if any
       if (newModelId && imageFiles.length > 1) {
@@ -183,14 +224,25 @@ const ManageAddModelScreen = () => {
 
         {/* File Uploads */}
         <View style={[styles.card, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>3D Model File *</Text>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>GLB Model File</Text>
           <TouchableOpacity
-            style={[styles.uploadBox, { borderColor: theme.border, backgroundColor: theme.background }]}
-            onPress={handlePickModel}
+            style={[styles.uploadBox, { borderColor: theme.border, backgroundColor: theme.background, padding: 16 }]}
+            onPress={handlePickGlb}
           >
-            <Icon name="cube-outline" size={32} color={modelFile ? '#10B981' : theme.subText} />
-            <Text style={{ color: modelFile ? '#10B981' : theme.subText, marginTop: 8 }}>
-              {modelFile ? modelFile.name : 'Select .GLB or .USDZ File'}
+            <Icon name="cube-outline" size={32} color={glbFile ? '#10B981' : theme.subText} />
+            <Text style={{ color: glbFile ? '#10B981' : theme.subText, marginTop: 8 }}>
+              {glbFile ? glbFile.name : 'Select .GLB File (Android)'}
+            </Text>
+          </TouchableOpacity>
+
+          <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 24 }]}>USDZ Model File</Text>
+          <TouchableOpacity
+            style={[styles.uploadBox, { borderColor: theme.border, backgroundColor: theme.background, padding: 16 }]}
+            onPress={handlePickUsdz}
+          >
+            <Icon name="apple" size={32} color={usdzFile ? '#10B981' : theme.subText} />
+            <Text style={{ color: usdzFile ? '#10B981' : theme.subText, marginTop: 8 }}>
+              {usdzFile ? usdzFile.name : 'Select .USDZ File (iOS)'}
             </Text>
           </TouchableOpacity>
 

@@ -1,7 +1,7 @@
 // src/utils/storage.ts
 import { MMKV } from 'react-native-mmkv';
 
-let storage: MMKV | null = null;
+export let storage: MMKV | null = null;
 
 try {
   storage = new MMKV();

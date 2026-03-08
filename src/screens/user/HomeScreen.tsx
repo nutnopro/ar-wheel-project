@@ -221,9 +221,6 @@ const HomeScreen = () => {
           <Text style={[styles.appName, { color: theme.text }]}>
             {t.app_name}
           </Text>
-          <TouchableOpacity>
-            <Icon name="bell-outline" size={24} color={theme.text} />
-          </TouchableOpacity>
         </View>
 
         <View style={styles.searchRow}>

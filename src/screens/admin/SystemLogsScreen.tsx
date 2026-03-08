@@ -30,6 +30,7 @@ const SystemLogsScreen = () => {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Fetch logs from backend
   const fetchLogs = useCallback(async () => {
@@ -156,13 +157,18 @@ const SystemLogsScreen = () => {
           const actionColor = getActionColor(item.action);
           const timestamp = item.timestamp || item.createAt;
 
+          const isExpanded = expandedId === item.id;
+
           return (
-            <View
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setExpandedId(isExpanded ? null : item.id)}
               style={[
                 styles.card,
-                { backgroundColor: theme.card, borderLeftColor: actionColor },
+                { backgroundColor: theme.card, borderLeftColor: actionColor, flexDirection: 'column' },
               ]}
             >
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
               <View
                 style={[
                   styles.iconBox,
@@ -186,14 +192,23 @@ const SystemLogsScreen = () => {
                 )}
                 {item.userId && (
                   <Text style={[styles.userIdText, { color: theme.subText }]}>
-                    User ID: {item.userId.substring(0, 8)}...
+                    User ID: {item.userId}
                   </Text>
                 )}
                 <Text style={[styles.timeText, { color: theme.subText }]}>
                   {formatTimestamp(timestamp)}
                 </Text>
               </View>
-            </View>
+              </View>
+              {isExpanded && (
+                <View style={[styles.expandedContent, { borderColor: theme.border }]}>
+                  <Text style={[styles.expandedTitle, { color: theme.text }]}>Raw Details:</Text>
+                  <Text style={[styles.expandedBody, { color: theme.subText }]}>
+                    {JSON.stringify(item, null, 2)}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           );
         }}
       />
@@ -213,8 +228,6 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: 'center', marginTop: 50 },
   emptyText: { marginTop: 16, fontSize: 16 },
   card: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
     padding: 16,
     marginBottom: 12,
     borderRadius: 12,
@@ -237,6 +250,20 @@ const styles = StyleSheet.create({
   detailsText: { fontSize: 13, marginBottom: 4 },
   userIdText: { fontSize: 11, marginBottom: 2 },
   timeText: { fontSize: 11, marginTop: 4 },
+  expandedContent: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  expandedTitle: {
+    fontWeight: '600',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  expandedBody: {
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
   refreshIndicator: {
     position: 'absolute',
     bottom: 20,
