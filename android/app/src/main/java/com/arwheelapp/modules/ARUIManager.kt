@@ -65,10 +65,10 @@ class ARUIManager(
     private var orientationListener: OrientationEventListener? = null
     private var currentOpenMenu: String? = null
 
-    private var modelList: List<String> = listOf()
+    private var modelList: MutableList<String> = mutableListOf()
     private var sizeList = listOf(13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
-    fun setModels(models: List<String>) { modelList = models }
+    fun setModels(models: List<String>) { modelList.clear(); modelList.addAll(models) }
 
     // ═════════════════════════════════════════════════════════════════════════
     // Lifecycle
@@ -570,7 +570,7 @@ class ARUIManager(
         })
 
         selectionContainer?.addView(selectionRecyclerView)
-        if (isModel) tvSelectionTitle?.text = data.first().uppercase()
+        if (isModel) tvSelectionTitle?.text = data.firstOrNull()?.uppercase() ?: "NO MODELS"
     }
 
     private fun toggleARMode() {
@@ -698,7 +698,7 @@ class ARUIManager(
         override fun getItemCount() = items.size
 
         private fun makeModelIcon() = android.widget.ImageView(context).apply {
-            layoutParams = ViewGroup.MarginLayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
+            layoutParams = RecyclerView.LayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
             setImageResource(R.drawable.ic_cube)
             scaleType = android.widget.ImageView.ScaleType.CENTER_INSIDE
             setPadding(15.dp, 15.dp, 15.dp, 15.dp)
@@ -706,7 +706,7 @@ class ARUIManager(
         }
 
         private fun makeSizeCircle() = TextView(context).apply {
-            layoutParams = ViewGroup.MarginLayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
+            layoutParams = RecyclerView.LayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             textSize = 20f

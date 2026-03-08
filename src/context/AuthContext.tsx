@@ -22,6 +22,7 @@ export type UserRole = 'visitor' | 'user' | 'store' | 'admin' | null;
 interface AuthContextType {
   userRole: UserRole;
   isLoading: boolean;
+  isAppReady: boolean;
   login: (email: string, pass: string) => Promise<void>;
   loginAsVisitor: () => void;
   logout: () => void;
@@ -37,25 +38,32 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [userData, setUserData] = useState<any | null>(null);
   const [categories, setCategoriesState] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAppReady, setIsAppReady] = useState(false);
 
   // 1. Auto-login check
   useEffect(() => {
-    const checkLogin = () => {
-      const token = getToken();
-      const savedUser = getUserData();
+    const checkLogin = async () => {
+      try {
+        const token = getToken();
+        const savedUser = getUserData();
 
-      // Check visitor
-      if (savedUser?.role === 'visitor') {
-        setUserRole('visitor');
-        return;
-      }
+        // Check visitor
+        if (savedUser?.role === 'visitor') {
+          setUserRole('visitor');
+          return;
+        }
 
-      if (token && savedUser) {
-        setUserData(savedUser);
-        setUserRole(savedUser.role || 'user');
-        // Load saved categories
-        const savedCategories = getStorageCategories();
-        if (savedCategories) setCategoriesState(savedCategories);
+        if (token && savedUser) {
+          setUserData(savedUser);
+          setUserRole(savedUser.role || 'user');
+          // Load saved categories
+          const savedCategories = getStorageCategories();
+          if (savedCategories) setCategoriesState(savedCategories);
+        }
+      } finally {
+        setTimeout(() => {
+          setIsAppReady(true);
+        }, 1500); 
       }
     };
     checkLogin();
@@ -130,6 +138,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       value={{
         userRole,
         isLoading,
+        isAppReady,
         login,
         loginAsVisitor,
         logout,

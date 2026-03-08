@@ -146,13 +146,13 @@ class ARActivity : ComponentActivity() {
         arRendering.modelPath = path
 
         val jsonStr = intent.getStringExtra("modelPathsJson")
-        val json = if (jsonStr.isNullOrEmpty()) "[]" else jsonStr
+        val json = jsonStr?.takeIf { it.isNotEmpty() } ?: "[]"
 
         val paths = try {
             org.json.JSONArray(json).let { arr ->
                 (0 until arr.length()).map { arr.getString(it) }
             }
-        } catch (e: Exception) { listOf("models/default.glb") }
+        } catch (e: Exception) { mutableListOf("models/default.glb") }
         uiManager.setModels(paths)
     }
 

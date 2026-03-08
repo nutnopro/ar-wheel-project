@@ -180,7 +180,7 @@ function MainTabNavigator() {
 
 // --- App Navigation Wrapper ---
 const AppNavigationWrapper = () => {
-  const { userRole } = useAuth();
+  const { userRole, isAppReady } = useAuth();
   const { t } = useLanguage();
   const { theme } = useTheme();
 
@@ -208,9 +208,10 @@ const AppNavigationWrapper = () => {
       initialRouteName="Splash"
       screenOptions={{ headerShown: false }}
     >
-      {userRole === null ? (
+      {!isAppReady ? (
+        <Stack.Screen name="Splash" component={SplashScreen} />
+      ) : userRole === null ? (
         <>
-          <Stack.Screen name="Splash" component={SplashScreen} />
           <Stack.Screen name="SignIn" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
@@ -314,17 +315,11 @@ const styles = StyleSheet.create({
     elevation: 5,
     paddingBottom: 0,
   },
-  iconContainer: { alignItems: 'center', justifyContent: 'center', flex: 1 },
-  label: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-  arButtonWrapper: {
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    flex: 1,
-    height: 90,
-    bottom: 12,
-  },
+  iconContainer: { alignItems: 'center', justifyContent: 'center', top: 0 },
+  label: { fontSize: 10, fontWeight: '600', marginTop: 4 },
+  arButtonWrapper: { alignItems: 'center', justifyContent: 'center', top: -20 },
   diamondShape: {
-    width: 52,
+    width: 56,
     height: 56,
     backgroundColor: '#2563EB',
     borderRadius: 14,
@@ -338,12 +333,11 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 3,
     borderColor: '#FFFFFF',
-    marginBottom: 8,
   },
   arLabel: {
     color: '#2563EB',
-    fontSize: 10,
+    marginTop: 10,
     fontWeight: 'bold',
-    marginBottom: 2,
+    fontSize: 11,
   },
 });
