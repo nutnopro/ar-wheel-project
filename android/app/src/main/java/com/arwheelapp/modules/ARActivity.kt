@@ -148,19 +148,7 @@ class ARActivity : ComponentActivity() {
         val jsonStr = intent.getStringExtra("modelPathsJson")
         val json = jsonStr?.takeIf { it.isNotEmpty() } ?: "[]"
 
-        val paths = try {
-            org.json.JSONArray(json).let { arr ->
-                val parsedList = (0 until arr.length()).map { arr.getString(it) }
-                if (parsedList.isEmpty()) {
-                    listOf("models/default.glb")
-                } else {
-                    parsedList
-                }
-            }
-        } catch (e: Exception) { 
-            listOf("models/default.glb") 
-        }
-        uiManager.setModels(paths)
+        uiManager.setModelsFromJson(json)
     }
 
     // ── AR Session ────────────────────────────────────────────────────────────

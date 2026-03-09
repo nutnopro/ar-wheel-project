@@ -24,7 +24,6 @@ interface User {
   email: string;
   role: 'visitor' | 'user' | 'store' | 'admin';
   status?: string;
-  isActive?: boolean;
   phoneNumber?: string;
 }
 
@@ -49,7 +48,6 @@ const ManageUsersScreen = () => {
     email: '',
     phoneNumber: '',
     role: '',
-    isActive: true,
   });
 
   const [saving, setSaving] = useState(false);
@@ -64,7 +62,6 @@ const ManageUsersScreen = () => {
         email: user.email || 'No email',
         role: user.role || 'user',
         status: user.status || 'active',
-        isActive: user.isActive !== false,
         phoneNumber: user.phoneNumber || '',
       }));
       setUsers(usersData);
@@ -93,7 +90,6 @@ const ManageUsersScreen = () => {
       email: user.email,
       phoneNumber: user.phoneNumber || '',
       role: user.role,
-      isActive: user.isActive !== false,
     });
     setModalVisible(true);
   };
@@ -107,7 +103,6 @@ const ManageUsersScreen = () => {
         email: editFormData.email,
         phoneNumber: editFormData.phoneNumber,
         role: editFormData.role,
-        isActive: editFormData.isActive,
       });
 
       Alert.alert('Success', 'User profile updated successfully.');
@@ -176,7 +171,6 @@ const ManageUsersScreen = () => {
         }
         renderItem={({ item }) => {
           const isDeleted = item.status === 'deleted' || item.status === 'Deleted';
-          const isInactive = item.isActive === false;
           const disabled = isDeleted;
 
           return (
@@ -197,8 +191,8 @@ const ManageUsersScreen = () => {
                   <Text style={{ color: getRoleColor(item.role), fontSize: 11, fontWeight: '600' }}>
                     {getRoleLabel(item.role).toUpperCase()}
                   </Text>
-                  <Text style={{ color: disabled ? '#EF4444' : isInactive ? '#F59E0B' : '#10B981', fontSize: 11, marginLeft: 8 }}>
-                    • {disabled ? 'Deleted' : isInactive ? 'Inactive' : 'Active'}
+                  <Text style={{ color: disabled ? '#EF4444' : '#10B981', fontSize: 11, marginLeft: 8 }}>
+                    • {disabled ? 'Deleted' : 'Active'}
                   </Text>
                 </View>
               </View>
@@ -275,24 +269,6 @@ const ManageUsersScreen = () => {
                      </Text>
                    </TouchableOpacity>
                  ))}
-               </View>
-
-               <Text style={[styles.inputLabel, { color: theme.subText, marginTop: 10 }]}>Account Status</Text>
-               <View style={styles.roleOptions}>
-                  <TouchableOpacity
-                    style={[styles.roleOption, { borderColor: editFormData.isActive ? '#10B981' : theme.border }]}
-                    onPress={() => setEditFormData({ ...editFormData, isActive: true })}
-                  >
-                     <Icon name={editFormData.isActive ? 'radiobox-marked' : 'radiobox-blank'} size={20} color={editFormData.isActive ? '#10B981' : theme.subText}/>
-                     <Text style={[styles.roleOptionText, { color: editFormData.isActive ? '#10B981' : theme.text }]}>Active</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.roleOption, { borderColor: !editFormData.isActive ? '#F59E0B' : theme.border }]}
-                    onPress={() => setEditFormData({ ...editFormData, isActive: false })}
-                  >
-                     <Icon name={!editFormData.isActive ? 'radiobox-marked' : 'radiobox-blank'} size={20} color={!editFormData.isActive ? '#F59E0B' : theme.subText}/>
-                     <Text style={[styles.roleOptionText, { color: !editFormData.isActive ? '#F59E0B' : theme.text }]}>Inactive</Text>
-                  </TouchableOpacity>
                </View>
             </ScrollView>
 

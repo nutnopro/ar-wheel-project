@@ -26,6 +26,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+data class ARModelItem(val path: String, val name: String)
+
 class ARUIManager(
     private val context: Context,
     private val rootLayout: FrameLayout,
@@ -65,10 +67,24 @@ class ARUIManager(
     private var orientationListener: OrientationEventListener? = null
     private var currentOpenMenu: String? = null
 
-    private var modelList: MutableList<String> = mutableListOf()
+    private var modelList: MutableList<ARModelItem> = mutableListOf()
     private var sizeList = listOf(13, 14, 15, 16, 17, 18, 19, 20, 21, 22)
 
-    fun setModels(models: List<String>) { modelList.clear(); modelList.addAll(models) }
+    fun setModelsFromJson(jsonString: String) {
+        try {
+            val jsonArray = org.json.JSONArray(jsonString)
+            modelList.clear()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                modelList.add(ARModelItem(
+                    path = obj.getString("path"),
+                    name = obj.getString("name")
+                ))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
 
     // ═════════════════════════════════════════════════════════════════════════
     // Lifecycle
@@ -537,14 +553,14 @@ class ARUIManager(
     private fun showModelSelector() = updateSelectionMenu(modelList, isModel = true)
     private fun showSizeSelector() = updateSelectionMenu(sizeList.map { it.toString() }, isModel = false)
 
-    private fun updateSelectionMenu(data: List<String>, isModel: Boolean) {
+    private fun updateSelectionMenu(isModel: Boolean) {
         selectionRecyclerView?.let { selectionContainer?.removeView(it) }
         selectionContainer?.visibility = View.VISIBLE
         tvSelectionTitle?.visibility = if (isModel) View.VISIBLE else View.GONE
         selectionRecyclerView = RecyclerView(context).apply {
             tag = "RECYCLER"
             layoutManager = LinearLayoutManager(context, LinearLayoutManager.HORIZONTAL, false)
-            adapter = SelectionAdapter(data, isModel)
+            adapter = SelectionAdapter(if (isModel) modelList.map { it.name } else sizeList.map { it.toString() }, isModel)
             clipToPadding = false
             val half = context.resources.displayMetrics.widthPixels / 2
             setPadding(half - 50.dp, 0, half - 50.dp, 0)
@@ -560,23 +576,18 @@ class ARUIManager(
                 if (newState == RecyclerView.SCROLL_STATE_IDLE) {
                     val cv = snap.findSnapView(rv.layoutManager) ?: return
                     val pos = rv.getChildAdapterPosition(cv).takeIf { it != -1 } ?: return
+                    
                     if (isModel) {
-                        val fullPath = data[pos]
-                        val displayName = fullPath.substringAfterLast("/").substringBeforeLast(".")
-                        tvSelectionTitle?.text = displayName.uppercase()
-                        onModelSelected?.invoke(fullPath)
+                        val selectedModel = modelList[pos]
+                        tvSelectionTitle?.text = selectedModel.name.uppercase()
+                        onModelSelected?.invoke(selectedModel.path)
+                    } else {
+                        onSizeSelected?.invoke(sizeList[pos].toFloat())
                     }
-                    else { onSizeSelected?.invoke(data[pos].toFloat()) }
                 }
             }
         })
-
         selectionContainer?.addView(selectionRecyclerView)
-        if (isModel) {
-            val firstItem = data.firstOrNull()
-            val initialDisplayName = firstItem?.substringAfterLast("/")?.substringBeforeLast(".") ?: "NO MODELS"
-            tvSelectionTitle?.text = initialDisplayName.uppercase()
-        }
     }
 
     private fun toggleARMode() {
@@ -686,13 +697,14 @@ class ARUIManager(
     // Selection adapter
     // ═════════════════════════════════════════════════════════════════════════
     private inner class SelectionAdapter(
-        private val items: List<String>, private val isModel: Boolean
+        private val displayTexts: List<String>, 
+        private val isModel: Boolean
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
         override fun onCreateViewHolder(parent: ViewGroup, vt: Int) =
             object : RecyclerView.ViewHolder(if (isModel) makeModelIcon() else makeSizeCircle()) {}
 
         override fun onBindViewHolder(h: RecyclerView.ViewHolder, pos: Int) {
-            if (!isModel) (h.itemView as TextView).text = items[pos]
+            if (!isModel) (h.itemView as TextView).text = displayTexts[pos]
             val r = when (currentRotation) {
                 90 -> -90f
                 270 -> 90f
@@ -701,7 +713,7 @@ class ARUIManager(
             h.itemView.rotation = r
         }
 
-        override fun getItemCount() = items.size
+        override fun getItemCount() = displayTexts.size
 
         private fun makeModelIcon() = android.widget.ImageView(context).apply {
             layoutParams = RecyclerView.LayoutParams(80.dp, 80.dp).apply { setMargins(10.dp, 0, 10.dp, 0) }

@@ -25,7 +25,7 @@ class ARLauncherModule(reactContext: ReactApplicationContext) :
         val activity = currentActivity
         if (activity != null) {
             try {
-                val intent = Intent(activity, ARActivity::class.java).apply {
+                val intent = Intent(activity, Class.forName("com.arwheelapp.ARActivity")).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra("initialModelPath", initialModelPath)
                     putExtra("modelPathsJson", modelPathsJson)

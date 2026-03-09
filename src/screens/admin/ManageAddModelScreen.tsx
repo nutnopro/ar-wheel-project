@@ -125,42 +125,30 @@ const ManageAddModelScreen = () => {
         };
       }
 
-      const primaryImageObj = {
-        uri: imageFiles[0].uri,
-        type: imageFiles[0].type || 'image/jpeg',
-        name: imageFiles[0].name,
-      };
+      const imagesArray = imageFiles.map(img => ({
+        uri: img.uri,
+        type: img.type || 'image/jpeg',
+        name: img.name,
+      }));
 
-      // Create model and upload primary file and image directly.
-      // We pass glbObj if available, else usdzObj as the primary file. 
-      const primaryFileObj = glbObj || usdzObj;
-      const response = await productService.createWithFile(payload, primaryFileObj, primaryImageObj);
-      const newModelId = response.data?.id || response.data?._id;
-
-      // If both files were provided, upload the secondary one
-      if (newModelId && glbObj && usdzObj) {
-         // primary was glbObj, upload usdzObj
-         await productService.uploadFile(newModelId, usdzObj);
-      }
-
-      // Upload remaining images if any
-      if (newModelId && imageFiles.length > 1) {
-        for (let i = 1; i < imageFiles.length; i++) {
-          const extraImg = {
-            uri: imageFiles[i].uri,
-            type: imageFiles[i].type || 'image/jpeg',
-            name: imageFiles[i].name,
-          };
-          await productService.uploadFile(newModelId, extraImg);
-        }
-      }
+      await productService.createWithFile(payload, glbObj, usdzObj, imagesArray);
 
       Alert.alert('Success', 'Model created successfully', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-    } catch (error) {
-      console.error(error);
-      Alert.alert('Error', 'Failed to create model');
+    } catch (error: any) {
+      console.error('Create Model Error:', error.response?.data || error);
+
+      let errorMessage = 'Failed to create model';
+      if (error.response?.data?.message) {
+        errorMessage = Array.isArray(error.response.data.message) 
+          ? error.response.data.message.join('\n') 
+          : error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      Alert.alert('Upload Error', errorMessage);
     } finally {
       setLoading(false);
     }

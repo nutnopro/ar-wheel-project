@@ -64,12 +64,12 @@ export type RootStackParamList = {
   SystemStats: undefined;
 };
 
-const {ARLauncher} = NativeModules;
+const { ARLauncher } = NativeModules;
 
 // AR tab screen — placeholder
 const ArScreenPlaceholder = () => {
   return (
-    <View style={{flex: 1, justifyContent: 'center', alignItems: 'center'}}>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <Text>Opening AR...</Text>
     </View>
   );
@@ -120,20 +120,43 @@ function MainTabNavigator() {
       <Tab.Screen
         name="AR"
         component={ArScreenPlaceholder}
-        listeners={({navigation}) => ({
+        listeners={({ navigation }) => ({
           tabPress: (e: any) => {
             e.preventDefault();
             (async () => {
               try {
                 if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
                   const savedModel = getSelectedModel();
-                  const savedPaths = getModelPaths();
+                  const savedPaths = getModelPaths() || [];
                   const initialPath = savedModel?.localPath || '';
-                  
+
+                  let modelDataList: Array<{ path: string; name: string }> = [];
+
+                  if (savedModel && savedModel.localPath) {
+                    modelDataList.push({
+                      path: savedModel.localPath,
+                      name: savedModel.name || 'Selected Model',
+                    });
+                  }
+
+                  if (Array.isArray(savedPaths)) {
+                    savedPaths.forEach((pathItem: any, index: number) => {
+                      const path = typeof pathItem === 'string' ? pathItem : pathItem.path;
+                      const name = typeof pathItem === 'string' ? `Model ${index + 1}` : pathItem.name;
+                      
+                      if (path && path !== initialPath) {
+                        modelDataList.push({ path, name });
+                      }
+                    });
+                  }
+
+                  const pathsJsonString = JSON.stringify(modelDataList);
+
                   import('../utils/storage').then(({ storage }) => {
                     const sizeStr = storage?.getString('@ar_marker_size') || '15';
                     const markerSize = parseFloat(sizeStr) || 15.0;
-                    ARLauncher.openARActivity(initialPath, JSON.stringify(savedPaths && savedPaths.length > 0 ? savedPaths : []), markerSize);
+                    console.log('🚀 Launching AR from Tab:', { initialPath, pathsJsonString, markerSize });
+                    ARLauncher.openARActivity(initialPath, pathsJsonString, markerSize);
                   });
                 } else {
                   Alert.alert('AR', 'AR Launcher is not available on this device');
@@ -145,11 +168,11 @@ function MainTabNavigator() {
           },
         })}
         options={{
-          tabBarStyle: {display: 'none'},
+          tabBarStyle: { display: 'none' },
           tabBarIcon: () => (
             <View style={styles.arButtonWrapper}>
               <View style={styles.diamondShape}>
-                <View style={{transform: [{rotate: '-45deg'}]}}>
+                <View style={{ transform: [{ rotate: '-45deg' }] }}>
                   <Icon name="cube-scan" size={30} color="white" />
                 </View>
               </View>
@@ -199,16 +222,6 @@ const AppNavigationWrapper = () => {
       <Icon name="arrow-left" size={24} color={theme.text} />
     </TouchableOpacity>
   );
-
-  const subPageOptions = ({ navigation, route }: any) => ({
-    headerShown: true,
-    title: route.name.replace(/([A-Z])/g, ' $1').trim(),
-    headerStyle: { backgroundColor: theme.card },
-    headerTintColor: theme.text,
-    headerTitleStyle: { fontWeight: 'bold' as const },
-    headerLeft: () => renderBackButton(navigation),
-    headerShadowVisible: false,
-  });
 
   return (
     <Stack.Navigator

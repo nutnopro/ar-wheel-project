@@ -43,7 +43,7 @@ export const productService = {
   },
 
   // Create model with metadata and files
-  createWithFile: async (data: any, modelFile?: any, imageFile?: any) => {
+  createWithFile: async (data: any, glbFile?: any, usdzFile?: any, imageFiles?: any[]) => {
     const formData = new FormData();
     // Append all metadata fields
     Object.keys(data).forEach(key => {
@@ -55,11 +55,16 @@ export const productService = {
       }
     });
 
-    if (modelFile) {
-      formData.append('modelFile', modelFile);
+    if (glbFile) {
+      formData.append('androidModelFile', glbFile);
     }
-    if (imageFile) {
-      formData.append('imageFile', imageFile);
+    if (usdzFile) {
+      formData.append('iosModelFile', usdzFile);
+    }
+    if (imageFiles && imageFiles.length > 0) {
+      imageFiles.forEach(img => {
+        formData.append('imageFiles', img);
+      });
     }
 
     return api.post('/models/with-file', formData, {
