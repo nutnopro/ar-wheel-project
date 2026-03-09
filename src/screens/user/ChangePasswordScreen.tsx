@@ -108,11 +108,16 @@ const ChangePasswordScreen = () => {
     try {
       await authService.changePassword(userData.email, currentPassword, newPassword);
       Alert.alert('Success', 'Password changed successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { text: 'OK', onPress: () => setTimeout(() => navigation.goBack(), 100) },
       ]);
     } catch (error: any) {
        console.error('Change Password Error:', error);
-       const msg = error?.response?.data?.message || 'Failed to change password. Please check your current password.';
+       let msg = error?.response?.data?.message || 'Failed to change password. Please check your current password.';
+       if (Array.isArray(msg)) {
+         msg = msg.join('\n');
+       } else if (typeof msg === 'object') {
+         msg = JSON.stringify(msg);
+       }
        Alert.alert('Error', msg);
     } finally {
       setSaving(false);

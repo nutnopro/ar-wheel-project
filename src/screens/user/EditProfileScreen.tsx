@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
@@ -27,6 +28,19 @@ const EditProfileScreen = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState('');
+  const [dob, setDob] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // Address fields
+  const [houseNumber, setHouseNumber] = useState('');
+  const [street, setStreet] = useState('');
+  const [subdistrict, setSubdistrict] = useState('');
+  const [district, setDistrict] = useState('');
+  const [stateOrProvince, setStateOrProvince] = useState('');
+  const [country, setCountry] = useState('');
+  const [postcode, setPostcode] = useState('');
+
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -34,9 +48,21 @@ const EditProfileScreen = () => {
   // โหลดข้อมูลเดิมมาใส่ใน Input เมื่อเข้าหน้านี้
   useEffect(() => {
     if (userData) {
-      setName(userData.name || '');
+      setName(userData.displayName || userData.name || '');
       setEmail(userData.email || '');
-      setPhone(userData.phone || '');
+      setPhone(userData.phoneNumber || userData.phone || '');
+      setGender(userData.gender || '');
+      setDob(userData.dateOfBirth ? new Date(userData.dateOfBirth) : null);
+
+      setHouseNumber(userData.address?.houseNumber || '');
+      setStreet(userData.address?.street || '');
+      setSubdistrict(userData.address?.subdistrict || '');
+      setDistrict(userData.address?.district || '');
+      setStateOrProvince(userData.address?.stateOrProvince || '');
+      setCountry(userData.address?.country || '');
+      setPostcode(userData.address?.postcode || '');
+
+      setAvatarUri(userData.profileImageUrl || userData.avatar || userData.profileImg || null);
     }
   }, [userData]);
 
@@ -59,45 +85,57 @@ const EditProfileScreen = () => {
   };
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert('Error', 'Name cannot be empty');
-      return;
-    }
-    if (!userData?.id) {
+    if (!userData?.id && !userData?.uid) {
       Alert.alert('Error', 'User ID not found');
       return;
     }
 
     setLoading(true);
     try {
+      const userId = userData.id || userData.uid;
+
       if (avatarFile) {
-         await authService.uploadProfileImage(userData.id, {
+         await authService.uploadProfileImage(userId, {
            uri: (avatarFile as any).fileCopyUri || avatarFile.uri,
            type: avatarFile.type || 'image/jpeg',
            name: avatarFile.name || 'avatar.jpg',
          });
       }
 
-      const updatedInfo = await authService.updateProfile(userData.id, {
-        displayName: name,
-        email,
-        phoneNumber: phone,
-      });
+      const payload = {
+        displayName: name.trim() === '' ? null : name.trim(),
+        email: email.trim() === '' ? null : email.trim(),
+        phoneNumber: phone.trim() === '' ? null : phone.trim(),
+        gender: gender.trim() === '' ? null : gender.trim(),
+        dateOfBirth: dob ? dob.toISOString().split('T')[0] : null,
+        address: {
+          houseNumber: houseNumber.trim() === '' ? null : houseNumber.trim(),
+          street: street.trim() === '' ? null : street.trim(),
+          subdistrict: subdistrict.trim() === '' ? null : subdistrict.trim(),
+          district: district.trim() === '' ? null : district.trim(),
+          stateOrProvince: stateOrProvince.trim() === '' ? null : stateOrProvince.trim(),
+          country: country.trim() === '' ? null : country.trim(),
+          postcode: postcode.trim() === '' ? null : postcode.trim(),
+        }
+      };
 
-      // อัปเดตข้อมูลใน Context
-      updateProfile({ 
-        name, 
-        email, 
-        phone, 
-        avatar: updatedInfo.avatar || avatarUri || userData?.avatar 
-      }); 
+      const updatedInfo = await authService.updateProfile(userId, payload);
+
+      // อัปเดตข้อมูลใน Context using the fresh data direct from backend response
+      updateProfile(updatedInfo.user || payload);
       
       Alert.alert('Success', 'Profile updated successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
+        { text: 'OK', onPress: () => setTimeout(() => navigation.goBack(), 100) },
       ]);
     } catch (err: any) {
       console.error('Update Profile Error:', err);
-      Alert.alert('Error', err.response?.data?.message || 'Failed to update profile');
+      let msg = err.response?.data?.message || 'Failed to update profile';
+      if (Array.isArray(msg)) {
+        msg = msg.join('\n');
+      } else if (typeof msg === 'object') {
+        msg = JSON.stringify(msg);
+      }
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -109,7 +147,7 @@ const EditProfileScreen = () => {
       <ScrollView contentContainerStyle={styles.content}>
         {/* Avatar Edit Section */}
         <View style={styles.avatarContainer}>
-          <Image source={{ uri: avatarUri || userData?.avatar || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+          <Image source={{ uri: avatarUri || 'https://via.placeholder.com/150' }} style={styles.avatar} />
           <TouchableOpacity style={styles.cameraButton} onPress={handlePickImage} disabled={loading}>
             <Icon name="camera" size={20} color="#fff" />
           </TouchableOpacity>
@@ -118,42 +156,20 @@ const EditProfileScreen = () => {
         {/* Input Fields */}
         <View style={styles.form}>
           <Text style={[styles.label, { color: theme.text }]}>Full Name</Text>
-          <View
-            style={[
-              styles.inputContainer,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <Icon
-              name="account-outline"
-              size={20}
-              color={theme.subText}
-              style={styles.inputIcon}
-            />
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="account-outline" size={20} color={theme.subText} style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={name}
               onChangeText={setName}
-              placeholder="Enter your name"
+              placeholder="Enter your full name"
               placeholderTextColor={theme.subText}
             />
           </View>
 
-          <Text style={[styles.label, { color: theme.text }]}>
-            Email Address
-          </Text>
-          <View
-            style={[
-              styles.inputContainer,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <Icon
-              name="email-outline"
-              size={20}
-              color={theme.subText}
-              style={styles.inputIcon}
-            />
+          <Text style={[styles.label, { color: theme.text }]}>Email Address</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="email-outline" size={20} color={theme.subText} style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={email}
@@ -165,21 +181,9 @@ const EditProfileScreen = () => {
             />
           </View>
 
-          <Text style={[styles.label, { color: theme.text }]}>
-            Phone Number
-          </Text>
-          <View
-            style={[
-              styles.inputContainer,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <Icon
-              name="phone-outline"
-              size={20}
-              color={theme.subText}
-              style={styles.inputIcon}
-            />
+          <Text style={[styles.label, { color: theme.text }]}>Phone Number</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="phone-outline" size={20} color={theme.subText} style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: theme.text }]}
               value={phone}
@@ -189,14 +193,138 @@ const EditProfileScreen = () => {
               keyboardType="phone-pad"
             />
           </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>Gender</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="gender-male-female" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={gender}
+              onChangeText={setGender}
+              placeholder="Enter gender (e.g. male, female)"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>Date of Birth</Text>
+          <View style={styles.datePickerContainer}>
+            <TouchableOpacity
+              style={[
+                styles.inputContainer,
+                { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 0 }
+              ]}
+              onPress={() => setShowDatePicker(true)}
+            >
+              <Icon name="calendar" size={20} color={theme.subText} style={styles.inputIcon} />
+              <Text style={[styles.input, { color: dob ? theme.text : theme.subText, lineHeight: 22 }]}>
+                {dob ? dob.toISOString().split('T')[0] : 'YYYY-MM-DD'}
+              </Text>
+            </TouchableOpacity>
+            
+            {showDatePicker && (
+              <DateTimePicker
+                value={dob || new Date()}
+                mode="date"
+                display="default"
+                maximumDate={new Date()}
+                onChange={(event: any, selectedDate?: Date) => {
+                  setShowDatePicker(false);
+                  if (selectedDate) setDob(selectedDate);
+                }}
+              />
+            )}
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: theme.text, marginTop: 10 }]}>Address</Text>
+
+          <Text style={[styles.label, { color: theme.text }]}>House Number</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="home-outline" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={houseNumber}
+              onChangeText={setHouseNumber}
+              placeholder="House mapping number"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>Street</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="road-variant" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={street}
+              onChangeText={setStreet}
+              placeholder="Street name"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>Subdistrict</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="map-marker-outline" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={subdistrict}
+              onChangeText={setSubdistrict}
+              placeholder="Subdistrict"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>District</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="map-marker-radius-outline" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={district}
+              onChangeText={setDistrict}
+              placeholder="District"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>State / Province</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="city" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={stateOrProvince}
+              onChangeText={setStateOrProvince}
+              placeholder="State or Province"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>Country</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="earth" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={country}
+              onChangeText={setCountry}
+              placeholder="Country"
+              placeholderTextColor={theme.subText}
+            />
+          </View>
+
+          <Text style={[styles.label, { color: theme.text }]}>Postcode</Text>
+          <View style={[styles.inputContainer, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Icon name="mailbox-open-outline" size={20} color={theme.subText} style={styles.inputIcon} />
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={postcode}
+              onChangeText={setPostcode}
+              placeholder="Postcode / Zip"
+              placeholderTextColor={theme.subText}
+              keyboardType="numeric"
+            />
+          </View>
         </View>
 
         {/* Save Button */}
-        <TouchableOpacity
-          style={styles.saveButton}
-          onPress={handleSave}
-          disabled={loading}
-        >
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={loading}>
           {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
@@ -230,6 +358,14 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
   },
   form: { marginBottom: 20 },
+  datePickerContainer: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8, marginLeft: 4 },
   inputContainer: {
     flexDirection: 'row',
