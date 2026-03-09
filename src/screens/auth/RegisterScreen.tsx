@@ -4,9 +4,9 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Alert,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useNavigation } from '@react-navigation/native';
 import { useForm, Controller } from 'react-hook-form';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -80,9 +80,13 @@ const RegisterScreen = () => {
   };
 
   return (
-    <ScrollView
+    <KeyboardAwareScrollView
+      style={{ flex: 1 }}
       showsVerticalScrollIndicator={false}
       contentContainerStyle={styles.scrollContainer}
+      enableOnAndroid={true}
+      extraScrollHeight={20}
+      keyboardShouldPersistTaps="handled"
     >
       <View style={styles.container}>
         {/* --- ปุ่ม Back --- */}
@@ -198,7 +202,7 @@ const RegisterScreen = () => {
           </TouchableOpacity>
         </View>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 };
 

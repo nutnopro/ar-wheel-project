@@ -7,11 +7,12 @@ import {
   TouchableOpacity, 
   ScrollView, 
   NativeModules, 
-  Image, 
   Alert,
   ActivityIndicator,
-  TextInput
+  TextInput,
+  Image
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useTheme } from '../../context/ThemeContext';
 import Header from '../../components/Header';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -81,7 +82,13 @@ const ARPreferencesScreen = () => {
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <Header title="AR Preferences" showBack />
       
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardShouldPersistTaps="handled"
+      >
         
         {/* Settings Section */}
         <View style={[styles.section, { backgroundColor: theme.card, shadowColor: theme.text }]}>   
@@ -141,7 +148,7 @@ const ARPreferencesScreen = () => {
           )}
 
         </View>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 };

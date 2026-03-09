@@ -71,4 +71,30 @@ export const productService = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+
+  // Update model data and files
+  updateWithFile: async (id: string, data: any, glbFile?: any, usdzFile?: any, imageFiles?: any[]) => {
+    const formData = new FormData();
+    
+    // Append data fields
+    Object.keys(data).forEach(key => {
+      if (data[key] !== undefined && data[key] !== null && data[key] !== '') {
+        if (Array.isArray(data[key])) {
+          data[key].forEach((val: string) => formData.append(key, val));
+        } else {
+          formData.append(key, data[key]);
+        }
+      }
+    });
+
+    if (glbFile) formData.append('androidModelFile', glbFile);
+    if (usdzFile) formData.append('iosModelFile', usdzFile);
+    if (imageFiles && imageFiles.length > 0) {
+      imageFiles.forEach(img => formData.append('imageFiles', img));
+    }
+
+    return api.patch(`/models/${id}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
 };

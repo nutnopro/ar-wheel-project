@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   NativeModules,
   Alert,
+  Platform,
 } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -15,6 +16,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { LanguageProvider, useLanguage } from '../context/LanguageContext';
+import { productService } from '../services/productService';
+import { WheelModel } from '../utils/types';
 
 // User Screens
 import SplashScreen from '../screens/common/SplashScreen';
@@ -123,32 +126,34 @@ function MainTabNavigator() {
         listeners={({ navigation }) => ({
           tabPress: async (e: any) => {
             e.preventDefault();
-            console.log('🎯 AR Tab Pressed');
+            console.log('🎯 AR Tab Pressed - Preparing all models');
 
             try {
               if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-                const savedModel = getSelectedModel();
-                const savedPaths = getModelPaths() || [];
-                const initialPath = savedModel?.localPath || '';
-
-                let modelDataList: Array<{ path: string; name: string }> = [];
-
-                if (savedModel && savedModel.localPath) {
-                  modelDataList.push({
-                    path: savedModel.localPath,
-                    name: savedModel.name || 'Selected Model',
-                  });
-                }
-
-                if (Array.isArray(savedPaths)) {
-                  savedPaths.forEach((pathItem: any, index: number) => {
-                    const path = typeof pathItem === 'string' ? pathItem : pathItem.path;
-                    const name = typeof pathItem === 'string' ? `Model ${index + 1}` : pathItem.name;
+                const response = await productService.getAll();
+                const allModels: WheelModel[] = response.data || response;
+                const modelDataList = await Promise.all(
+                  allModels.map(async (m) => {
+                    const targetUrl = Platform.OS === 'ios' ? m.iosModelUrl : m.androidModelUrl;
+                    const localPath = await resolveModelPath({ ...m, modelUrl: targetUrl });
                     
-                    if (path && path !== initialPath) {
-                      modelDataList.push({ path, name });
-                    }
-                  });
+                    return {
+                      id: m.id,
+                      path: localPath,
+                      name: m.name || m.id,
+                      brand: m.brand,
+                      price: String(m.price),
+                      imageUrl: m.images?.[0] || '',
+                    };
+                  })
+                );
+                const savedModel = getSelectedModel();
+                let initialPath = '';
+
+                if (savedModel?.localPath) {
+                  initialPath = savedModel.localPath;
+                } else if (modelDataList.length > 0) {
+                  initialPath = modelDataList[0].path;
                 }
 
                 const pathsJsonString = JSON.stringify(modelDataList);
@@ -157,15 +162,15 @@ function MainTabNavigator() {
                 const sizeStr = storage?.getString('@ar_marker_size') || '15';
                 const markerSize = parseFloat(sizeStr) || 15.0;
                 
-                console.log('🚀 Launching AR from Tab:', { initialPath, pathsJsonString, markerSize });
+                console.log(`🚀 Launching AR with ${modelDataList.length} wheels`);
                 
                 await ARLauncher.openARActivity(initialPath, pathsJsonString, markerSize);
               } else {
                 Alert.alert('AR Error', 'AR Launcher is not available on this device');
               }
             } catch (err: any) {
-              console.error('❌ Failed to open AR Activity:', err);
-              Alert.alert('Error', 'Failed to launch AR: ' + err?.message);
+              console.error('❌ Failed to prepare AR items:', err);
+              Alert.alert('Error', 'Failed to launch AR: ' + (err?.message || 'Unknown error'));
             }
           },
         })}

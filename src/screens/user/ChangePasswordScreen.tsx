@@ -8,9 +8,9 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
@@ -125,12 +125,14 @@ const ChangePasswordScreen = () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    <KeyboardAwareScrollView
       style={[styles.container, { backgroundColor: theme.background }]}
+      contentContainerStyle={styles.content}
+      enableOnAndroid={true}
+      extraScrollHeight={20}
+      keyboardShouldPersistTaps="handled"
     >
       <Header title="Change Password" />
-      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerIconContainer}>
           <View style={styles.iconCircle}>
             <Icon name="lock-reset" size={40} color="#2563EB" />
@@ -186,8 +188,7 @@ const ChangePasswordScreen = () => {
             <Text style={styles.saveButtonText}>Reset Password</Text>
           )}
         </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 };
 

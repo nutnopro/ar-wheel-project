@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,20 +6,25 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Alert,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { pick, types, isErrorWithCode, errorCodes, DocumentPickerResponse } from '@react-native-documents/picker';
 import { useTheme } from '../../context/ThemeContext';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { productService } from '../../services/productService';
 import Header from '../../components/Header';
 
 const ManageAddModelScreen = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  const editModel = route.params?.modelInfo;
+  const isEditMode = !!editModel;
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -28,11 +33,31 @@ const ManageAddModelScreen = () => {
     brand: '',
     description: '',
     categories: '',
+    size: '',
+    width: '',
+    offset: '',
+    pcd: '',
   });
 
   const [glbFile, setGlbFile] = useState<DocumentPickerResponse | null>(null);
   const [usdzFile, setUsdzFile] = useState<DocumentPickerResponse | null>(null);
   const [imageFiles, setImageFiles] = useState<DocumentPickerResponse[]>([]);
+
+  useEffect(() => {
+    if (isEditMode) {
+      setFormData({
+        name: editModel.name || '',
+        price: editModel.price ? String(editModel.price) : '',
+        brand: editModel.brand || '',
+        description: editModel.description || '',
+        categories: editModel.categories ? editModel.categories.join(', ') : '',
+        size: editModel.size || '',
+        width: editModel.width || '',
+        offset: editModel.offset || '',
+        pcd: editModel.pcd || '',
+      });
+    }
+  }, [editModel]);
 
   const handlePickGlb = async () => {
     try {
@@ -91,8 +116,8 @@ const ManageAddModelScreen = () => {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.price || (!glbFile && !usdzFile) || imageFiles.length === 0) {
-      Alert.alert('Validation Check', 'Please fill name, price, select at least one model file (GLB or USDZ), and at least 1 image.');
+    if (!formData.name || !formData.price || (!isEditMode && (!glbFile && !usdzFile && imageFiles.length === 0))) {
+      Alert.alert('Validation', 'Please fill name, price, and select required files.');
       return;
     }
 
@@ -105,50 +130,27 @@ const ManageAddModelScreen = () => {
         brand: formData.brand,
         description: formData.description,
         categories: formData.categories ? formData.categories.split(',').map(c => c.trim()) : [],
+        size: formData.size,
+        width: formData.width,
+        offset: formData.offset,
+        pcd: formData.pcd,
       };
 
-      let glbObj = null;
-      if (glbFile) {
-        glbObj = {
-          uri: glbFile.uri,
-          type: glbFile.type || 'model/gltf-binary',
-          name: glbFile.name,
-        };
+      let glbObj = glbFile ? { uri: glbFile.uri, type: glbFile.type || 'model/gltf-binary', name: glbFile.name } : null;
+      let usdzObj = usdzFile ? { uri: usdzFile.uri, type: usdzFile.type || 'model/vnd.usdz+zip', name: usdzFile.name } : null;
+      const imagesArray = imageFiles.map(img => ({ uri: img.uri, type: img.type || 'image/jpeg', name: img.name }));
+
+      if (isEditMode) {
+        const targetId = editModel.id || editModel._id;
+        await productService.updateWithFile(targetId, payload, glbObj, usdzObj, imagesArray);
+        Alert.alert('Success', 'Model updated successfully', [{ text: 'OK', onPress: () => navigation.goBack() }]);
+      } else {
+        await productService.createWithFile(payload, glbObj, usdzObj, imagesArray);
+        Alert.alert('Success', 'Model created successfully', [{ text: 'OK', onPress: () => navigation.goBack() }]);
       }
-
-      let usdzObj = null;
-      if (usdzFile) {
-        usdzObj = {
-          uri: usdzFile.uri,
-          type: usdzFile.type || 'model/vnd.usdz+zip',
-          name: usdzFile.name,
-        };
-      }
-
-      const imagesArray = imageFiles.map(img => ({
-        uri: img.uri,
-        type: img.type || 'image/jpeg',
-        name: img.name,
-      }));
-
-      await productService.createWithFile(payload, glbObj, usdzObj, imagesArray);
-
-      Alert.alert('Success', 'Model created successfully', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
     } catch (error: any) {
-      console.error('Create Model Error:', error.response?.data || error);
-
-      let errorMessage = 'Failed to create model';
-      if (error.response?.data?.message) {
-        errorMessage = Array.isArray(error.response.data.message) 
-          ? error.response.data.message.join('\n') 
-          : error.response.data.message;
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-
-      Alert.alert('Upload Error', errorMessage);
+      console.error('Save Model Error:', error);
+      Alert.alert('Error', error.response?.data?.message?.toString() || 'Failed to save model');
     } finally {
       setLoading(false);
     }
@@ -156,62 +158,62 @@ const ManageAddModelScreen = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <Header title="Add New Model" showBack />
+      <Header title={isEditMode ? "Edit Model" : "Add New Model"} showBack />
       
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Form Fields */}
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           <Text style={[styles.label, { color: theme.text }]}>Model Name *</Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-            placeholder="e.g. BBS RS"
-            placeholderTextColor={theme.subText}
-            value={formData.name}
-            onChangeText={t => setFormData({ ...formData, name: t })}
+          <TextInput 
+            style={[styles.input, { color: theme.text, borderColor: theme.border }]} 
+            value={formData.name} 
+            onChangeText={t => setFormData({ ...formData, name: t })} 
           />
-
           <Text style={[styles.label, { color: theme.text }]}>Price (฿) *</Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-            placeholder="e.g. 15000"
-            placeholderTextColor={theme.subText}
-            keyboardType="numeric"
-            value={formData.price}
-            onChangeText={t => setFormData({ ...formData, price: t })}
-          />
+          <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} keyboardType="numeric" value={formData.price} onChangeText={t => setFormData({ ...formData, price: t })} />
+
+          {/* New Fields */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={[styles.label, { color: theme.text }]}>Size (e.g. 18")</Text>
+              <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} value={formData.size} onChangeText={t => setFormData({ ...formData, size: t })} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={[styles.label, { color: theme.text }]}>Width (e.g. 8.5J)</Text>
+              <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} value={formData.width} onChangeText={t => setFormData({ ...formData, width: t })} />
+            </View>
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={[styles.label, { color: theme.text }]}>Offset (e.g. +35)</Text>
+              <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} value={formData.offset} onChangeText={t => setFormData({ ...formData, offset: t })} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 8 }}>
+              <Text style={[styles.label, { color: theme.text }]}>PCD (e.g. 5x114.3)</Text>
+              <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} value={formData.pcd} onChangeText={t => setFormData({ ...formData, pcd: t })} />
+            </View>
+          </View>
 
           <Text style={[styles.label, { color: theme.text }]}>Brand</Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-            placeholder="e.g. BBS"
-            placeholderTextColor={theme.subText}
-            value={formData.brand}
-            onChangeText={t => setFormData({ ...formData, brand: t })}
-          />
-
-          <Text style={[styles.label, { color: theme.text }]}>Description</Text>
-          <TextInput
-            style={[styles.input, styles.textArea, { color: theme.text, borderColor: theme.border }]}
-            placeholder="Details about the wheel..."
-            placeholderTextColor={theme.subText}
-            multiline
-            numberOfLines={4}
-            value={formData.description}
-            onChangeText={t => setFormData({ ...formData, description: t })}
-          />
+          <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} value={formData.brand} onChangeText={t => setFormData({ ...formData, brand: t })} />
 
           <Text style={[styles.label, { color: theme.text }]}>Categories (comma separated)</Text>
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-            placeholder="e.g. Sport, Luxury"
-            placeholderTextColor={theme.subText}
-            value={formData.categories}
-            onChangeText={t => setFormData({ ...formData, categories: t })}
-          />
+          <TextInput style={[styles.input, { color: theme.text, borderColor: theme.border }]} value={formData.categories} onChangeText={t => setFormData({ ...formData, categories: t })} />
+
+          <Text style={[styles.label, { color: theme.text }]}>Description</Text>
+          <TextInput style={[styles.input, styles.textArea, { color: theme.text, borderColor: theme.border }]} multiline numberOfLines={4} value={formData.description} onChangeText={t => setFormData({ ...formData, description: t })} />
         </View>
+
 
         {/* File Uploads */}
         <View style={[styles.card, { backgroundColor: theme.card }]}>
+          {isEditMode && <Text style={{ color: '#F59E0B', marginBottom: 10 }}>* Upload new files only if you want to replace existing ones.</Text>}
           <Text style={[styles.sectionTitle, { color: theme.text }]}>GLB Model File</Text>
           <TouchableOpacity
             style={[styles.uploadBox, { borderColor: theme.border, backgroundColor: theme.background, padding: 16 }]}
@@ -266,13 +268,9 @@ const ManageAddModelScreen = () => {
           onPress={handleSubmit}
           disabled={loading}
         >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitText}>Upload Model</Text>
-          )}
+          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>{isEditMode ? "Save Changes" : "Upload Model"}</Text>}
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 };

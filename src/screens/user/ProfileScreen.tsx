@@ -27,12 +27,20 @@ const ProfileScreen = () => {
   const isStore = userRole === 'store';
   const isAdmin = userRole === 'admin';
 
-  const user = userData || {
-    displayName: 'Guest User',
-    email: 'Sign in to access features',
-    profileImg: null,
+  const getProfileImage = () => {
+    const imgUrl = userData?.profileImg || userData?.profileImageUrl;
+    if (!imgUrl) {
+      return 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
+    }
+    const separator = imgUrl.includes('?') ? '&' : '?';
+    return `${imgUrl}${separator}t=${new Date().getTime()}`;
   };
 
+  const user = {
+    displayName: userData?.displayName || 'Guest User',
+    email: userData?.email || 'Sign in to access features',
+    profileImg: userData?.profileImg || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+  };
   const handleRestrictedAction = () => {
     Alert.alert('Login Required', 'Please login to use this feature.', [
       { text: 'Cancel', style: 'cancel' },
@@ -130,14 +138,13 @@ const ProfileScreen = () => {
       <SafeAreaView
         style={[styles.safeArea, { backgroundColor: theme.background }]}
       >
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+        <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Image
-              source={{
-                uri: user.profileImg || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+              key={user.profileImg}
+              source={{ 
+                uri: user.profileImg,
+                cache: 'reload'
               }}
               style={styles.avatar}
             />

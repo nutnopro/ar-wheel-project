@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useNavigation } from '@react-navigation/native';
 import { useForm } from 'react-hook-form';
 import CustomInput from '../../components/CustomInput';
@@ -43,7 +44,13 @@ const ForgotPasswordScreen = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAwareScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={styles.container}
+      enableOnAndroid={true}
+      extraScrollHeight={20}
+      keyboardShouldPersistTaps="handled"
+    >
       <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton} disabled={loading}>
         <Icon name="chevron-back" size={30} color={COLORS.primary} />
       </TouchableOpacity>
@@ -75,7 +82,7 @@ const ForgotPasswordScreen = () => {
           <Text style={styles.buttonText}>Send Reset Link</Text>
         )}
       </TouchableOpacity>
-    </View>
+    </KeyboardAwareScrollView>
   );
 };
 

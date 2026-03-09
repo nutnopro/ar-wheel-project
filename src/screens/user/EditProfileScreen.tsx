@@ -9,7 +9,11 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
@@ -52,8 +56,16 @@ const EditProfileScreen = () => {
       setEmail(userData.email || '');
       setPhone(userData.phoneNumber || userData.phone || '');
       setGender(userData.gender || '');
-      setDob(userData.dateOfBirth ? new Date(userData.dateOfBirth) : null);
-
+      if (userData.dateOfBirth) {
+        const parsedDate = new Date(userData.dateOfBirth);
+        if (!isNaN(parsedDate.getTime())) {
+          setDob(parsedDate);
+        } else {
+          setDob(null);
+        }
+      } else {
+        setDob(null);
+      }
       setHouseNumber(userData.address?.houseNumber || '');
       setStreet(userData.address?.street || '');
       setSubdistrict(userData.address?.subdistrict || '');
@@ -70,7 +82,6 @@ const EditProfileScreen = () => {
     try {
       const [result] = await pick({
         presentationStyle: 'fullScreen',
-        copyTo: 'cachesDirectory',
         type: [types.images],
       });
       if (result) {
@@ -84,7 +95,7 @@ const EditProfileScreen = () => {
     }
   };
 
-  const handleSave = async () => {
+	const handleSave = async () => {
     if (!userData?.id && !userData?.uid) {
       Alert.alert('Error', 'User ID not found');
       return;
@@ -94,48 +105,56 @@ const EditProfileScreen = () => {
     try {
       const userId = userData.id || userData.uid;
 
+      let latestProfileImg = userData.profileImg || userData.profileImageUrl;
       if (avatarFile) {
-         await authService.uploadProfileImage(userId, {
-           uri: (avatarFile as any).fileCopyUri || avatarFile.uri,
-           type: avatarFile.type || 'image/jpeg',
-           name: avatarFile.name || 'avatar.jpg',
-         });
+        const uploadRes = await authService.uploadProfileImage(userId, {
+          uri: (avatarFile as any).fileCopyUri || avatarFile.uri,
+          type: avatarFile.type || 'image/jpeg',
+          name: avatarFile.name || `avatar_${new Date().getTime()}.jpg`,
+        });
+        if (uploadRes && uploadRes.profileImg) {
+          latestProfileImg = uploadRes.profileImg;
+        }
       }
+      const timestamp = new Date().getTime();
+      const cleanUrl = latestProfileImg ? latestProfileImg.split(/[?&]t=/)[0] : latestProfileImg;
+      const finalImgWithTimestamp = cleanUrl ? `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${timestamp}` : null;
 
       const payload = {
-        displayName: name.trim() === '' ? null : name.trim(),
-        email: email.trim() === '' ? null : email.trim(),
-        phoneNumber: phone.trim() === '' ? null : phone.trim(),
-        gender: gender.trim() === '' ? null : gender.trim(),
+        displayName: name.trim() || null,
+        email: email.trim() || null,
+        phoneNumber: phone.trim() || null,
+        gender: gender.trim() || null,
         dateOfBirth: dob ? dob.toISOString().split('T')[0] : null,
+        profileImg: finalImgWithTimestamp,
         address: {
-          houseNumber: houseNumber.trim() === '' ? null : houseNumber.trim(),
-          street: street.trim() === '' ? null : street.trim(),
-          subdistrict: subdistrict.trim() === '' ? null : subdistrict.trim(),
-          district: district.trim() === '' ? null : district.trim(),
-          stateOrProvince: stateOrProvince.trim() === '' ? null : stateOrProvince.trim(),
-          country: country.trim() === '' ? null : country.trim(),
-          postcode: postcode.trim() === '' ? null : postcode.trim(),
+          houseNumber: houseNumber.trim() || null,
+          street: street.trim() || null,
+          subdistrict: subdistrict.trim() || null,
+          district: district.trim() || null,
+          stateOrProvince: stateOrProvince.trim() || null,
+          country: country.trim() || null,
+          postcode: postcode.trim() || null,
         }
       };
 
       const updatedInfo = await authService.updateProfile(userId, payload);
 
-      // อัปเดตข้อมูลใน Context using the fresh data direct from backend response
-      updateProfile(updatedInfo.user || payload);
+      const actualUser = updatedInfo?.user ? updatedInfo.user : updatedInfo;
+      updateProfile({
+        ...userData,
+        ...payload,
+        profileImg: finalImgWithTimestamp
+      });
       
       Alert.alert('Success', 'Profile updated successfully', [
-        { text: 'OK', onPress: () => setTimeout(() => navigation.goBack(), 100) },
+        { text: 'OK', onPress: () => navigation.goBack() },
       ]);
     } catch (err: any) {
       console.error('Update Profile Error:', err);
       let msg = err.response?.data?.message || 'Failed to update profile';
-      if (Array.isArray(msg)) {
-        msg = msg.join('\n');
-      } else if (typeof msg === 'object') {
-        msg = JSON.stringify(msg);
-      }
-      Alert.alert('Error', msg);
+      if (Array.isArray(msg)) msg = msg.join('\n');
+      Alert.alert('Error', typeof msg === 'object' ? JSON.stringify(msg) : msg);
     } finally {
       setLoading(false);
     }
@@ -144,10 +163,23 @@ const EditProfileScreen = () => {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <Header title="Edit Profile" />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAwareScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.content}
+        enableOnAndroid={true}
+        extraScrollHeight={20}
+        keyboardShouldPersistTaps="handled"
+      >
         {/* Avatar Edit Section */}
         <View style={styles.avatarContainer}>
-          <Image source={{ uri: avatarUri || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+        <Image 
+          key={avatarUri}
+          source={{ 
+          uri: avatarUri || 'https://via.placeholder.com/150',
+          cache: 'reload'
+          }} 
+          style={styles.avatar} 
+        />
           <TouchableOpacity style={styles.cameraButton} onPress={handlePickImage} disabled={loading}>
             <Icon name="camera" size={20} color="#fff" />
           </TouchableOpacity>
@@ -331,7 +363,7 @@ const EditProfileScreen = () => {
             <Text style={styles.saveButtonText}>Update Profile</Text>
           )}
         </TouchableOpacity>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 };

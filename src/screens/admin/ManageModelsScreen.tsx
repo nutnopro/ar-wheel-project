@@ -130,7 +130,7 @@ const ManageModelsScreen = () => {
               </View>
               <View style={styles.actions}>
                 <TouchableOpacity
-                  onPress={() => Alert.alert('Edit', `Edit ID: ${item.id}`)}
+                  onPress={() => navigation.navigate('ManageAddModel', { modelInfo: item })}
                   style={styles.actionBtn}
                 >
                   <Icon name="pencil-outline" size={24} color="#3B82F6" />

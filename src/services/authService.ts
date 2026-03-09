@@ -29,7 +29,7 @@ export const authService = {
 
   // ===== FORGOT PASSWORD =====
   forgotPassword: async (email: string) => {
-    const response = await api.post('/Auth/Forgotpassword-auth', { email });
+    const response = await api.post('/Auth/Forgotpassword-auth', { Email: email });
     return response.data;
   },
 
@@ -46,10 +46,18 @@ export const authService = {
 
   // ===== UPDATE PROFILE =====
   updateProfile: async (uid: string, data: any) => {
-    const response = await api.patch(`/users/profile/${uid}`, data);
-    return response.data;
+    try {
+      const response = await api.patch(`/users/profile/${uid}`, data);
+      if (response.data && response.data.user) {
+        return response.data.user;
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('API Update Profile Error:', error);
+      throw error;
+    }
   },
-
   // ===== UPLOAD PROFILE IMAGE =====
   uploadProfileImage: async (uid: string, fileData: { uri: string; type: string; name: string }) => {
     const formData = new FormData();

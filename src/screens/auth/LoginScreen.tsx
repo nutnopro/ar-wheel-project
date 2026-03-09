@@ -6,12 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   StatusBar,
-  KeyboardAvoidingView,
   Platform,
-  ScrollView,
   Alert,
   SafeAreaView,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
@@ -56,16 +55,15 @@ const LoginScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
       <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView
+        <KeyboardAwareScrollView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          contentContainerStyle={styles.scrollContent}
+          enableOnAndroid={true}
+          extraScrollHeight={20}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <ScrollView
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            <View style={styles.header}>
+          <View style={styles.header}>
               <View style={styles.logoBox}>
                 {/* Logo ล้อรถให้ตรงกับ Splash */}
                 <Icon name="steering" size={50} color="#2563EB" />
@@ -161,9 +159,8 @@ const LoginScreen = () => {
                 <Text style={styles.registerText}>Sign Up</Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
+          </KeyboardAwareScrollView>
+        </SafeAreaView>
     </View>
   );
 };
