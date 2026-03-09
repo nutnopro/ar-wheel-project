@@ -550,10 +550,10 @@ class ARUIManager(
         currentOpenMenu = null
     }
 
-    private fun showModelSelector() = updateSelectionMenu(modelList, isModel = true)
-    private fun showSizeSelector() = updateSelectionMenu(sizeList.map { it.toString() }, isModel = false)
+    private fun showModelSelector() = updateSelectionMenu(modelList, true)
+    private fun showSizeSelector() = updateSelectionMenu(sizeList.map { it.toString() }, false)
 
-    private fun updateSelectionMenu(isModel: Boolean) {
+    private fun updateSelectionMenu(items: List<Any>, isModel: Boolean) {
         selectionRecyclerView?.let { selectionContainer?.removeView(it) }
         selectionContainer?.visibility = View.VISIBLE
         tvSelectionTitle?.visibility = if (isModel) View.VISIBLE else View.GONE
