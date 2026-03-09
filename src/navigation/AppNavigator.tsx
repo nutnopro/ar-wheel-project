@@ -39,7 +39,7 @@ import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import SystemStatsScreen from '../screens/admin/SystemStatsScreen';
 import { resolveModelPath } from '../services/modelCacheService';
-import { getSelectedModel, getModelPaths } from '../utils/storage';
+import { getSelectedModel, getModelPaths, storage } from '../utils/storage';
 
 export type RootStackParamList = {
   Splash: undefined;
@@ -121,50 +121,52 @@ function MainTabNavigator() {
         name="AR"
         component={ArScreenPlaceholder}
         listeners={({ navigation }) => ({
-          tabPress: (e: any) => {
+          tabPress: async (e: any) => {
             e.preventDefault();
-            (async () => {
-              try {
-                if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
-                  const savedModel = getSelectedModel();
-                  const savedPaths = getModelPaths() || [];
-                  const initialPath = savedModel?.localPath || '';
+            console.log('🎯 AR Tab Pressed');
 
-                  let modelDataList: Array<{ path: string; name: string }> = [];
+            try {
+              if (ARLauncher && typeof ARLauncher.openARActivity === 'function') {
+                const savedModel = getSelectedModel();
+                const savedPaths = getModelPaths() || [];
+                const initialPath = savedModel?.localPath || '';
 
-                  if (savedModel && savedModel.localPath) {
-                    modelDataList.push({
-                      path: savedModel.localPath,
-                      name: savedModel.name || 'Selected Model',
-                    });
-                  }
+                let modelDataList: Array<{ path: string; name: string }> = [];
 
-                  if (Array.isArray(savedPaths)) {
-                    savedPaths.forEach((pathItem: any, index: number) => {
-                      const path = typeof pathItem === 'string' ? pathItem : pathItem.path;
-                      const name = typeof pathItem === 'string' ? `Model ${index + 1}` : pathItem.name;
-                      
-                      if (path && path !== initialPath) {
-                        modelDataList.push({ path, name });
-                      }
-                    });
-                  }
-
-                  const pathsJsonString = JSON.stringify(modelDataList);
-
-                  import('../utils/storage').then(({ storage }) => {
-                    const sizeStr = storage?.getString('@ar_marker_size') || '15';
-                    const markerSize = parseFloat(sizeStr) || 15.0;
-                    console.log('🚀 Launching AR from Tab:', { initialPath, pathsJsonString, markerSize });
-                    ARLauncher.openARActivity(initialPath, pathsJsonString, markerSize);
+                if (savedModel && savedModel.localPath) {
+                  modelDataList.push({
+                    path: savedModel.localPath,
+                    name: savedModel.name || 'Selected Model',
                   });
-                } else {
-                  Alert.alert('AR', 'AR Launcher is not available on this device');
                 }
-              } catch (err) {
-                console.error('❌ Failed to open AR Activity:', err);
+
+                if (Array.isArray(savedPaths)) {
+                  savedPaths.forEach((pathItem: any, index: number) => {
+                    const path = typeof pathItem === 'string' ? pathItem : pathItem.path;
+                    const name = typeof pathItem === 'string' ? `Model ${index + 1}` : pathItem.name;
+                    
+                    if (path && path !== initialPath) {
+                      modelDataList.push({ path, name });
+                    }
+                  });
+                }
+
+                const pathsJsonString = JSON.stringify(modelDataList);
+
+                // ดึงค่า storage โดยตรง ไม่ต้องทำ Dynamic Import แล้ว
+                const sizeStr = storage?.getString('@ar_marker_size') || '15';
+                const markerSize = parseFloat(sizeStr) || 15.0;
+                
+                console.log('🚀 Launching AR from Tab:', { initialPath, pathsJsonString, markerSize });
+                
+                await ARLauncher.openARActivity(initialPath, pathsJsonString, markerSize);
+              } else {
+                Alert.alert('AR Error', 'AR Launcher is not available on this device');
               }
-            })();
+            } catch (err: any) {
+              console.error('❌ Failed to open AR Activity:', err);
+              Alert.alert('Error', 'Failed to launch AR: ' + err?.message);
+            }
           },
         })}
         options={{

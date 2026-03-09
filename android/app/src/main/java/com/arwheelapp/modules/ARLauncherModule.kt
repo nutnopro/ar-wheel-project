@@ -25,7 +25,8 @@ class ARLauncherModule(reactContext: ReactApplicationContext) :
         val activity = currentActivity
         if (activity != null) {
             try {
-                val intent = Intent(activity, Class.forName("com.arwheelapp.ARActivity")).apply {
+                val intent = Intent().apply {
+                    setClassName(reactApplicationContext, "com.arwheelapp.modules.ARActivity")
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     putExtra("initialModelPath", initialModelPath)
                     putExtra("modelPathsJson", modelPathsJson)
@@ -49,7 +50,7 @@ class ARLauncherModule(reactContext: ReactApplicationContext) :
             val markersArray = Arguments.createArray()
 
             assets?.filter { it.endsWith(".jpg", true) || it.endsWith(".png", true) }
-                  ?.forEach { fn ->
+                ?.forEach { fn ->
                 val map = Arguments.createMap()
                 map.putString("name", fn)
                 
