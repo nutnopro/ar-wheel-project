@@ -15,13 +15,61 @@ import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { authService } from '../../services/authService';
 
 import Header from '../../components/Header';
 
+const PasswordInput = ({
+  label,
+  value,
+  onChangeText,
+  showPass,
+  toggleShowPass,
+  placeholder,
+  theme,
+}: any) => (
+  <View style={styles.inputGroup}>
+    <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
+    <View
+      style={[
+        styles.inputContainer,
+        { backgroundColor: theme.card, borderColor: theme.border },
+      ]}
+    >
+      <Icon
+        name="lock-outline"
+        size={20}
+        color={theme.subText}
+        style={styles.inputIcon}
+      />
+
+      <TextInput
+        style={[styles.input, { color: theme.text }]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.subText}
+        secureTextEntry={!showPass} // ถ้า showPass=false ให้ซ่อนรหัส
+        autoCapitalize="none"
+      />
+
+      {/* ปุ่มดวงตา */}
+      <TouchableOpacity onPress={toggleShowPass} style={styles.eyeButton}>
+        <Icon
+          name={showPass ? 'eye-off-outline' : 'eye-outline'}
+          size={22}
+          color={theme.subText}
+        />
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+
 const ChangePasswordScreen = () => {
+
   const navigation = useNavigation();
   const { theme } = useTheme();
-  const { isLoading } = useAuth(); // หรือสร้าง loading state เองในหน้านี้ก็ได้
+  const { isLoading, userData } = useAuth(); // หรือสร้าง loading state เองในหน้านี้ก็ได้
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -34,7 +82,7 @@ const ChangePasswordScreen = () => {
 
   const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!currentPassword || !newPassword || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -50,61 +98,26 @@ const ChangePasswordScreen = () => {
       return;
     }
 
+    if (!userData?.email) {
+      Alert.alert('Error', 'User email not found. Please log in again.');
+      return;
+    }
+
     setSaving(true);
-    // จำลองการเปลี่ยนรหัสผ่าน
-    setTimeout(() => {
-      setSaving(false);
+    
+    try {
+      await authService.changePassword(userData.email, currentPassword, newPassword);
       Alert.alert('Success', 'Password changed successfully', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ]);
-    }, 1500);
+    } catch (error: any) {
+       console.error('Change Password Error:', error);
+       const msg = error?.response?.data?.message || 'Failed to change password. Please check your current password.';
+       Alert.alert('Error', msg);
+    } finally {
+      setSaving(false);
+    }
   };
-
-  // Component ย่อยสำหรับสร้างช่อง Input รหัสผ่าน
-  const PasswordInput = ({
-    label,
-    value,
-    onChangeText,
-    showPass,
-    toggleShowPass,
-    placeholder,
-  }: any) => (
-    <View style={styles.inputGroup}>
-      <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
-      <View
-        style={[
-          styles.inputContainer,
-          { backgroundColor: theme.card, borderColor: theme.border },
-        ]}
-      >
-        <Icon
-          name="lock-outline"
-          size={20}
-          color={theme.subText}
-          style={styles.inputIcon}
-        />
-
-        <TextInput
-          style={[styles.input, { color: theme.text }]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={theme.subText}
-          secureTextEntry={!showPass} // ถ้า showPass=false ให้ซ่อนรหัส
-          autoCapitalize="none"
-        />
-
-        {/* ปุ่มดวงตา */}
-        <TouchableOpacity onPress={toggleShowPass} style={styles.eyeButton}>
-          <Icon
-            name={showPass ? 'eye-off-outline' : 'eye-outline'}
-            size={22}
-            color={theme.subText}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 
   return (
     <KeyboardAvoidingView
@@ -133,6 +146,7 @@ const ChangePasswordScreen = () => {
             showPass={showCurrentPass}
             toggleShowPass={() => setShowCurrentPass(!showCurrentPass)}
             placeholder="Enter current password"
+            theme={theme}
           />
 
           <PasswordInput
@@ -142,6 +156,7 @@ const ChangePasswordScreen = () => {
             showPass={showNewPass}
             toggleShowPass={() => setShowNewPass(!showNewPass)}
             placeholder="Enter new password"
+            theme={theme}
           />
 
           <PasswordInput
@@ -151,6 +166,7 @@ const ChangePasswordScreen = () => {
             showPass={showConfirmPass}
             toggleShowPass={() => setShowConfirmPass(!showConfirmPass)}
             placeholder="Confirm new password"
+            theme={theme}
           />
         </View>
 

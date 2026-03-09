@@ -49,7 +49,7 @@ export const productService = {
     Object.keys(data).forEach(key => {
       if (Array.isArray(data[key])) {
         // e.g. categories
-        data[key].forEach((val: string) => formData.append(`${key}[]`, val));
+        data[key].forEach((val: string) => formData.append(key, val));
       } else {
         formData.append(key, data[key]);
       }
