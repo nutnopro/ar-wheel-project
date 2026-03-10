@@ -1,9 +1,19 @@
 // src/services/modelCacheService.ts
 import RNFS from 'react-native-fs';
-import { MMKV } from 'react-native-mmkv';
+import { Platform } from 'react-native';
 import { WheelModel } from '../utils/types';
 
-const storage = new MMKV();
+let storage: any = null;
+
+// Only initialize MMKV when NOT running on iOS Simulator
+if (!(Platform.OS === 'ios' && __DEV__)) {
+  try {
+    const { MMKV } = require('react-native-mmkv');
+    storage = new MMKV();
+  } catch (e) {
+    console.log('⚠️ MMKV Failed to load in modelCacheService');
+  }
+}
 const CACHE_DIR = `${RNFS.CachesDirectoryPath}/ar_models`;
 
 const metaKey = (id: string) => `ar_model_meta_${id}`;
@@ -24,13 +34,15 @@ export async function downloadAndCacheModel(model: WheelModel): Promise<string> 
   const localPath = `${CACHE_DIR}/${model.id}.glb`;
 
   await RNFS.downloadFile({
-    fromUrl: model.modelUrl,
+    fromUrl: Platform.OS === 'ios' ? model.iosModelUrl : model.androidModelUrl,
     toFile: localPath,
   }).promise;
 
   // บันทึก metadata พร้อม localPath ลง MMKV
-  const meta = JSON.stringify({ ...model, localPath });
-  storage.set(metaKey(model.id), meta);
+  if (storage) {
+    const meta = JSON.stringify({ ...model, localPath });
+    storage.set(metaKey(model.id), meta);
+  }
 
   return localPath;
 }
@@ -40,6 +52,11 @@ export async function downloadAndCacheModel(model: WheelModel): Promise<string> 
  * ถ้า cache หายหรือไฟล์ถูกลบ ให้ดาวน์โหลดใหม่จาก modelUrl
  */
 export async function resolveModelPath(model: WheelModel): Promise<string> {
+  if (!storage) {
+    // If MMKV is not available (iOS Simulator), return the model URL directly
+    return Platform.OS === 'ios' ? model.iosModelUrl : model.androidModelUrl;
+  }
+  
   const raw = storage.getString(metaKey(model.id));
   if (raw) {
     try {
@@ -47,9 +64,7 @@ export async function resolveModelPath(model: WheelModel): Promise<string> {
       if (cached.localPath && (await RNFS.exists(cached.localPath))) {
         return cached.localPath;
       }
-    } catch {
-      // JSON parse error → re-download
-    }
+    } catch {} // JSON parse error → re-download
   }
   // ไม่มี cache หรือไฟล์หาย → ดาวน์โหลดใหม่
   return downloadAndCacheModel(model);
@@ -61,25 +76,29 @@ export async function resolveModelPath(model: WheelModel): Promise<string> {
  */
 export async function clearModelCache(id?: string): Promise<void> {
   if (id) {
-    const raw = storage.getString(metaKey(id));
-    if (raw) {
-      try {
-        const { localPath } = JSON.parse(raw) as { localPath?: string };
-        if (localPath && (await RNFS.exists(localPath))) {
-          await RNFS.unlink(localPath);
-        }
-      } catch {}
+    if (storage) {
+      const raw = storage.getString(metaKey(id));
+      if (raw) {
+        try {
+          const { localPath } = JSON.parse(raw) as { localPath?: string };
+          if (localPath && (await RNFS.exists(localPath))) {
+            await RNFS.unlink(localPath);
+          }
+        } catch {}
+      }
+      storage.delete(metaKey(id));
     }
-    storage.delete(metaKey(id));
   } else {
     // ลบ folder cache ทั้งหมด
     if (await RNFS.exists(CACHE_DIR)) {
       await RNFS.unlink(CACHE_DIR);
     }
     // ลบ MMKV keys ทั้งหมดที่มี prefix ar_model_meta_
-    storage
-      .getAllKeys()
-      .filter(k => k.startsWith('ar_model_meta_'))
-      .forEach(k => storage.delete(k));
+    if (storage) {
+      storage
+        .getAllKeys()
+        .filter((k: string) => k.startsWith('ar_model_meta_'))
+        .forEach((k: string) => storage.delete(k));
+    }
   }
 }

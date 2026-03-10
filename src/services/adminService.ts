@@ -15,6 +15,20 @@ export const adminService = {
     return api.delete(`/users/${uid}`);
   },
 
+  // === Stores ===
+  getStores: async () => {
+    return api.get('/stores');
+  },
+  createStore: async (data: any) => {
+    return api.post('/stores', data);
+  },
+  updateStore: async (id: string, data: any) => {
+    return api.patch(`/stores/${id}`, data);
+  },
+  deleteStore: async (id: string) => {
+    return api.delete(`/stores/${id}`);
+  },
+
   // === Categories ===
   getCategories: async () => {
     return api.get('/categories');

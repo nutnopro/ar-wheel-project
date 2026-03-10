@@ -38,6 +38,8 @@ import ManageUsersScreen from '../screens/admin/ManageUsersScreen';
 import ManageCategoriesScreen from '../screens/admin/ManageCategoriesScreen';
 import ManageModelsScreen from '../screens/admin/ManageModelsScreen';
 import ManageAddModelScreen from '../screens/admin/ManageAddModelScreen';
+import ManageStoresScreen from '../screens/admin/ManageStoresScreen';
+import StoreStatsScreen from '../screens/admin/StoreStatsScreen';
 import SystemLogsScreen from '../screens/admin/SystemLogsScreen';
 import AdminDashboardScreen from '../screens/admin/AdminDashboardScreen';
 import SystemStatsScreen from '../screens/admin/SystemStatsScreen';
@@ -62,6 +64,8 @@ export type RootStackParamList = {
   ManageUsers: undefined;
   ManageModels: undefined;
   ManageAddModel: undefined;
+  ManageStores: undefined;
+  StoreStats: undefined;
   ManageCategories: undefined;
   SystemLogs: undefined;
   SystemStats: undefined;
@@ -135,7 +139,7 @@ function MainTabNavigator() {
                 const modelDataList = await Promise.all(
                   allModels.map(async (m) => {
                     const targetUrl = Platform.OS === 'ios' ? m.iosModelUrl : m.androidModelUrl;
-                    const localPath = await resolveModelPath({ ...m, modelUrl: targetUrl });
+                    const localPath = await resolveModelPath({ ...m, androidModelUrl: targetUrl, iosModelUrl: targetUrl });
                     
                     return {
                       id: m.id,
@@ -279,6 +283,11 @@ const AppNavigationWrapper = () => {
                 component={ManageAddModelScreen}
                 options={{ headerShown: false }}
               />
+              <Stack.Screen
+                name="StoreStats"
+                component={StoreStatsScreen}
+                options={{ headerShown: false }}
+              />
             </>
           )}
 
@@ -293,6 +302,11 @@ const AppNavigationWrapper = () => {
               <Stack.Screen
                 name="ManageUsers"
                 component={ManageUsersScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="ManageStores"
+                component={ManageStoresScreen}
                 options={{ headerShown: false }}
               />
               <Stack.Screen

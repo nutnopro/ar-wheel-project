@@ -14,7 +14,7 @@ import {
 import {useNavigation, useFocusEffect} from '@react-navigation/native';
 import {useTheme} from '../../context/ThemeContext';
 import {useAuth} from '../../context/AuthContext';
-import api from '../../services/api';
+import {favoritesService} from '../../services/favoritesService';
 import Header from '../../components/Header';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
@@ -39,7 +39,7 @@ const FavoritesScreen = () => {
 
     try {
       setLoading(true);
-      const response = await api.get(`/users/favorites/${uid}`);
+      const response = await favoritesService.getAll(uid);
       setFavorites(response.data);
     } catch (error) {
       console.error('Fetch favorites error:', error);
@@ -58,11 +58,17 @@ const FavoritesScreen = () => {
 
   const handleRemoveFavorite = async (modelId: string) => {
     const uid = userData?.id || userData?.uid;
+    if (!uid) {
+      Alert.alert('Error', 'User ID not found');
+      return;
+    }
+    
     try {
-      await api.delete(`/users/favorites/${uid}/${modelId}`);
+      await favoritesService.remove(uid, modelId);
       // อัปเดต UI ทันทีโดยไม่ต้องรอโหลดใหม่ทั้งหมด
       setFavorites(prev => prev.filter(item => item.id !== modelId));
     } catch (error) {
+      console.error('Remove favorite error:', error);
       Alert.alert('Error', 'Failed to remove favorite');
     }
   };

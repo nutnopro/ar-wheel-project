@@ -82,7 +82,7 @@ const ManageCategoriesScreen = () => {
 
     setSaving(true);
     try {
-      await api.post('/categories', {
+      await adminService.createCategory({
         name: newCategory.name,
         description: newCategory.description || '',
         icon: newCategory.icon || 'shape',
@@ -94,7 +94,7 @@ const ManageCategoriesScreen = () => {
       setNewCategory({ name: '', description: '', icon: 'shape' });
       fetchCategories();
     } catch (error: any) {
-      Alert.alert('Error', 'Failed to create category: ' + error.message);
+      Alert.alert('Error', 'Failed to create category: ' + (error.response?.data?.message || error.message));
     } finally {
       setSaving(false);
     }

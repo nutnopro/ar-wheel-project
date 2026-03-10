@@ -1,13 +1,19 @@
 // src/utils/storage.ts
-import { MMKV } from 'react-native-mmkv';
+import { Platform } from 'react-native';
 
-export let storage: MMKV | null = null;
+export let storage: any = null;
 
-try {
-  storage = new MMKV();
-  console.log('✅ MMKV Initialized');
-} catch (e) {
-  console.log('⚠️ MMKV Failed to load (Remote Debugging might be on)');
+// Only initialize MMKV when NOT running on iOS Simulator
+if (!(Platform.OS === 'ios' && __DEV__)) {
+  try {
+    const { MMKV } = require('react-native-mmkv');
+    storage = new MMKV();
+    console.log('✅ MMKV Initialized');
+  } catch (e) {
+    console.log('⚠️ MMKV Failed to load (Remote Debugging might be on)');
+  }
+} else {
+  console.log('⚠️ MMKV disabled for iOS Simulator');
 }
 
 // --- Token ---

@@ -58,8 +58,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUserRole(savedUser.role || 'user');
           // Load saved categories
           const savedCategories = getStorageCategories();
-          if (savedCategories) setCategoriesState(savedCategories);
+          if (savedCategories && Array.isArray(savedCategories)) {
+            setCategoriesState(savedCategories);
+          }
         }
+      } catch (error) {
+        console.error('Auto-login check error:', error);
+        // ถ้าเกิดข้อผิดพลาดกับ MMKV ให้ล้างข้อมูลและเริ่มใหม่
+        logout();
       } finally {
         setTimeout(() => {
           setIsAppReady(true);
@@ -128,7 +134,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const updateProfile = (newData: any) => {
     setUserData((prev: any) => {
       const updated = { ...prev, ...newData };
-      setStorageUser(updated);
+      // พยายามบันทึกลง storage แต่ถ้าไม่สำเร็จก็ข้ามไป
+      try {
+        setStorageUser(updated);
+      } catch (error) {
+        console.warn('Failed to save user data to storage:', error);
+      }
       return updated;
     });
   };

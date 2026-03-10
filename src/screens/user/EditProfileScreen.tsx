@@ -85,12 +85,16 @@ const EditProfileScreen = () => {
         type: [types.images],
       });
       if (result) {
-        setAvatarUri((result as any).fileCopyUri || result.uri);
+        // ใช้ uri โดยตรงแทน fileCopyUri สำหรับความเข้ากันได้ที่ดีขึ้น
+        const imageUri = result.uri;
+        setAvatarUri(imageUri);
         setAvatarFile(result);
+        console.log('Image selected:', imageUri);
       }
     } catch (err: any) {
       if (!(isErrorWithCode(err) && err.code === errorCodes.OPERATION_CANCELED)) {
-        Alert.alert('Error', 'Failed to pick image');
+        console.error('Image picker error:', err);
+        Alert.alert('Error', 'Failed to pick image. Please try again.');
       }
     }
   };
@@ -106,16 +110,26 @@ const EditProfileScreen = () => {
       const userId = userData.id || userData.uid;
 
       let latestProfileImg = userData.profileImg || userData.profileImageUrl;
+      
+      // อัปโหลดรูปภาพใหม่ถ้ามีการเลือกรูป
       if (avatarFile) {
-        const uploadRes = await authService.uploadProfileImage(userId, {
-          uri: (avatarFile as any).fileCopyUri || avatarFile.uri,
+        console.log('Uploading profile image...');
+        const fileData = {
+          uri: avatarFile.uri,
           type: avatarFile.type || 'image/jpeg',
           name: avatarFile.name || `avatar_${new Date().getTime()}.jpg`,
-        });
-        if (uploadRes && uploadRes.profileImg) {
-          latestProfileImg = uploadRes.profileImg;
+        };
+        
+        const uploadRes = await authService.uploadProfileImage(userId, fileData);
+        console.log('Upload response:', uploadRes);
+        
+        if (uploadRes && (uploadRes.profileImg || uploadRes.profileImageUrl)) {
+          latestProfileImg = uploadRes.profileImg || uploadRes.profileImageUrl;
+          console.log('New profile image URL:', latestProfileImg);
         }
       }
+      
+      // เพิ่ม timestamp เพื่อป้องกัน caching
       const timestamp = new Date().getTime();
       const cleanUrl = latestProfileImg ? latestProfileImg.split(/[?&]t=/)[0] : latestProfileImg;
       const finalImgWithTimestamp = cleanUrl ? `${cleanUrl}${cleanUrl.includes('?') ? '&' : '?'}t=${timestamp}` : null;
@@ -138,9 +152,13 @@ const EditProfileScreen = () => {
         }
       };
 
+      console.log('Updating profile with payload:', payload);
       const updatedInfo = await authService.updateProfile(userId, payload);
+      console.log('Profile update response:', updatedInfo);
 
       const actualUser = updatedInfo?.user ? updatedInfo.user : updatedInfo;
+      
+      // อัปเดต state ใน AuthContext
       updateProfile({
         ...userData,
         ...payload,

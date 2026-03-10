@@ -15,10 +15,19 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { MMKV } from 'react-native-mmkv';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const storage = new MMKV();
+let storage: any = null;
+
+// Only initialize MMKV when NOT running on iOS Simulator
+if (!(Platform.OS === 'ios' && __DEV__)) {
+  try {
+    const { MMKV } = require('react-native-mmkv');
+    storage = new MMKV();
+  } catch (e) {
+    console.log('⚠️ MMKV Failed to load in HomeScreen');
+  }
+}
 import { WheelModel } from '../../utils/types';
 import api from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';

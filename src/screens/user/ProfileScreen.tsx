@@ -28,7 +28,7 @@ const ProfileScreen = () => {
   const isAdmin = userRole === 'admin';
 
   const getProfileImage = () => {
-    const imgUrl = userData?.profileImg || userData?.profileImageUrl;
+    const imgUrl = userData?.profileImg || userData?.profileImageUrl || userData?.avatar;
     if (!imgUrl) {
       return 'https://cdn-icons-png.flaticon.com/512/149/149071.png';
     }
@@ -37,9 +37,9 @@ const ProfileScreen = () => {
   };
 
   const user = {
-    displayName: userData?.displayName || 'Guest User',
+    displayName: userData?.displayName || userData?.name || 'Guest User',
     email: userData?.email || 'Sign in to access features',
-    profileImg: userData?.profileImg || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+    profileImg: userData?.profileImg || userData?.profileImageUrl || userData?.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
   };
   const handleRestrictedAction = () => {
     Alert.alert('Login Required', 'Please login to use this feature.', [
@@ -65,8 +65,8 @@ const ProfileScreen = () => {
         isSwitch
           ? undefined
           : restricted && isVisitor
-          ? handleRestrictedAction
-          : onPress
+            ? handleRestrictedAction
+            : onPress
       }
       activeOpacity={isSwitch ? 1 : 0.7}
     >
@@ -84,8 +84,8 @@ const ProfileScreen = () => {
               iconColor
                 ? iconColor
                 : restricted && isVisitor
-                ? '#CBD5E1'
-                : theme.icon
+                  ? '#CBD5E1'
+                  : theme.icon
             }
           />
         </View>
@@ -96,8 +96,8 @@ const ProfileScreen = () => {
               color: titleColor
                 ? titleColor
                 : restricted && isVisitor
-                ? '#CBD5E1'
-                : theme.text,
+                  ? '#CBD5E1'
+                  : theme.text,
             },
           ]}
         >
@@ -141,9 +141,8 @@ const ProfileScreen = () => {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Image
-              key={user.profileImg}
-              source={{ 
-                uri: user.profileImg,
+              source={{
+                uri: getProfileImage(),
                 cache: 'reload'
               }}
               style={styles.avatar}
@@ -237,7 +236,7 @@ const ProfileScreen = () => {
               <MenuItem
                 icon="chart-bar"
                 title="Store Statistics"
-                onPress={() => navigation.navigate('AdminDashboard')}
+                onPress={() => navigation.navigate('StoreStats')}
               />
             </View>
           )}
