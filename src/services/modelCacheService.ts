@@ -56,7 +56,7 @@ export async function resolveModelPath(model: WheelModel): Promise<string> {
     // If MMKV is not available (iOS Simulator), return the model URL directly
     return Platform.OS === 'ios' ? model.iosModelUrl : model.androidModelUrl;
   }
-  
+ 
   const raw = storage.getString(metaKey(model.id));
   if (raw) {
     try {
