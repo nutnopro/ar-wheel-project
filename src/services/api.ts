@@ -3,11 +3,7 @@ import axios from 'axios';
 import { Alert } from 'react-native';
 import { getToken, removeToken, removeUserData } from '../utils/storage';
 
-// สร้าง instance กลางของ Axios
 const api = axios.create({
-  // ⚠️ IMPORTANT: แก้ IP Address ให้ตรงกับ backend ของคุณ
-  // - Emulator Android: ใช้ 'http://10.0.2.2:3000'
-  // - Device จริง: ใช้ 'http://<IP เครื่องคอมของคุณ>:3000'
   baseURL: 'https://ar-alloy-api.onrender.com',
   timeout: 60000,
   headers: {
@@ -15,11 +11,12 @@ const api = axios.create({
   },
 });
 
-// === Request Interceptor: แนบ Token ทุกครั้งถ้ามี ===
+// === Request Interceptor ===
 api.interceptors.request.use(
-  async config => {
+  config => {
     try {
-      const token = await getToken();
+      const token = getToken();
+
       if (token) {
         config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${token}`;
@@ -27,6 +24,7 @@ api.interceptors.request.use(
     } catch (error) {
       console.error('Error getting token:', error);
     }
+
     return config;
   },
   error => {
@@ -34,24 +32,20 @@ api.interceptors.request.use(
   },
 );
 
-// === Response Interceptor: จัดการ 401 / session หมดอายุ ===
+// === Response Interceptor ===
 api.interceptors.response.use(
   response => response,
   async error => {
     const status = error?.response?.status;
 
     if (status === 401) {
-      // เคลียร์ข้อมูล auth ออกจากเครื่อง
-      await removeToken();
-      await removeUserData();
+      removeToken();
+      removeUserData();
 
-      // แจ้งผู้ใช้
       Alert.alert(
         'Session expired',
         'Your login session has expired. Please login again.',
       );
-
-      // TODO (ถ้าอยาก auto redirect): ใช้ navigationRef.reset({ ... }) ไปหน้า SignIn
     }
 
     return Promise.reject(error);

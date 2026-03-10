@@ -21,9 +21,11 @@ export const getToken = () => {
   if (!storage) return null;
   return storage.getString('userToken');
 };
+
 export const setToken = (token: string) => {
   if (storage) storage.set('userToken', token);
 };
+
 export const removeToken = () => {
   if (storage) storage.delete('userToken');
 };
@@ -31,12 +33,20 @@ export const removeToken = () => {
 // --- User Data ---
 export const getUserData = () => {
   if (!storage) return null;
-  const json = storage.getString('userData');
-  return json ? JSON.parse(json) : null;
+
+  try {
+    const json = storage.getString('userData');
+    return json ? JSON.parse(json) : null;
+  } catch (e) {
+    console.warn('Invalid userData JSON');
+    return null;
+  }
 };
+
 export const setUserData = (user: any) => {
   if (storage) storage.set('userData', JSON.stringify(user));
 };
+
 export const removeUserData = () => {
   if (storage) storage.delete('userData');
 };
@@ -44,12 +54,20 @@ export const removeUserData = () => {
 // --- Categories ---
 export const getCategories = () => {
   if (!storage) return [];
-  const json = storage.getString('categories');
-  return json ? JSON.parse(json) : [];
+
+  try {
+    const json = storage.getString('categories');
+    return json ? JSON.parse(json) : [];
+  } catch (e) {
+    console.warn('Invalid categories JSON');
+    return [];
+  }
 };
+
 export const setCategories = (categories: any[]) => {
   if (storage) storage.set('categories', JSON.stringify(categories));
 };
+
 export const removeCategories = () => {
   if (storage) storage.delete('categories');
 };
@@ -67,6 +85,7 @@ export interface SessionData {
 
 export const setSession = (session: SessionData) => {
   if (!storage) return;
+
   storage.set('ar_token', session.token);
   storage.set('ar_user_id', session.userId);
   storage.set('ar_role', session.role);
@@ -75,8 +94,11 @@ export const setSession = (session: SessionData) => {
 
 export const getSession = (): SessionData | null => {
   if (!storage) return null;
+
   const token = storage.getString('ar_token');
+
   if (!token) return null;
+
   return {
     token,
     userId: storage.getString('ar_user_id') || '',
@@ -87,6 +109,7 @@ export const getSession = (): SessionData | null => {
 
 export const clearSession = () => {
   if (!storage) return;
+
   storage.delete('ar_token');
   storage.delete('ar_user_id');
   storage.delete('ar_role');
@@ -106,15 +129,25 @@ export interface SelectedModelData {
 
 export const setSelectedModel = (model: SelectedModelData) => {
   if (!storage) return;
+
   storage.set('ar_selected_model', JSON.stringify(model));
 };
+
 export const getSelectedModel = (): SelectedModelData | null => {
   if (!storage) return null;
-  const json = storage.getString('ar_selected_model');
-  return json ? JSON.parse(json) : null;
+
+  try {
+    const json = storage.getString('ar_selected_model');
+    return json ? JSON.parse(json) : null;
+  } catch (e) {
+    console.warn('Invalid selected model JSON');
+    return null;
+  }
 };
+
 export const clearSelectedModel = () => {
   if (!storage) return;
+
   storage.delete('ar_selected_model');
 };
 
@@ -122,17 +155,25 @@ export const clearSelectedModel = () => {
 export const setModelPaths = (paths: string[]) => {
   if (storage) storage.set('ar_model_paths', JSON.stringify(paths));
 };
+
 export const getModelPaths = (): string[] => {
   if (!storage) return [];
-  const raw = storage.getString('ar_model_paths');
-  return raw ? JSON.parse(raw) : [];
+
+  try {
+    const raw = storage.getString('ar_model_paths');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 };
 
 // --- Language ---
 export const setLanguage = (lang: string) => {
   if (storage) storage.set('ar_language', lang);
 };
+
 export const getLanguage = (): string => {
   if (!storage) return 'en';
+
   return storage.getString('ar_language') || 'en';
 };

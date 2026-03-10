@@ -140,7 +140,7 @@ function MainTabNavigator() {
                   allModels.map(async (m) => {
                     const targetUrl = Platform.OS === 'ios' ? m.iosModelUrl : m.androidModelUrl;
                     const localPath = await resolveModelPath({ ...m, androidModelUrl: targetUrl, iosModelUrl: targetUrl });
-                    
+
                     return {
                       id: m.id,
                       path: localPath,
@@ -163,11 +163,15 @@ function MainTabNavigator() {
                 const pathsJsonString = JSON.stringify(modelDataList);
 
                 // ดึงค่า storage โดยตรง ไม่ต้องทำ Dynamic Import แล้ว
-                const sizeStr = storage?.getString('@ar_marker_size') || '15';
-                const markerSize = parseFloat(sizeStr) || 15.0;
-                
+                let markerSize = 15;
+
+                if (storage) {
+                  const sizeStr = storage.getString('@ar_marker_size') || '15';
+                  markerSize = parseFloat(sizeStr) || 15;
+                }
+
                 console.log(`🚀 Launching AR with ${modelDataList.length} wheels`);
-                
+
                 await ARLauncher.openARActivity(initialPath, pathsJsonString, markerSize);
               } else {
                 Alert.alert('AR Error', 'AR Launcher is not available on this device');
