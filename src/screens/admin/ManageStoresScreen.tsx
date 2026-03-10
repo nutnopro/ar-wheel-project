@@ -8,6 +8,9 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import {useTheme} from '../../context/ThemeContext';
@@ -20,6 +23,14 @@ const ManageStoresScreen = () => {
   const [stores, setStores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [newStore, setNewStore] = useState({
+    name: '',
+    location: '',
+    description: '',
+  });
 
   const fetchStores = useCallback(async () => {
     try {
@@ -41,6 +52,32 @@ const ManageStoresScreen = () => {
   const onRefresh = () => {
     setRefreshing(true);
     fetchStores();
+  };
+
+  const handleAddStore = async () => {
+    if (!newStore.name.trim()) {
+      Alert.alert('Validation Error', 'Store name is required.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await adminService.createStore({
+        name: newStore.name,
+        location: newStore.location || '',
+        description: newStore.description || '',
+        isActive: true,
+      });
+
+      Alert.alert('Success', 'Store added successfully');
+      setModalVisible(false);
+      setNewStore({ name: '', location: '', description: '' });
+      fetchStores();
+    } catch (error: any) {
+      Alert.alert('Error', 'Failed to create store: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = (id: string) => {
@@ -153,11 +190,64 @@ const ManageStoresScreen = () => {
         ]}>
         <TouchableOpacity
           style={[styles.addButton, {backgroundColor: '#10B981'}]}
-          onPress={() => Alert.alert('Add', 'Store')}>
+          onPress={() => setModalVisible(true)}>
           <Icon name="plus" size={24} color="#fff" />
           <Text style={styles.addText}>Add Store</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Add Store Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setModalVisible(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={e => e.stopPropagation()} style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Store</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%', maxHeight: 400 }}>
+               <Text style={[styles.inputLabel, { color: theme.subText }]}>Store Name *</Text>
+               <TextInput
+                 style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                 placeholder="e.g. Auto Parts Store"
+                 placeholderTextColor={theme.subText}
+                 value={newStore.name}
+                 onChangeText={v => setNewStore({ ...newStore, name: v })}
+               />
+
+               <Text style={[styles.inputLabel, { color: theme.subText, marginTop: 15 }]}>Location</Text>
+               <TextInput
+                 style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                 placeholder="e.g. Bangkok, Thailand"
+                 placeholderTextColor={theme.subText}
+                 value={newStore.location}
+                 onChangeText={v => setNewStore({ ...newStore, location: v })}
+               />
+
+               <Text style={[styles.inputLabel, { color: theme.subText, marginTop: 15 }]}>Description</Text>
+               <TextInput
+                 style={[styles.input, { color: theme.text, borderColor: theme.border, height: 80, textAlignVertical: 'top' }]}
+                 placeholder="About this store..."
+                 placeholderTextColor={theme.subText}
+                 value={newStore.description}
+                 onChangeText={v => setNewStore({ ...newStore, description: v })}
+                 multiline
+               />
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)} disabled={saving}>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, styles.saveButton, { backgroundColor: '#10B981' }]} onPress={handleAddStore} disabled={saving}>
+                <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Create'}</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -203,5 +293,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   addText: {color: '#fff', fontSize: 16, fontWeight: 'bold', marginLeft: 8},
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '90%', borderRadius: 16, padding: 24, elevation: 5, maxHeight: '80%' },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 15, textAlign: 'center' },
+  inputLabel: { fontSize: 13, marginBottom: 5, marginTop: 10 },
+  input: { borderWidth: 1, borderRadius: 8, padding: 12, fontSize: 15, marginBottom: 5 },
+  modalActions: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15 },
+  modalButton: { flex: 1, padding: 14, borderRadius: 10, alignItems: 'center' },
+  cancelButton: { backgroundColor: '#F1F5F9', marginRight: 8 },
+  cancelButtonText: { color: '#64748B', fontWeight: '600', fontSize: 16 },
+  saveButton: { marginLeft: 8 },
+  saveButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 },
 });
 export default ManageStoresScreen;

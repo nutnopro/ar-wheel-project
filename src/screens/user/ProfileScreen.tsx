@@ -141,6 +141,7 @@ const ProfileScreen = () => {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <View style={styles.header}>
             <Image
+              key={`${getProfileImage()}`}
               source={{
                 uri: getProfileImage(),
                 cache: 'reload'

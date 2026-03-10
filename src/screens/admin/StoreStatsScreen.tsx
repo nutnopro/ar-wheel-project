@@ -25,19 +25,34 @@ const StoreStatsScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchStats = useCallback(async () => {
-    if (!userData?.id && !userData?.uid) {
-      Alert.alert('Error', 'Store ID not found');
+    const storeId = userData?.id || userData?.uid || userData?.storeId;
+    
+    if (!storeId) {
+      console.log('Store ID not found, userData:', userData);
+      Alert.alert('Error', 'Store ID not found. Please ensure you are logged in as a store.');
       setLoading(false);
       return;
     }
 
+    console.log('Fetching stats for store ID:', storeId);
+    
     try {
-      const storeId = userData.id || userData.uid;
       const response = await adminService.getStoreStats(storeId);
+      console.log('Store stats response:', response);
       setStats(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching store stats:', error);
-      Alert.alert('Error', 'Failed to load store statistics');
+      const errorMessage = error?.response?.data?.message || error?.message || 'Failed to load store statistics';
+      Alert.alert('Error', errorMessage);
+      
+      // Set empty stats to prevent infinite loading
+      setStats({
+        models: { total: 0, thisMonth: 0 },
+        views: { total: 0, thisMonth: 0 },
+        favorites: { total: 0, thisMonth: 0 },
+        arViews: { total: 0, thisMonth: 0 },
+        topModels: []
+      });
     } finally {
       setLoading(false);
       setRefreshing(false);
